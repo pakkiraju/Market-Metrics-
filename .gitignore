@@ -1,0 +1,24 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+venv/
+env/
+
+# Disk cache (auto-generated)
+config/.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Old placeholder data (not part of the live app)
+data/
+old/
