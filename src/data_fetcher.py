@@ -110,13 +110,24 @@ def _screener_to_df(screener: Screener) -> pd.DataFrame:
 
 def _fetch_screener(filters: list[str], table: str, cache_key: str | None = None,
                     order: str = "", ttl: int = MEDIUM) -> pd.DataFrame:
-    """Run FinViz Screener and return DataFrame. Cached."""
+    """Run FinViz Screener and return DataFrame. Uses Elite API when configured. Cached."""
     if cache_key:
         cached = cache.get(cache_key)
         if cached is not None:
             return cached
 
     try:
+        from src.finviz_elite import is_elite_configured, fetch_elite_screener
+
+        if is_elite_configured():
+            data = fetch_elite_screener(filters=filters, table=table, order=order)
+            if data:
+                df = pd.DataFrame(data)
+                if cache_key and not df.empty:
+                    cache.put(cache_key, df, ttl=ttl)
+                return df
+            logger.warning("Elite screener returned no data, falling back to free")
+
         s = Screener(filters=filters, table=table, order=order)
         df = _screener_to_df(s)
         if cache_key and not df.empty:

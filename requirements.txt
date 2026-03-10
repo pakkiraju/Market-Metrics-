@@ -2,5 +2,6 @@ dash>=2.18
 dash-bootstrap-components
 plotly>=5.24
 finviz>=2.0.0
+python-dotenv>=1.0
 pandas>=2.2
 numpy>=1.26
