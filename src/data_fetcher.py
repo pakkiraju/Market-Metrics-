@@ -215,11 +215,13 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
         if cached is not None:
             return cached
 
-    # FinViz: idx_sp500 = S&P 500, idx_ndx = NASDAQ 100.
+    # FinViz: idx_sp500 = S&P 500, idx_ndx = NASDAQ 100, geo_usa = all US-listed.
+    # sh_price_o1 = price over $1, sh_avgvol_o1000000 = avg vol over 1M.
     filter_sets_by_group = {
         "ind_QQQE": [["idx_ndx"]],
         "ind_RSP": [["idx_sp500"]],
         "ind_Composite": [["idx_sp500"], ["idx_ndx"]],
+        "ind_USA": [["geo_usa", "sh_price_o1", "sh_avgvol_o1000000"]],
     }
     filter_sets = filter_sets_by_group.get(cache_key, [["idx_sp500"], ["idx_ndx"]])
 

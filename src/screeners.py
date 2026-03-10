@@ -6,7 +6,6 @@ and an optional 'color' key (green/yellow/orange/red/blue).
 
 from src.data_fetcher import (
     load_watchlist,
-    load_composite,
     fetch_group_indicators,
     _fetch_screener,
 )
@@ -49,28 +48,26 @@ def _parse_num(s):
 # 1. Episodic Pivot: Gap up 10%+, Rel Vol 2+
 # -----------------------------------------------------------------------
 def episodic_pivot_screener() -> list[dict]:
-    """Gap up 10%+ with above-average volume (rel vol 2+)."""
+    """Gap up 10%+ with above-average volume (rel vol 2+). US-wide."""
     cached = cache.get("qulla_episodic")
     if cached is not None:
         return cached
     try:
-        # ta_gap_u10 = gap up over 10%, sh_relvol_o2 = rel vol over 2
-        # Combine S&P 500 and NASDAQ 100
+        # geo_usa = all US-listed; ta_gap_u10 = gap up 10%+; sh_relvol_o2 = rel vol 2+
+        # sh_price_o1 = price over $1; sh_avgvol_o1000000 = avg vol over 1M
+        df = _fetch_screener(
+            filters=["geo_usa", "ta_gap_u10", "sh_relvol_o2", "sh_price_o1", "sh_avgvol_o1000000"],
+            table="Performance",
+            cache_key="qulla_ep_usa",
+            order="-change",
+            ttl=FAST,
+        )
         results = []
-        for idx in ["idx_sp500", "idx_ndx"]:
-            df = _fetch_screener(
-                filters=[idx, "ta_gap_u10", "sh_relvol_o2"],
-                table="Performance",
-                cache_key=f"qulla_ep_{idx}",
-                order="-change",
-                ttl=FAST,
-            )
-            if df.empty:
-                continue
+        if not df.empty:
             ticker_col = "Ticker" if "Ticker" in df.columns else "ticker"
             for _, r in df.iterrows():
                 t = str(r.get(ticker_col, "")).strip().upper()
-                if t and not any(x["ticker"] == t for x in results):
+                if t:
                     results.append({"ticker": t, "color": "green"})
         if results:
             cache.put("qulla_episodic", results, ttl=FAST)
@@ -89,7 +86,7 @@ def parabolic_short_screener() -> list[dict]:
     if cached is not None:
         return cached
     try:
-        indicators = fetch_group_indicators(load_composite(), cache_key="ind_Composite")
+        indicators = fetch_group_indicators([], cache_key="ind_USA")
         if indicators.empty:
             return []
         rows = []
@@ -122,7 +119,7 @@ def breakouts_screener() -> list[dict]:
     if cached is not None:
         return cached
     try:
-        indicators = fetch_group_indicators(load_composite(), cache_key="ind_Composite")
+        indicators = fetch_group_indicators([], cache_key="ind_USA")
         if indicators.empty:
             return []
         rows = []
