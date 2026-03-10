@@ -376,7 +376,8 @@ def compute_stage_analysis(tickers: list[str],
 # -----------------------------------------------------------------------
 
 def compute_97_club(tickers: list[str]) -> list[dict]:
-    """Top 3% relative strength on day, week, month."""
+    """$1B+ stocks in top 3% Relative Strength on Day, Week, and Month.
+    Falls back to top 15 by min(day,week,month) rank when none meet strict 97+."""
     cached = cache.get("97_club")
     if cached is not None:
         return cached
@@ -385,22 +386,36 @@ def compute_97_club(tickers: list[str]) -> list[dict]:
     if indicators.empty:
         return []
 
+    valid = indicators.dropna(subset=["day_chg", "week_chg", "month_chg"]).copy()
+    if valid.empty:
+        return []
+
+    if "market_cap" in valid.columns:
+        valid = valid[(valid["market_cap"].fillna(0) >= 1e9)]
+        if valid.empty:
+            valid = indicators.dropna(subset=["day_chg", "week_chg", "month_chg"]).copy()
+
     for period in ["day_chg", "week_chg", "month_chg"]:
         col = f"rs_rank_{period}"
-        indicators[col] = indicators[period].rank(pct=True) * 100
+        valid[col] = valid[period].rank(pct=True, method="average") * 100
 
     mask = (
-        (indicators["rs_rank_day_chg"] >= 97) &
-        (indicators["rs_rank_week_chg"] >= 97) &
-        (indicators["rs_rank_month_chg"] >= 97)
+        (valid["rs_rank_day_chg"] >= 97) &
+        (valid["rs_rank_week_chg"] >= 97) &
+        (valid["rs_rank_month_chg"] >= 97)
     )
-    club = indicators[mask].copy()
+    club = valid[mask].copy()
+
+    if club.empty:
+        valid["rs_min"] = valid[["rs_rank_day_chg", "rs_rank_week_chg", "rs_rank_month_chg"]].min(axis=1)
+        club = valid.nlargest(15, "rs_min").copy()
 
     rows = []
     for _, r in club.iterrows():
         stage = classify_stage(r.to_dict())
         rs_day = _to_float(r.get("rs_rank_day_chg")) or 0.0
         rs_week = _to_float(r.get("rs_rank_week_chg")) or 0.0
+        rs_month = _to_float(r.get("rs_rank_month_chg")) or 0.0
         tml = rs_day >= 99 and rs_week >= 99
         atr_v = _to_float(r.get("atr"))
         sma20_v = _to_float(r.get("sma20"))
@@ -411,6 +426,9 @@ def compute_97_club(tickers: list[str]) -> list[dict]:
         rows.append({
             "ticker": r["ticker"],
             "stage": stage,
+            "rs_day": round(rs_day, 1),
+            "rs_week": round(rs_week, 1),
+            "rs_month": round(rs_month, 1),
             "atr_pct": round(_to_float(r.get("atr_pct")) or 0.0, 2),
             "atr_ext": atr_ext,
             "tml": tml,
@@ -433,18 +451,27 @@ def compute_9m_movers(tickers: list[str]) -> list[dict]:
     if indicators.empty:
         return []
 
-    mask = (
-        (indicators["volume"].fillna(0) >= 9_000_000) &
-        (indicators["volume"].fillna(0) > indicators["avg_volume"].fillna(float("inf")))
-    )
+    vol_ok = indicators["volume"].fillna(0) >= 9_000_000
+    cap_ok = indicators["market_cap"].fillna(0) >= 1e9
+    rel = indicators.get("rel_volume")
+    if rel is not None:
+        rel_ok = rel.fillna(0) >= 1.25
+    else:
+        avg = indicators["avg_volume"].fillna(float("inf"))
+        rel_ok = (indicators["volume"].fillna(0) / avg.replace(0, float("inf"))).fillna(0) >= 1.25
+    mask = vol_ok & cap_ok & rel_ok
     movers = indicators[mask].copy()
 
     rows = []
     for _, r in movers.iterrows():
         stage = classify_stage(r.to_dict())
         vol = _to_float(r.get("volume")) or 0.0
-        avg_vol = _to_float(r.get("avg_volume"))
-        rel_vol = round(vol / avg_vol, 2) if avg_vol and avg_vol != 0 else 0.0
+        rel_vol_val = _to_float(r.get("rel_volume"))
+        if rel_vol_val is None:
+            avg_vol = _to_float(r.get("avg_volume"))
+            rel_vol = round(vol / avg_vol, 2) if avg_vol and avg_vol != 0 else 0.0
+        else:
+            rel_vol = round(rel_vol_val, 2)
         atr_v = _to_float(r.get("atr"))
         sma20_v = _to_float(r.get("sma20"))
         close_v = _to_float(r.get("close"))

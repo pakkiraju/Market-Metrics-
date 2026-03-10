@@ -96,6 +96,14 @@ app.index_string = f"""<!DOCTYPE html>
                 + '&withdateranges=1&showpopupbutton=1&locale=en';
 
             modal.style.display = 'flex';
+            modal.style.position = 'fixed';
+            modal.style.top = '0';
+            modal.style.left = '0';
+            modal.style.right = '0';
+            modal.style.bottom = '0';
+            modal.style.zIndex = '99999';
+            modal.style.justifyContent = 'center';
+            modal.style.alignItems = 'center';
         }}, true);
 
         document.addEventListener('click', function(e) {{

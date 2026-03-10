@@ -41,6 +41,7 @@ from src.layout import (
     build_stage_chart,
     build_stage_summary,
     build_ticker_grid,
+    build_qullamaggie_content,
     WIDGETS, ALL_WIDGET_IDS,
     CHART_WRAP_STYLE,
 )
@@ -316,7 +317,7 @@ def register_callbacks(app):
     )
     def refresh_group_b(n_intervals, n_clicks):
         try:
-            qulla = build_ticker_grid(qullamaggie_screener())
+            qulla = build_qullamaggie_content(qullamaggie_screener())
             minerv = build_ticker_grid(minervini_screener())
             oneil = build_ticker_grid(oneil_screener())
             return [qulla, minerv, oneil]

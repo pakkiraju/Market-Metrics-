@@ -297,6 +297,23 @@ def build_ticker_grid(tickers: list[dict]) -> html.Div:
     return html.Div(pills, style=TICKER_GRID_STYLE)
 
 
+def build_qullamaggie_content(data: list[dict]) -> html.Div:
+    """Single table: Ticker, Tag (EP, BO, PS)."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    rows = [
+        [
+            {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
+             "style": TABLE_CELL_STYLE},
+            r.get("tag", ""),
+        ]
+        for r in data
+    ]
+    return _table(["Ticker", "Tag"], rows, col_widths=["120px", "60px"])
+
+
 # -----------------------------------------------------------------------
 # Section 8: Sector SPDR table (clickable tickers)
 # -----------------------------------------------------------------------
@@ -353,7 +370,7 @@ def build_sector_table(sector_data: list[dict]) -> html.Table:
 # -----------------------------------------------------------------------
 
 def build_97_club_table(club_data: list[dict]) -> html.Table:
-    headers = ["Ticker", "Stage", "ATR %", "ATR Ext%", "TML"]
+    headers = ["Ticker", "Stage", "Day RS", "Week RS", "Month RS", "ATR %", "ATR Ext", "TML"]
     rows = []
     for r in club_data:
         ticker_st = {"fontWeight": 700, "cursor": "pointer"}
@@ -366,6 +383,9 @@ def build_97_club_table(club_data: list[dict]) -> html.Table:
              "style": TABLE_CELL_STYLE},
             {"text": html.Span(r["stage"], style=stage_badge_style(r["stage"])),
              "style": TABLE_CELL_STYLE},
+            f"{r.get('rs_day', 0):.1f}",
+            f"{r.get('rs_week', 0):.1f}",
+            f"{r.get('rs_month', 0):.1f}",
             f"{r.get('atr_pct', 0)}%",
             str(r.get("atr_ext", "")),
             {"text": "Y" if r.get("tml") else "",
@@ -634,7 +654,7 @@ def build_tv_modal() -> html.Div:
         "position": "fixed",
         "top": 0, "left": 0, "right": 0, "bottom": 0,
         "backgroundColor": "rgba(0,0,0,0.7)",
-        "zIndex": 500,
+        "zIndex": 99999,
         "justifyContent": "center",
         "alignItems": "center",
     })
@@ -799,7 +819,6 @@ def build_layout() -> html.Div:
                 _widget("stage", "Stage Analysis",
                         _loading_wrap("stage-content", [loading])),
             ], id="row-bottom", style=HALF_ROW_STYLE),
-
         ], style=CONTENT_AREA_STYLE),
 
     ], style=DASHBOARD_STYLE)

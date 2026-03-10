@@ -6,6 +6,7 @@ individual tickers. FinViz data is delayed ~15-20 min.
 
 import logging
 import re
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -17,6 +18,9 @@ from src import cache
 from src.cache import FAST, MEDIUM, SLOW
 
 logger = logging.getLogger(__name__)
+
+# Delay between FinViz fetches to avoid 429 rate limit
+_FINVIZ_DELAY_SEC = 2.5
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 
@@ -116,26 +120,33 @@ def _fetch_screener(filters: list[str], table: str, cache_key: str | None = None
         if cached is not None:
             return cached
 
-    try:
-        from src.finviz_elite import is_elite_configured, fetch_elite_screener
+    for attempt in range(2):
+        try:
+            from src.finviz_elite import is_elite_configured, fetch_elite_screener
 
-        if is_elite_configured():
-            data = fetch_elite_screener(filters=filters, table=table, order=order)
-            if data:
-                df = pd.DataFrame(data)
-                if cache_key and not df.empty:
-                    cache.put(cache_key, df, ttl=ttl)
-                return df
-            logger.warning("Elite screener returned no data, falling back to free")
+            if is_elite_configured():
+                data = fetch_elite_screener(filters=filters, table=table, order=order)
+                if data:
+                    df = pd.DataFrame(data)
+                    if cache_key and not df.empty:
+                        cache.put(cache_key, df, ttl=ttl)
+                    return df
+                logger.warning("Elite screener returned no data, falling back to free")
 
-        s = Screener(filters=filters, table=table, order=order)
-        df = _screener_to_df(s)
-        if cache_key and not df.empty:
-            cache.put(cache_key, df, ttl=ttl)
-        return df
-    except Exception as e:
-        logger.warning("FinViz Screener failed: %s", e)
-        return pd.DataFrame()
+            s = Screener(filters=filters, table=table, order=order)
+            df = _screener_to_df(s)
+            if cache_key and not df.empty:
+                cache.put(cache_key, df, ttl=ttl)
+            return df
+        except Exception as e:
+            is_429 = "429" in str(e) or "Too Many Requests" in str(e)
+            if is_429 and attempt == 0:
+                logger.warning("FinViz rate limit (429), retrying after %s sec...", _FINVIZ_DELAY_SEC)
+                time.sleep(_FINVIZ_DELAY_SEC)
+            else:
+                logger.warning("FinViz Screener failed: %s", e)
+                return pd.DataFrame()
+    return pd.DataFrame()
 
 
 def _merge_perf_tech(perf_df: pd.DataFrame, tech_df: pd.DataFrame) -> pd.DataFrame:
@@ -177,6 +188,8 @@ def _fetch_screener_multi(filter_sets: list[list[str]], table: str,
     dfs = []
     seen = set()
     for i, filters in enumerate(filter_sets):
+        if i > 0:
+            time.sleep(_FINVIZ_DELAY_SEC)
         ck = f"{cache_key}_{i}_{table}" if cache_key else None
         df = _fetch_screener(filters=filters, table=table, cache_key=ck, order=order, ttl=ttl)
         if df.empty:
@@ -202,7 +215,7 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
         if cached is not None:
             return cached
 
-    # FinViz: idx_sp500 = S&P 500, idx_ndx = NASDAQ 100. Use separate calls for composite.
+    # FinViz: idx_sp500 = S&P 500, idx_ndx = NASDAQ 100.
     filter_sets_by_group = {
         "ind_QQQE": [["idx_ndx"]],
         "ind_RSP": [["idx_sp500"]],
@@ -216,12 +229,14 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
         order="-change",
         ttl=MEDIUM,
     )
+    time.sleep(_FINVIZ_DELAY_SEC)
     perf_df = _fetch_screener_multi(
         filter_sets, "Performance",
         cache_key=f"{cache_key}_perf" if cache_key else None,
         order="-change",
         ttl=MEDIUM,
     )
+    time.sleep(_FINVIZ_DELAY_SEC)
     tech_df = _fetch_screener_multi(
         filter_sets, "Technical",
         cache_key=f"{cache_key}_tech" if cache_key else None,
@@ -261,11 +276,32 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
             p = _parse_pct(v)
             return p if not pd.isna(p) else float("nan")
 
-        sma20 = _parse_num(row.get("SMA20", row.get("sma20", "")))
-        sma50 = _parse_num(row.get("SMA50", row.get("sma50", "")))
-        sma200 = _parse_num(row.get("SMA200", row.get("sma200", "")))
+        # FinViz Technical table stores SMA as % above/below price (e.g. -5.36% = price 5.36% below SMA)
+        # Convert to actual SMA: sma = price / (1 + pct/100)
+        def _pct_to_sma(pct, p):
+            if pct is None or p is None or p <= 0:
+                return None
+            denom = 1 + pct / 100
+            if abs(denom) < 0.01:
+                return None
+            return p / denom
+
+        sma20_pct = _parse_num(row.get("SMA20", row.get("sma20", "")))
+        sma50_pct = _parse_num(row.get("SMA50", row.get("sma50", "")))
+        sma200_pct = _parse_num(row.get("SMA200", row.get("sma200", "")))
+        sma20 = _pct_to_sma(sma20_pct, price)
+        sma50 = _pct_to_sma(sma50_pct, price)
+        sma200 = _pct_to_sma(sma200_pct, price)
         vol_str = row.get("Volume", row.get("volume", ""))
         vol = _parse_num(vol_str) if vol_str else None
+        avg_vol_str = row.get("Avg Volume", row.get("avg_volume", ""))
+        avg_vol = _parse_num(avg_vol_str) if avg_vol_str else None
+        rel_vol_str = row.get("Rel Volume", row.get("rel_volume", ""))
+        rel_vol = _parse_num(rel_vol_str) if rel_vol_str else None
+        if rel_vol is None and vol and avg_vol and avg_vol != 0:
+            rel_vol = vol / avg_vol
+        mcap_str = row.get("Market Cap", row.get("market_cap", ""))
+        market_cap = _parse_num(mcap_str) if mcap_str else None
         high52 = _parse_num(row.get("52W High", row.get("52W High", "")))
         low52 = _parse_num(row.get("52W Low", row.get("52W Low", "")))
         atr_val = _parse_num(row.get("ATR", row.get("atr", "")))
@@ -304,7 +340,9 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
             "high_52w": high52,
             "low_52w": low52,
             "volume": vol,
-            "avg_volume": vol,
+            "avg_volume": avg_vol if avg_vol is not None else vol,
+            "rel_volume": rel_vol,
+            "market_cap": market_cap,
             "new_20_high": False,
             "new_20_low": False,
             "industry": industry or sector,

@@ -1,9 +1,9 @@
 """Two-layer cache: in-memory + disk (pickle) with per-key TTL.
 
-TTL tiers:
-  FAST   =  5 min  (daily movers, 97 club, etc.)
-  MEDIUM = 60 min  (key metrics, sector SPDRs, raw history)
-  SLOW   =  6 hrs  (stage analysis, leading industries)
+TTL tiers (shorter with Elite API for fresher data):
+  FAST   =  2 min  (daily movers, 97 club, 9M movers, 20% weekly)
+  MEDIUM = 10 min  (key metrics, sector SPDRs, composite indicators)
+  SLOW   = 30 min  (stage analysis, leading industries)
 
 When market is closed all tiers extend to 12 hours.
 """
@@ -24,9 +24,9 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 ET = timezone(timedelta(hours=-5))
 
-FAST = 300        # 5 min
-MEDIUM = 3600     # 1 hour
-SLOW = 21600      # 6 hours
+FAST = 120        # 2 min
+MEDIUM = 600      # 10 min
+SLOW = 1800       # 30 min
 CLOSED = 43200    # 12 hours
 
 
