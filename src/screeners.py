@@ -4,6 +4,8 @@ Each screener returns a list of dicts with at minimum a 'ticker' key
 and an optional 'color' key (green/yellow/orange/red/blue).
 """
 
+import pandas as pd
+
 from src.data_fetcher import (
     load_watchlist,
     fetch_group_indicators,
@@ -54,9 +56,9 @@ def episodic_pivot_screener() -> list[dict]:
         return cached
     try:
         # geo_usa = all US-listed; ta_gap_u10 = gap up 10%+; sh_relvol_o2 = rel vol 2+
-        # sh_price_o1 = price over $1; sh_avgvol_o1000000 = avg vol over 1M
+        # sh_price_o1 = price over $1; sh_avgvol_o1000 = 1M (FinViz uses thousands: 1000=1M)
         df = _fetch_screener(
-            filters=["geo_usa", "ta_gap_u10", "sh_relvol_o2", "sh_price_o1", "sh_avgvol_o1000000"],
+            filters=["geo_usa", "ta_gap_u10", "sh_relvol_o2", "sh_price_o1", "sh_avgvol_o1000"],
             table="Performance",
             cache_key="qulla_ep_usa",
             order="-change",
@@ -167,17 +169,95 @@ def qullamaggie_screener(indicators=None) -> list[dict]:
     ]
 
 
-def minervini_screener(indicators=None) -> list[dict]:
-    """Placeholder: Minervini Trend Template screener.
+# Minervini: exact FinViz Elite URL (no modifications)
+MINERVINI_FINVIZ_URL = (
+    "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,"
+    "ta_sma200_pa,tad_0_sma:150:sma:d|abv:::1|close::close:d,tad_1_sma:200:sma:d|abv:::1|close::close:d,"
+    "tad_2_sma:200:sma:d|abv:::1|sma:150:sma:d,tad_3_sma:50:sma:d|abv:::|sma:150:sma:d,"
+    "tad_4_sma:50:sma:d|abv:::|sma:200:sma:d,tad_5_sma:50:sma:d|abv:::1|close::close:d,"
+    "tad_6_close::close:d|abvpct:30::|hilo:52:low:d,tad_7_close::close:d|blwpct::25:|hilo:52:high:d,"
+    "tad_8_rsi:14:rsi:d|abveq:::|value:::70&ft=3&o=-change"
+)
 
-    V2 will implement:
-    - Price > SMA50 > SMA150 > SMA200
-    - SMA200 trending up for >= 1 month
-    - Price >= 25% above 52-week low
-    - Price within 25% of 52-week high
-    - RS rating >= 70
+
+def _fetch_minervini_from_url() -> pd.DataFrame | None:
+    """Fetch Minervini from exact FinViz Elite URL. Returns DataFrame or None."""
+    from src.finviz_elite import fetch_elite_by_url, is_elite_configured
+
+    if not is_elite_configured():
+        return None
+    data = fetch_elite_by_url(MINERVINI_FINVIZ_URL)
+    if not data:
+        return None
+    return pd.DataFrame(data)
+
+
+def minervini_screener(indicators=None) -> list[dict]:
+    """Minervini Trend Template screener.
+
+    Fetches from exact FinViz Elite URL (screener.ashx) when Elite is configured.
+    Falls back to Python filtering when Elite returns empty or is not configured.
     """
-    return []
+    cached = cache.get("minervini_trend")
+    if cached is not None:
+        return cached
+    try:
+        # Fetch from exact URL (no modifications)
+        df = _fetch_minervini_from_url()
+        if df is not None and not df.empty:
+            ticker_col = "Ticker" if "Ticker" in df.columns else "ticker"
+            rows = []
+            for _, r in df.iterrows():
+                t = str(r.get(ticker_col, "")).strip().upper()
+                if t:
+                    rows.append({"ticker": t, "color": "green"})
+            if rows:
+                cache.put("minervini_trend", rows, ttl=MEDIUM)
+                return rows
+
+        # Fallback: Python filtering (no Elite or tad_* not supported)
+        indicators = fetch_group_indicators([], cache_key="ind_USA")
+        if indicators.empty:
+            return []
+
+        valid = indicators.dropna(subset=["close", "sma50", "sma200", "low_52w", "high_52w"]).copy()
+        if valid.empty:
+            return []
+
+        for period in ["month_chg", "week_chg"]:
+            if period in valid.columns:
+                valid[f"rs_rank_{period}"] = valid[period].rank(pct=True, method="average") * 100
+
+        rows = []
+        for _, r in valid.iterrows():
+            close = float(r.get("close", 0) or 0)
+            sma50 = float(r.get("sma50", 0) or 0)
+            sma200 = float(r.get("sma200", 0) or 0)
+            low52 = float(r.get("low_52w", 0) or 0)
+            high52 = float(r.get("high_52w", 0) or 0)
+
+            if not close or close <= 0 or not sma50 or not sma200:
+                continue
+
+            sma150_approx = (sma50 + sma200) / 2
+            if close <= sma150_approx or close <= sma200 or sma150_approx <= sma200:
+                continue
+            if sma50 <= sma150_approx or sma50 <= sma200 or close <= sma50:
+                continue
+            if low52 <= 0 or (close - low52) / low52 < 0.30:
+                continue
+            if high52 <= 0 or (high52 - close) / high52 > 0.25:
+                continue
+            if float(r.get("rs_rank_month_chg") or 0) < 70:
+                continue
+
+            rows.append({"ticker": r["ticker"], "color": "green"})
+
+        if rows:
+            cache.put("minervini_trend", rows, ttl=MEDIUM)
+        return rows
+    except Exception:
+        return []
 
 
 def oneil_screener(indicators=None) -> list[dict]:

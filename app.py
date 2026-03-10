@@ -8,6 +8,13 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# Load .env before any imports that use env vars (e.g. FinViz Elite)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / ".env")
+except ImportError:
+    pass
+
 from dash import Dash
 
 from src.layout import build_layout

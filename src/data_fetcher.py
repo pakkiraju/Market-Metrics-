@@ -1,7 +1,7 @@
-"""Fetch market data from FinViz via the unofficial finviz Python API.
+"""Fetch market data from FinViz Elite API only.
 
-Replaces yfinance. Uses finviz Screener for bulk data and get_stock for
-individual tickers. FinViz data is delayed ~15-20 min.
+Uses export.ashx for screeners and quote.ashx for single-ticker data.
+Requires FINVIZ_API_KEY in .env. FinViz data is delayed ~15-20 min.
 """
 
 import logging
@@ -10,9 +10,6 @@ import time
 from pathlib import Path
 
 import pandas as pd
-
-import finviz
-from finviz.screener import Screener
 
 from src import cache
 from src.cache import FAST, MEDIUM, SLOW
@@ -105,48 +102,29 @@ def _parse_num(s: str) -> float | None:
     return val
 
 
-def _screener_to_df(screener: Screener) -> pd.DataFrame:
-    """Convert Screener result to DataFrame."""
-    if not screener.data:
-        return pd.DataFrame()
-    return pd.DataFrame(screener.data)
-
-
 def _fetch_screener(filters: list[str], table: str, cache_key: str | None = None,
                     order: str = "", ttl: int = MEDIUM) -> pd.DataFrame:
-    """Run FinViz Screener and return DataFrame. Uses Elite API when configured. Cached."""
+    """Run FinViz Elite Screener (export.ashx). Cached. Returns empty if Elite not configured."""
     if cache_key:
         cached = cache.get(cache_key)
         if cached is not None:
             return cached
 
-    for attempt in range(2):
-        try:
-            from src.finviz_elite import is_elite_configured, fetch_elite_screener
+    try:
+        from src.finviz_elite import is_elite_configured, fetch_elite_screener
 
-            if is_elite_configured():
-                data = fetch_elite_screener(filters=filters, table=table, order=order)
-                if data:
-                    df = pd.DataFrame(data)
-                    if cache_key and not df.empty:
-                        cache.put(cache_key, df, ttl=ttl)
-                    return df
-                logger.warning("Elite screener returned no data, falling back to free")
+        if not is_elite_configured():
+            logger.warning("FinViz Elite not configured (FINVIZ_API_KEY in .env required)")
+            return pd.DataFrame()
 
-            s = Screener(filters=filters, table=table, order=order)
-            df = _screener_to_df(s)
-            if cache_key and not df.empty:
-                cache.put(cache_key, df, ttl=ttl)
-            return df
-        except Exception as e:
-            is_429 = "429" in str(e) or "Too Many Requests" in str(e)
-            if is_429 and attempt == 0:
-                logger.warning("FinViz rate limit (429), retrying after %s sec...", _FINVIZ_DELAY_SEC)
-                time.sleep(_FINVIZ_DELAY_SEC)
-            else:
-                logger.warning("FinViz Screener failed: %s", e)
-                return pd.DataFrame()
-    return pd.DataFrame()
+        data = fetch_elite_screener(filters=filters, table=table, order=order)
+        df = pd.DataFrame(data) if data else pd.DataFrame()
+        if cache_key and not df.empty:
+            cache.put(cache_key, df, ttl=ttl)
+        return df
+    except Exception as e:
+        logger.warning("FinViz Elite Screener failed: %s", e)
+        return pd.DataFrame()
 
 
 def _merge_perf_tech(perf_df: pd.DataFrame, tech_df: pd.DataFrame) -> pd.DataFrame:
@@ -216,12 +194,12 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
             return cached
 
     # FinViz: idx_sp500 = S&P 500, idx_ndx = NASDAQ 100, geo_usa = all US-listed.
-    # sh_price_o1 = price over $1, sh_avgvol_o1000000 = avg vol over 1M.
+    # sh_price_o1 = price over $1; sh_avgvol_o1000 = 1M (FinViz uses thousands: 1000=1M)
     filter_sets_by_group = {
         "ind_QQQE": [["idx_ndx"]],
         "ind_RSP": [["idx_sp500"]],
         "ind_Composite": [["idx_sp500"], ["idx_ndx"]],
-        "ind_USA": [["geo_usa", "sh_price_o1", "sh_avgvol_o1000000"]],
+        "ind_USA": [["geo_usa", "sh_price_o1", "sh_avgvol_o1000"]],
     }
     filter_sets = filter_sets_by_group.get(cache_key, [["idx_sp500"], ["idx_ndx"]])
 
@@ -372,8 +350,13 @@ def get_single_ticker_df(raw: pd.DataFrame, ticker: str) -> pd.DataFrame:
 
 
 def fetch_sector_data(cache_key: str = "sector_data") -> list[dict]:
-    """Fetch sector ETF data via get_stock. Returns list of dicts for sector table."""
+    """Fetch sector ETF data via Elite quote.ashx. Returns list of dicts for sector table."""
     from src.constants import SECTOR_ETFS
+    from src.finviz_elite import fetch_elite_stock, is_elite_configured
+
+    if not is_elite_configured():
+        logger.warning("FinViz Elite not configured - sector data unavailable")
+        return []
 
     cached = cache.get(cache_key)
     if cached is not None:
@@ -382,7 +365,7 @@ def fetch_sector_data(cache_key: str = "sector_data") -> list[dict]:
     rows = []
     for ticker in SECTOR_ETFS:
         try:
-            s = finviz.get_stock(ticker)
+            s = fetch_elite_stock(ticker)
             if not s:
                 continue
             price = _parse_num(s.get("Price", ""))
@@ -417,7 +400,7 @@ def fetch_sector_data(cache_key: str = "sector_data") -> list[dict]:
                 "atr_rs": 0,
             })
         except Exception as e:
-            logger.warning("FinViz get_stock %s failed: %s", ticker, e)
+            logger.warning("FinViz Elite quote %s failed: %s", ticker, e)
 
     if rows:
         cache.put(cache_key, rows, ttl=MEDIUM)
@@ -425,13 +408,18 @@ def fetch_sector_data(cache_key: str = "sector_data") -> list[dict]:
 
 
 def fetch_gainers_screener(cache_key: str = "finviz_gainers", ttl: int = FAST) -> list[dict]:
-    """Top gainers from FinViz (pre-built screen)."""
+    """Top gainers from FinViz (pre-built screen). Uses Elite export.ashx when configured."""
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
     try:
-        s = Screener(filters=["ta_change_u4"], table="Performance", order="-change")
-        df = _screener_to_df(s)
+        df = _fetch_screener(
+            filters=["ta_change_u4"],
+            table="Performance",
+            cache_key=f"{cache_key}_df",
+            order="-change",
+            ttl=ttl,
+        )
         rows = []
         for _, r in df.head(50).iterrows():
             t = str(r.get("Ticker", "")).strip()
@@ -448,7 +436,12 @@ def fetch_gainers_screener(cache_key: str = "finviz_gainers", ttl: int = FAST) -
 
 
 def fetch_current_quotes(tickers: list[str], cache_key: str | None = None) -> pd.DataFrame:
-    """Fetch latest quote snapshot. Uses get_stock per ticker (slow for large lists)."""
+    """Fetch latest quote snapshot via Elite quote.ashx (slow for large lists)."""
+    from src.finviz_elite import fetch_elite_stock, is_elite_configured
+
+    if not is_elite_configured():
+        return pd.DataFrame()
+
     if cache_key:
         cached = cache.get(cache_key)
         if cached is not None:
@@ -456,7 +449,7 @@ def fetch_current_quotes(tickers: list[str], cache_key: str | None = None) -> pd
     rows = []
     for t in tickers[:100]:
         try:
-            s = finviz.get_stock(t)
+            s = fetch_elite_stock(t)
             if not s:
                 continue
             price = _parse_num(s.get("Price", ""))
