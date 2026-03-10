@@ -9,8 +9,12 @@ import pandas as pd
 from src import cache
 from src.cache import FAST, MEDIUM, SLOW
 from src.data_fetcher import (
-    fetch_history, get_single_ticker_df, load_nasdaq100,
-    load_sp500, load_composite, load_djia,
+    fetch_group_indicators,
+    fetch_sector_data as fetch_sector_data_raw,
+    load_nasdaq100,
+    load_sp500,
+    load_composite,
+    load_djia,
 )
 from src.constants import SECTOR_ETFS, KEY_METRIC_ROWS
 
@@ -157,35 +161,13 @@ def compute_indicators(df: pd.DataFrame) -> dict:
 
 def compute_group_indicators(tickers: list[str],
                              cache_key: str | None = None) -> pd.DataFrame:
-    """Compute indicators for every ticker in the list. Returns a DataFrame."""
-    if cache_key:
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-    raw = fetch_history(tickers, period="1y",
-                        cache_key=f"hist_{cache_key}" if cache_key else None)
-    if raw.empty:
-        return pd.DataFrame()
-
-    rows = []
-    for t in tickers:
-        tdf = get_single_ticker_df(raw, t)
-        if tdf.empty:
-            continue
-        ind = compute_indicators(tdf)
-        if ind:
-            ind["ticker"] = t
-            rows.append(ind)
-
-    result = pd.DataFrame(rows)
+    """Fetch FinViz indicators for tickers. Returns a DataFrame."""
+    result = fetch_group_indicators(tickers, cache_key=cache_key)
     if not result.empty:
         numeric_cols = [c for c in result.columns
                         if c not in ("ticker",) and result[c].dtype == object]
         for col in numeric_cols:
             result[col] = pd.to_numeric(result[col], errors="coerce")
-    if cache_key and not result.empty:
-        cache.put(cache_key, result, ttl=MEDIUM)
     return result
 
 
@@ -313,66 +295,9 @@ def compute_all_key_metrics() -> dict:
 # -----------------------------------------------------------------------
 
 def compute_sector_data() -> list[dict]:
-    """Compute the full sector ETF table data."""
-    cached = cache.get("sector_data")
-    if cached is not None:
-        return cached
-
-    raw = fetch_history(SECTOR_ETFS, period="1y", cache_key="sector_hist")
-    if raw.empty:
-        return []
-
-    rows = []
-    for ticker in SECTOR_ETFS:
-        tdf = get_single_ticker_df(raw, ticker)
-        if tdf.empty:
-            continue
-        ind = compute_indicators(tdf)
-        if not ind:
-            continue
-
-        close = float(ind["close"])
-        prev = float(ind["prev_close"])
-        open_p = float(ind["open"])
-
-        gap = round((open_p - prev) / prev * 100, 2) if prev != 0 else 0.0
-        chg = round(float(ind["day_chg"]), 2)
-        ochg = round((close - open_p) / open_p * 100, 2) if open_p != 0 else 0.0
-
-        atr_val = _to_float(ind["atr"])
-        sma20_val = _to_float(ind["sma20"])
-        atr_ext = 0.0
-        if atr_val and sma20_val and atr_val != 0:
-            atr_ext = round((close - sma20_val) / atr_val, 2)
-
-        atr_rs = 0
-
-        rows.append({
-            "sector": ticker,
-            "ticker": ticker,
-            "gap": gap,
-            "chg": chg,
-            "ochg": ochg,
-            "week": round(_to_float(ind["week_chg"]) or 0.0, 1),
-            "month": round(_to_float(ind["month_chg"]) or 0.0, 1),
-            "qtr": round(_to_float(ind["qtr_chg"]) or 0.0, 1),
-            "hyear": round(_to_float(ind["half_chg"]) or 0.0, 1),
-            "year": round(_to_float(ind["year_chg"]) or 0.0, 1),
-            "last": round(close, 2),
-            "ema10": round(_to_float(ind["ema10"]) or 0.0, 2),
-            "sma20": round(sma20_val or 0.0, 2),
-            "sma50": round(_to_float(ind["sma50"]) or 0.0, 2),
-            "sma200": round(_to_float(ind["sma200"]) or 0.0, 2),
-            "high_52w": round(_to_float(ind["high_52w"]) or 0.0, 2),
-            "low_52w": round(_to_float(ind["low_52w"]) or 0.0, 2),
-            "atr_pct": round(_to_float(ind["atr_pct"]) or 0.0, 2),
-            "atr_ext": atr_ext,
-            "atr_rs": atr_rs,
-        })
-
+    """Fetch sector ETF data from FinViz."""
+    rows = fetch_sector_data_raw(cache_key="sector_data")
     rows.sort(key=lambda r: r["atr_ext"], reverse=True)
-
-    cache.put("sector_data", rows, ttl=MEDIUM)
     return rows
 
 
@@ -629,8 +554,12 @@ def compute_leading_industries(tickers: list[str],
     if indicators.empty:
         return []
 
-    indicators["industry"] = indicators["ticker"].map(industry_map)
-    indicators = indicators.dropna(subset=["industry"])
+    if industry_map:
+        indicators["industry"] = indicators["ticker"].map(industry_map)
+    elif "industry" not in indicators.columns:
+        indicators["industry"] = indicators.get("sector", pd.Series(dtype=str))
+    indicators["industry"] = indicators["industry"].fillna("").astype(str).str.strip()
+    indicators = indicators[indicators["industry"] != ""]
 
     grouped = indicators.groupby("industry").agg(
         week_avg=("week_chg", "mean"),

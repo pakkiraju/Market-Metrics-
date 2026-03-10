@@ -1,6 +1,6 @@
 dash>=2.18
 dash-bootstrap-components
 plotly>=5.24
-yfinance>=0.2.50
+finviz>=2.0.0
 pandas>=2.2
 numpy>=1.26
