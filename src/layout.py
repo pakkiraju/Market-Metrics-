@@ -15,6 +15,7 @@ from src.constants import (
     COLORS, KEY_METRIC_ROWS, INDEX_GROUPS, SECTOR_NAMES,
     STAGE_BAR_COLORS, STAGE_LABELS, FINVIZ_SCREENER_URLS,
     build_metric_screener_url, RRG_BENCHMARK, RRG_COLORS,
+    STOCKBEE_LINKS,
 )
 from src.styles import (
     DASHBOARD_STYLE, HEADER_STYLE, HEADER_LOGO_STYLE,
@@ -52,13 +53,19 @@ WIDGETS = [
     ("weekly",         "20% Weekly Movers",          False),
     ("daily",          "4% Daily Gainers",           False),
     ("leading",        "Leading Industries",         False),
+    ("stockbee",       "Stockbee Momentum50",        False),
+    ("breadth",        "StockBee Market Breadth Monitor", False),
+    ("breadth-primary", "StockBee - Primary Breadth — Up/Down 4%+ Today", False),
+    ("breadth-ratios", "StockBee - Breadth Ratios — 5-Day & 10-Day", False),
+    ("breadth-secondary", "StockBee - Secondary Breadth — Up/Down 25%+ Qtr", False),
+    ("breadth-sp500",  "StockBee - S&P 500 — Last 60 Days",    False),
     ("stage",          "Stage Analysis",             False),
 ]
 
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers + 20% Weekly + 4% Daily + Leading Industries enabled by default
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "leading", "stage") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "leading", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -152,6 +159,15 @@ def _table(headers, rows, col_widths=None):
 def _finviz_link(text: str, url_key: str, style=None) -> html.A:
     """Inline link to FinViz screener."""
     url = FINVIZ_SCREENER_URLS.get(url_key, "#")
+    base = {"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"], "textDecoration": "none"}
+    if style:
+        base.update(style)
+    return html.A(text, href=url, target="_blank", rel="noopener noreferrer", style=base)
+
+
+def _stockbee_link(text: str, url_key: str, style=None) -> html.A:
+    """Inline link to Stockbee Google Sheet."""
+    url = STOCKBEE_LINKS.get(url_key, "#")
     base = {"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"], "textDecoration": "none"}
     if style:
         base.update(style)
@@ -761,6 +777,154 @@ def build_leading_industries_table(data: list[dict]) -> html.Table:
 
 
 # -----------------------------------------------------------------------
+# Stockbee Momentum50 (Pradeep Bonde)
+# -----------------------------------------------------------------------
+
+def build_stockbee_momentum50_table(data: list[dict], date_label: str = "") -> html.Div:
+    """Stockbee Momentum50: ticker table with FinViz quotes. Same layout as Minervini."""
+    if not data:
+        return html.Div("No Momentum50 data. Check Stockbee sheet.", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    table = _build_screener_table(data)
+    children = [table]
+    if date_label:
+        children.insert(0, html.Span(date_label, style={"fontSize": "9px", "color": COLORS["text_muted"], "marginBottom": "4px"}))
+    return html.Div(children, style={"display": "flex", "flexDirection": "column", "gap": "4px"})
+
+
+# -----------------------------------------------------------------------
+# Stock Market Breadth Monitor
+# -----------------------------------------------------------------------
+
+def _breadth_chart_layout():
+    """Shared layout for breadth charts."""
+    return dict(
+        paper_bgcolor=COLORS["surface"],
+        plot_bgcolor=COLORS["surface"],
+        margin=dict(l=4, r=4, t=4, b=4),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=8)),
+        xaxis=dict(
+            tickfont=dict(size=8, color=COLORS["text_muted"]),
+            showgrid=True, gridcolor="rgba(255,255,255,0.05)",
+        ),
+        yaxis=dict(
+            tickfont=dict(size=8, color=COLORS["text_muted"]),
+            showgrid=True, gridcolor="rgba(255,255,255,0.05)",
+        ),
+        font=dict(family="Inter", size=8),
+        height=200,
+    )
+
+
+def build_primary_breadth_chart(history: list[dict]) -> go.Figure:
+    """Primary Breadth — Stocks Up/Down 4%+ Today (last 60 days)."""
+    if not history:
+        return go.Figure()
+    dates = [h["date"] for h in history]
+    up4 = [h.get("up4", 0) for h in history]
+    down4 = [h.get("down4", 0) for h in history]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=dates, y=up4, name="Up 4%+", fill="tozeroy",
+        line=dict(color=COLORS["green_light"], width=1.5),
+        fillcolor=_hex_to_rgba(COLORS["green"], 0.3)))
+    fig.add_trace(go.Scatter(x=dates, y=down4, name="Down 4%+", fill="tozeroy",
+        line=dict(color=COLORS["red_light"], width=1.5),
+        fillcolor=_hex_to_rgba(COLORS["red"], 0.3)))
+    fig.update_layout(**_breadth_chart_layout())
+    return fig
+
+
+def build_breadth_ratios_chart(history: list[dict]) -> go.Figure:
+    """Breadth Ratios — 5-Day & 10-Day (with 1.0 reference)."""
+    if not history:
+        return go.Figure()
+    dates = [h["date"] for h in history]
+    r5 = [h.get("ratio5", 1) for h in history]
+    r10 = [h.get("ratio10", 1) for h in history]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=dates, y=r5, name="5-Day Ratio", line=dict(color=COLORS["green_light"], width=2)))
+    fig.add_trace(go.Scatter(x=dates, y=r10, name="10-Day Ratio", line=dict(color=COLORS["accent"], width=2)))
+    fig.add_hline(y=1.0, line_dash="dot", line_color=COLORS["border_light"], opacity=0.8)
+    fig.update_layout(**_breadth_chart_layout())
+    return fig
+
+
+def build_secondary_breadth_chart(history: list[dict]) -> go.Figure:
+    """Secondary Breadth — Up/Down 25%+ in Quarter (last 60 days)."""
+    if not history:
+        return go.Figure()
+    dates = [h["date"] for h in history]
+    up25 = [h.get("up25q", 0) for h in history]
+    down25 = [h.get("down25q", 0) for h in history]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=dates, y=up25, name="Up 25%+ Qtr", fill="tozeroy",
+        line=dict(color=COLORS["green_light"], width=1.5),
+        fillcolor=_hex_to_rgba(COLORS["green"], 0.3)))
+    fig.add_trace(go.Scatter(x=dates, y=down25, name="Down 25%+ Qtr", fill="tozeroy",
+        line=dict(color=COLORS["red_light"], width=1.5),
+        fillcolor=_hex_to_rgba(COLORS["red"], 0.3)))
+    fig.update_layout(**_breadth_chart_layout())
+    return fig
+
+
+def build_sp500_chart(history: list[dict]) -> go.Figure:
+    """S&P 500 — Last 60 Trading Days."""
+    if not history:
+        return go.Figure()
+    dates = [h["date"] for h in history]
+    sp500 = [h.get("sp500", 0) for h in history]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=dates, y=sp500, name="S&P 500", fill="tozeroy",
+        line=dict(color=COLORS["accent"], width=2),
+        fillcolor=_hex_to_rgba(COLORS["accent"], 0.15)))
+    fig.update_layout(**_breadth_chart_layout())
+    return fig
+
+
+def build_stockbee_breadth(breadth: dict | None) -> html.Div:
+    """Stockbee-style breadth metric cards: S&P 500, T2108, 5-Day Ratio, 10-Day Ratio, Up 4%+, Down 4%+."""
+    if not breadth:
+        return html.Div("Breadth data unavailable. Start Stockbee API or check Sheets.", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    sp_up = (breadth.get("sp500_change") or 0) >= 0
+    t2108 = breadth.get("t2108") or 50
+    t2108_color = COLORS["green_light"] if t2108 > 50 else COLORS["red_light"] if t2108 < 30 else COLORS["accent"]
+    r5 = breadth.get("ratio5") or 1.0
+    r10 = breadth.get("ratio10") or 1.0
+    r5_bull = r5 >= 1
+    r10_bull = r10 >= 1
+
+    def _card(label: str, value, sub: str, color: str):
+        return html.Div([
+            html.Div(label, style={"fontSize": "8px", "color": COLORS["text_muted"], "marginBottom": "2px"}),
+            html.Div(str(value), style={"fontSize": "11px", "fontWeight": 700, "color": color}),
+            html.Div(sub, style={"fontSize": "8px", "color": COLORS["text_faint"], "marginTop": "2px"}),
+        ], style={
+            "padding": "6px 8px", "borderRadius": "4px", "background": COLORS["surface2"],
+            "border": f"1px solid {COLORS['border']}",
+        })
+
+    grid = html.Div([
+        _card("S&P 500", f"{breadth.get('sp500', 0):,.2f}",
+              f"{'▲' if sp_up else '▼'} {abs(breadth.get('sp500_change') or 0):.2f} ({breadth.get('sp500_change_pct') or 0:.2f}%)",
+              COLORS["green_light"] if sp_up else COLORS["red_light"]),
+        _card("T2108", f"{t2108:.2f}", "% above 40-day MA", t2108_color),
+        _card("5-Day Ratio", f"{r5:.2f}", "BULLISH" if r5_bull else "BEARISH",
+              COLORS["green_light"] if r5_bull else COLORS["red_light"]),
+        _card("10-Day Ratio", f"{r10:.2f}", "BULLISH" if r10_bull else "BEARISH",
+              COLORS["green_light"] if r10_bull else COLORS["red_light"]),
+        _card("Up 4%+", f"{breadth.get('up4', 0):,}", "today", COLORS["green_light"]),
+        _card("Down 4%+", f"{breadth.get('down4', 0):,}", "today", COLORS["red_light"]),
+    ], style={
+        "display": "grid", "gridTemplateColumns": "repeat(3, 1fr)", "gap": "6px",
+    })
+    return grid
+
+
+# -----------------------------------------------------------------------
 # Section 14: Stage Analysis
 # -----------------------------------------------------------------------
 
@@ -1137,6 +1301,48 @@ def build_layout() -> html.Div:
                         variant="teal", primary=True,
                         initial_hidden=not DEFAULT_VISIBILITY.get("chart3", True)),
             ], id="row-primary", style=PRIMARY_ROW_STYLE),
+
+            # ---- STOCKBEE ROW (under Key Metrics): Breadth | Momentum50 ----
+            html.Div([
+                _widget("breadth", "StockBee Market Breadth Monitor",
+                        _loading_wrap("breadth-content", [loading]),
+                        variant="teal",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("breadth", True),
+                        extra_header=html.Span([
+                            _stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"}),
+                        ])),
+                _widget("stockbee", "Stockbee Momentum50",
+                        _loading_wrap("stockbee-content", [loading]),
+                        variant="green",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("stockbee", True),
+                        extra_header=html.Span([
+                            _stockbee_link("Sheet", "momentum50", {"marginLeft": "8px"}),
+                        ])),
+            ], id="row-stockbee", style=HALF_ROW_STYLE),
+
+            # ---- BREADTH CHARTS ROW (Stockbee-style) ----
+            html.Div([
+                _widget("breadth-primary", "StockBee - Primary Breadth — Up/Down 4%+ Today",
+                        _loading_wrap("breadth-primary-content", [loading], style=CHART_WRAP_STYLE),
+                        variant="green",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("breadth-primary", True),
+                        extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
+                _widget("breadth-ratios", "StockBee - Breadth Ratios — 5-Day & 10-Day",
+                        _loading_wrap("breadth-ratios-content", [loading], style=CHART_WRAP_STYLE),
+                        variant="teal",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("breadth-ratios", True),
+                        extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
+                _widget("breadth-secondary", "StockBee - Secondary Breadth — Up/Down 25%+ Qtr",
+                        _loading_wrap("breadth-secondary-content", [loading], style=CHART_WRAP_STYLE),
+                        variant="purple",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("breadth-secondary", True),
+                        extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
+                _widget("breadth-sp500", "StockBee - S&P 500 — Last 60 Days",
+                        _loading_wrap("breadth-sp500-content", [loading], style=CHART_WRAP_STYLE),
+                        variant="teal",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("breadth-sp500", True),
+                        extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
+            ], id="row-breadth-charts", style=QUARTER_ROW_STYLE),
 
             # ---- SCREENERS ROW (4 across) ----
             html.Div([

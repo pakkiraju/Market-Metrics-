@@ -30,6 +30,8 @@ _DISK_PERSISTENT_KEYS = frozenset({
     "leading_industry_map",
     "rrg_data",
     "rrg_benchmark",
+    "stockbee_momentum50",
+    "stockbee_breadth",
 })
 
 # Key prefixes that persist to disk (e.g. watchlist_quotes_AAPL,MSFT)

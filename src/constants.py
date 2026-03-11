@@ -193,6 +193,12 @@ FINVIZ_SCREENER_URLS = {
     "leading": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1,tad_0_rsi:14:rsi:d|abveq:::|value:::60&o=-change",
 }
 
+# Stockbee (Pradeep Bonde) — external links
+STOCKBEE_LINKS = {
+    "momentum50": "https://docs.google.com/spreadsheets/d/1xjbe9SF0HsxwY_Uy3NC2tT92BqK0nhArUaYU16Q0p9M/",
+    "market_monitor": "https://docs.google.com/spreadsheets/d/1O6OhS7ciA8zwfycBfGPbP2fWJnR0pn2UUvFZVDP9jpE/",
+}
+
 # Export URLs for data fetching (export.ashx returns CSV). v=111 Overview, v=141 Performance (Perf Week), v=171 Technical (ATR).
 FINVIZ_EXPORT_URLS = {
     "9m_movers": "https://elite.finviz.com/export.ashx?v=111&f=cap_1to,geo_usa,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to",

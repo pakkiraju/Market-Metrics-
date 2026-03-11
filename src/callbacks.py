@@ -32,6 +32,12 @@ from src.layout import (
     build_metrics_bar_chart,
     build_sector_table,
     build_rrg_chart,
+    build_stockbee_momentum50_table,
+    build_stockbee_breadth,
+    build_primary_breadth_chart,
+    build_breadth_ratios_chart,
+    build_secondary_breadth_chart,
+    build_sp500_chart,
     build_97_club_table,
     build_9m_movers_table,
     build_20pct_weekly_table,
@@ -345,6 +351,96 @@ def register_callbacks(app):
         except Exception as e:
             logger.exception("Sector data failed: %s", e)
             return _err_div(e)
+
+    @app.callback(
+        Output("stockbee-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_stockbee(n_intervals, n_clicks):
+        try:
+            from src.stockbee import fetch_stockbee_momentum50
+            from src.data_fetcher import fetch_watchlist_quotes
+            mom = fetch_stockbee_momentum50()
+            dates = mom.get("dates", [])
+            tickers = mom.get("tickers", {})
+            if not dates or not tickers:
+                return html.Div("No Momentum50 data. Check Stockbee sheet.", style={
+                    "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+                })
+            latest_date = dates[0]
+            ticker_list = tickers.get(latest_date, [])
+            if not ticker_list:
+                return html.Div("No tickers for latest date.", style={
+                    "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+                })
+            # Limit to 25 tickers for faster quote fetch (50 × ~2s = very slow)
+            ticker_list = ticker_list[:25]
+            data = fetch_watchlist_quotes(ticker_list)
+            if not data:
+                data = [{"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"} for t in ticker_list]
+            return build_stockbee_momentum50_table(data, date_label=latest_date)
+        except Exception as e:
+            logger.exception("Stockbee Momentum50 failed: %s", e)
+            return _err_div(e)
+
+    @app.callback(
+        Output("breadth-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_breadth(n_intervals, n_clicks):
+        try:
+            from src.stockbee import fetch_stockbee_breadth
+            breadth = fetch_stockbee_breadth()
+            return build_stockbee_breadth(breadth)
+        except Exception as e:
+            logger.exception("Stock Market Breadth failed: %s", e)
+            return _err_div(e)
+
+    @app.callback(
+        [
+            Output("breadth-primary-content", "children"),
+            Output("breadth-ratios-content", "children"),
+            Output("breadth-secondary-content", "children"),
+            Output("breadth-sp500-content", "children"),
+        ],
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_breadth_charts(n_intervals, n_clicks):
+        try:
+            from src.stockbee import fetch_stockbee_breadth_history
+            history = fetch_stockbee_breadth_history(days=60)
+            if not history:
+                empty = html.Div("No breadth history. Start Stockbee API or check Sheets.", style={
+                    "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+                })
+                return [empty, empty, empty, empty]
+            fig1 = build_primary_breadth_chart(history)
+            fig2 = build_breadth_ratios_chart(history)
+            fig3 = build_secondary_breadth_chart(history)
+            fig4 = build_sp500_chart(history)
+            graph_cfg = {"displayModeBar": False}
+            return [
+                dcc.Graph(figure=fig1, config=graph_cfg, style={"height": "100%", "width": "100%"}),
+                dcc.Graph(figure=fig2, config=graph_cfg, style={"height": "100%", "width": "100%"}),
+                dcc.Graph(figure=fig3, config=graph_cfg, style={"height": "100%", "width": "100%"}),
+                dcc.Graph(figure=fig4, config=graph_cfg, style={"height": "100%", "width": "100%"}),
+            ]
+        except Exception as e:
+            logger.exception("Breadth charts failed: %s", e)
+            err = _err_div(e)
+            return [err, err, err, err]
 
     @app.callback(
         [
