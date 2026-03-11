@@ -22,7 +22,7 @@ from src.styles import (
     HEADER_DATE_STYLE, MARKET_STATUS_STYLE_CLOSED, REFRESH_BTN_STYLE,
     SETTINGS_BTN_STYLE,
     CONTENT_AREA_STYLE,
-    PRIMARY_ROW_STYLE, QUARTER_ROW_STYLE, WIDE_ROW_STYLE, HALF_ROW_STYLE,
+    PRIMARY_ROW_STYLE, QUARTER_ROW_STYLE, THIRD_ROW_STYLE, WIDE_ROW_STYLE, HALF_ROW_STYLE,
     WIDGET_STYLE, WIDGET_PRIMARY_STYLE, WIDGET_SECONDARY_STYLE, WIDGET_KEY_METRICS_STYLE,
     section_header_style, SECTION_BODY_STYLE, KEY_METRICS_BODY_STYLE,
     TICKER_GRID_STYLE, ticker_pill_style,
@@ -52,6 +52,7 @@ WIDGETS = [
     ("movers",         "StockBee - 9 Million Movers",           False),
     ("weekly",         "StockBee - 20% Weekly Movers",          False),
     ("daily",          "StockBee - 4% Daily Gainers",           False),
+    ("earnings",       "Earnings Yesterday + Today",    False),
     ("leading",        "Leading Industries",         False),
     ("stockbee",       "Stockbee Momentum50",        False),
     ("breadth",        "StockBee Market Breadth Monitor", False),
@@ -65,7 +66,7 @@ WIDGETS = [
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers + 20% Weekly + 4% Daily + Leading Industries enabled by default
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "leading", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "leading", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -127,13 +128,25 @@ def _widget(widget_id, header_text, body_children, variant="default",
     )
 
 
-def _table(headers, rows, col_widths=None):
+def _table(headers, rows, col_widths=None, widget_id=None, sort_col=None, sort_asc=True):
+    """Build table. headers: list of (label, col_key) for sortable, or (label, None) for non-sortable.
+    When widget_id is set and col_key is not None, header is clickable for sorting."""
+    from src.sortable_table import sortable_header
+
     ths = []
     for i, h in enumerate(headers):
         st = {**TABLE_HEADER_STYLE}
         if col_widths and i < len(col_widths):
             st["width"] = col_widths[i]
-        ths.append(html.Th(h, style=st))
+        if isinstance(h, (list, tuple)) and len(h) >= 2:
+            label, col_key = h[0], h[1]
+            if widget_id and col_key:
+                ths.append(sortable_header(label, widget_id, col_key, sort_col, sort_asc))
+            else:
+                ths.append(html.Th(label, style=st))
+        else:
+            label = h[0] if isinstance(h, (list, tuple)) else str(h)
+            ths.append(html.Th(label, style=st))
 
     trs = []
     for row in rows:
@@ -387,9 +400,16 @@ def build_ticker_grid(tickers: list[dict]) -> html.Div:
     return html.Div(pills, style=TICKER_GRID_STYLE)
 
 
-def _build_screener_table(data: list[dict]) -> html.Table:
+def _build_screener_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     """Shared table for screener data: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR %."""
-    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", "ATR %"]
+    from src.sortable_table import sort_data, SCREENER_SORT_KEYS
+
+    if widget_id and sort_col:
+        data = sort_data(data, sort_col, sort_asc, SCREENER_SORT_KEYS)
+    headers = [
+        ("Ticker", "ticker"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
+        ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"),
+    ]
     rows = []
     for r in data:
         chg_val = r.get("change")
@@ -411,16 +431,26 @@ def _build_screener_table(data: list[dict]) -> html.Table:
             vol_str,
             atr_str,
         ])
-    return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px"])
+    return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px"],
+                  widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
 
 
-def build_minervini_table(data: list[dict]) -> html.Table:
+def build_minervini_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     """Minervini screener: Ticker, Price, Avg Vol, Rel Vol, Change, Vol."""
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    return _build_screener_table(data)
+    return _build_screener_table(data, widget_id, sort_col, sort_asc)
+
+
+def build_earnings_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Earnings Yesterday + Today: same layout as Minervini screener."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id, sort_col, sort_asc)
 
 
 def _parse_vol(val):
@@ -474,13 +504,20 @@ def _tag_badge(tag: str) -> html.Span:
     return html.Span(tag, style=style)
 
 
-def build_qullamaggie_table(data: list[dict]) -> html.Table:
+def build_qullamaggie_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     """Qullamaggie: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR %, Tag."""
+    from src.sortable_table import sort_data, SCREENER_SORT_KEYS
+
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", "ATR %", "Tag"]
+    if widget_id and sort_col:
+        data = sort_data(data, sort_col, sort_asc, SCREENER_SORT_KEYS)
+    headers = [
+        ("Ticker", "ticker"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
+        ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"), ("Tag", "tag"),
+    ]
     rows = []
     for r in data:
         chg_val = r.get("change")
@@ -507,16 +544,24 @@ def build_qullamaggie_table(data: list[dict]) -> html.Table:
             f"{r.get('atr_pct', 0):.2f}%" if r.get("atr_pct") is not None else "",
             {"text": tag_content, "style": TABLE_CELL_STYLE},
         ])
-    return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px", "55px"])
+    return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px", "55px"],
+                  widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
 
 
-def build_watchlist_table(data: list[dict]) -> html.Table:
+def build_watchlist_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     """Watchlist: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR %, Remove."""
+    from src.sortable_table import sort_data, SCREENER_SORT_KEYS
+
     if not data:
         return html.Div("No tickers in watchlist. Add some above.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", "ATR %", ""]
+    if widget_id and sort_col:
+        data = sort_data(data, sort_col, sort_asc, SCREENER_SORT_KEYS)
+    headers = [
+        ("Ticker", "ticker"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
+        ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"), ("", None),
+    ]
     rows = []
     for r in data:
         chg_val = r.get("change")
@@ -557,16 +602,24 @@ def build_watchlist_table(data: list[dict]) -> html.Table:
         headers,
         rows,
         col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px", "28px"],
+        widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc,
     )
 
 
-def build_oneil_table(data: list[dict]) -> html.Table:
+def build_oneil_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     """O'Neil / CANSLIM screener: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR %, ROE, Net Margin."""
+    from src.sortable_table import sort_data, SCREENER_SORT_KEYS
+
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", "ATR %", "ROE", "Net Margin"]
+    if widget_id and sort_col:
+        data = sort_data(data, sort_col, sort_asc, SCREENER_SORT_KEYS)
+    headers = [
+        ("Ticker", "ticker"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
+        ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"), ("ROE", "roe"), ("Net Margin", "net_margin"),
+    ]
     rows = []
     for r in data:
         chg_val = r.get("change")
@@ -596,6 +649,7 @@ def build_oneil_table(data: list[dict]) -> html.Table:
         headers,
         rows,
         col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px", "55px", "65px"],
+        widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc,
     )
 
 
@@ -603,11 +657,16 @@ def build_oneil_table(data: list[dict]) -> html.Table:
 # Section 8: Sector SPDR table (clickable tickers)
 # -----------------------------------------------------------------------
 
-def build_sector_table(sector_data: list[dict]) -> html.Table:
+def build_sector_table(sector_data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    from src.sortable_table import sort_data, SECTOR_SORT_KEYS
+
+    if widget_id and sort_col:
+        sector_data = sort_data(sector_data, sort_col, sort_asc, SECTOR_SORT_KEYS)
     headers = [
-        "Sector", "Ticker", "Gap", "Chg", "O Chg", "Week", "Month",
-        "Qtr", "H.Year", "Year", "Last", "EMA10", "SMA20", "SMA50",
-        "SMA200", "52W Hi", "52W Lo", "ATR %",
+        ("Sector", "sector"), ("Ticker", "ticker"), ("Gap", "gap"), ("Chg", "chg"), ("O Chg", "ochg"),
+        ("Week", "week"), ("Month", "month"), ("Qtr", "qtr"), ("H.Year", "hyear"), ("Year", "year"),
+        ("Last", None), ("EMA10", None), ("SMA20", None), ("SMA50", None),
+        ("SMA200", None), ("52W Hi", None), ("52W Lo", None), ("ATR %", None),
     ]
     rows = []
     for r in sector_data:
@@ -651,42 +710,49 @@ def build_sector_table(sector_data: list[dict]) -> html.Table:
         ]
         rows.append(row)
 
-    return _table(headers, rows)
+    return _table(headers, rows, widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
 
 
 # -----------------------------------------------------------------------
 # Section 9: 97 Club table (clickable tickers)
 # -----------------------------------------------------------------------
 
-def build_97_club_table(club_data: list[dict]) -> html.Table:
+def build_97_club_table(club_data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     """97 Club: same layout as Minervini (Ticker, Price, Avg Vol, Rel Vol, Change, Vol) from export URL."""
     if not club_data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    return _build_screener_table(club_data)
+    return _build_screener_table(club_data, widget_id, sort_col, sort_asc)
 
 
 # -----------------------------------------------------------------------
 # Sections 10-12: Stockbee tables (clickable tickers)
 # -----------------------------------------------------------------------
 
-def build_9m_movers_table(data: list[dict]) -> html.Table:
+def build_9m_movers_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     """9M Movers: same layout as Minervini (Ticker, Price, Avg Vol, Rel Vol, Change, Vol) from export URL."""
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    return _build_screener_table(data)
+    return _build_screener_table(data, widget_id, sort_col, sort_asc)
 
 
-def build_20pct_weekly_table(data: list[dict]) -> html.Table:
+def build_20pct_weekly_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     """20% Weekly Movers: Ticker, Week %, Price, Avg Vol, Rel Vol, Chg, Vol, ATR %."""
+    from src.sortable_table import sort_data, SCREENER_SORT_KEYS
+
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    headers = ["Ticker", "Week", "Price", "Avg Vol", "Rel Vol", "Chg", "Vol", "ATR %"]
+    if widget_id and sort_col:
+        data = sort_data(data, sort_col, sort_asc, SCREENER_SORT_KEYS)
+    headers = [
+        ("Ticker", "ticker"), ("Week", "week"), ("Price", "price"), ("Avg Vol", "avg_vol"),
+        ("Rel Vol", "rel_vol"), ("Chg", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"),
+    ]
     rows = []
     for r in data:
         chg_val = r.get("change")
@@ -709,16 +775,24 @@ def build_20pct_weekly_table(data: list[dict]) -> html.Table:
             vol_str,
             f"{r.get('atr_pct'):.2f}%" if r.get("atr_pct") is not None else "",
         ])
-    return _table(headers, rows, col_widths=["70px", "55px", "55px", "65px", "55px", "55px", "65px", "55px"])
+    return _table(headers, rows, col_widths=["70px", "55px", "55px", "65px", "55px", "55px", "65px", "55px"],
+                  widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
 
 
-def build_4pct_daily_table(data: list[dict]) -> html.Table:
+def build_4pct_daily_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     """4% Daily Gainers: Ticker, Chg, Price, Avg Vol, Rel Vol, Vol, ATR %."""
+    from src.sortable_table import sort_data, SCREENER_SORT_KEYS
+
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    headers = ["Ticker", "Chg", "Price", "Avg Vol", "Rel Vol", "Vol", "ATR %"]
+    if widget_id and sort_col:
+        data = sort_data(data, sort_col, sort_asc, SCREENER_SORT_KEYS)
+    headers = [
+        ("Ticker", "ticker"), ("Chg", "chg"), ("Price", "price"), ("Avg Vol", "avg_vol"),
+        ("Rel Vol", "rel_vol"), ("Vol", "volume"), ("ATR %", "atr_pct"),
+    ]
     rows = []
     for r in data:
         chg_val = r.get("chg") or r.get("change")
@@ -740,15 +814,20 @@ def build_4pct_daily_table(data: list[dict]) -> html.Table:
             vol_str,
             atr_str,
         ])
-    return _table(headers, rows, col_widths=["70px", "55px", "55px", "65px", "55px", "65px", "55px"])
+    return _table(headers, rows, col_widths=["70px", "55px", "55px", "65px", "55px", "65px", "55px"],
+                  widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
 
 
 # -----------------------------------------------------------------------
 # Section 13: Leading Industries (clickable tickers)
 # -----------------------------------------------------------------------
 
-def build_leading_industries_table(data: list[dict]) -> html.Table:
-    headers = ["Industry", "1st", "2nd", "3rd", "4th"]
+def build_leading_industries_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    from src.sortable_table import sort_data, LEADING_SORT_KEYS
+
+    if widget_id and sort_col:
+        data = sort_data(data, sort_col, sort_asc, LEADING_SORT_KEYS)
+    headers = [("Industry", "industry"), ("1st", None), ("2nd", None), ("3rd", None), ("4th", None)]
     rows = []
     for r in data:
         ind_color = COLORS["green_light"] if r.get("top_both") else COLORS["text_muted"]
@@ -773,20 +852,21 @@ def build_leading_industries_table(data: list[dict]) -> html.Table:
                 "backgroundColor": row_bg,
             }})
         rows.append(row)
-    return _table(headers, rows, col_widths=["200px", None, None, None, None])
+    return _table(headers, rows, col_widths=["200px", None, None, None, None],
+                  widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
 
 
 # -----------------------------------------------------------------------
 # Stockbee Momentum50 (Pradeep Bonde)
 # -----------------------------------------------------------------------
 
-def build_stockbee_momentum50_table(data: list[dict], date_label: str = "") -> html.Div:
+def build_stockbee_momentum50_table(data: list[dict], date_label: str = "", widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Div:
     """Stockbee Momentum50: ticker table with FinViz quotes. Same layout as Minervini."""
     if not data:
         return html.Div("No Momentum50 data. Check Stockbee sheet.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    table = _build_screener_table(data)
+    table = _build_screener_table(data, widget_id, sort_col, sort_asc)
     children = [table]
     if date_label:
         children.insert(0, html.Span(date_label, style={"fontSize": "9px", "color": COLORS["text_muted"], "marginBottom": "4px"}))
@@ -1076,6 +1156,8 @@ def build_stage_summary(counts: dict) -> html.Div:
 
 def build_watchlist_body() -> html.Div:
     return html.Div([
+        dcc.Store(id="watchlist-data-store"),
+        dcc.Store(id="watchlist-sort-store", data={"col": "change", "asc": False}),
         html.Div([
             dcc.Input(
                 id="watchlist-input",
@@ -1254,6 +1336,16 @@ def _loading_wrap(content_id, children=None, style=None):
     )
 
 
+def _sortable_table_wrap(widget_id: str, default_sort_col: str = "change", default_sort_asc: bool = False):
+    """Wrap content with data and sort stores for sortable tables.
+    Default: sort by change descending (biggest gainers at top). Users can click headers to change."""
+    return html.Div([
+        dcc.Store(id=f"{widget_id}-data-store"),
+        dcc.Store(id=f"{widget_id}-sort-store", data={"col": default_sort_col, "asc": default_sort_asc}),
+        _loading_wrap(f"{widget_id}-content"),
+    ])
+
+
 def build_layout() -> html.Div:
     loading = html.Div("Loading data...", style=LOADING_STYLE)
     empty_table = build_key_metrics_table({})
@@ -1297,7 +1389,11 @@ def build_layout() -> html.Div:
                             _stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"}),
                         ])),
                 _widget("stockbee", "Stockbee Momentum50",
-                        _loading_wrap("stockbee-content", [loading]),
+                        html.Div([
+                            dcc.Store(id="stockbee-data-store"),
+                            dcc.Store(id="stockbee-sort-store", data={"col": "change", "asc": False}),
+                            _loading_wrap("stockbee-content", [loading]),
+                        ]),
                         variant="green",
                         initial_hidden=not DEFAULT_VISIBILITY.get("stockbee", True),
                         extra_header=html.Span([
@@ -1332,21 +1428,21 @@ def build_layout() -> html.Div:
             # ---- SCREENERS ROW (4 across) ----
             html.Div([
                 _widget("qulla", "Qullamaggie",
-                        _loading_wrap("qulla-content"),
+                        _sortable_table_wrap("qulla"),
                         variant="green",
                         initial_hidden=not DEFAULT_VISIBILITY.get("qulla", True),
                         extra_header=html.Span([
                             _finviz_link("FinViz", "qullamaggie", {"marginLeft": "8px"}),
                         ])),
                 _widget("minervini", "Minervini",
-                        _loading_wrap("minervini-content"),
+                        _sortable_table_wrap("minervini"),
                         variant="purple",
                         initial_hidden=not DEFAULT_VISIBILITY.get("minervini", True),
                         extra_header=html.Span([
                             _finviz_link("FinViz", "minervini", {"marginLeft": "8px"}),
                         ])),
                 _widget("oneil", "O'Neil",
-                        _loading_wrap("oneil-content"),
+                        _sortable_table_wrap("oneil"),
                         variant="orange",
                         initial_hidden=not DEFAULT_VISIBILITY.get("oneil", True),
                         extra_header=html.Span([
@@ -1360,7 +1456,11 @@ def build_layout() -> html.Div:
             # ---- SECTOR + RRG ROW ----
             html.Div([
                 _widget("sector", "Sector SPDR ETFs",
-                        _loading_wrap("sector-content", [loading]),
+                        html.Div([
+                            dcc.Store(id="sector-data-store"),
+                            dcc.Store(id="sector-sort-store", data={"col": "chg", "asc": False}),
+                            _loading_wrap("sector-content", [loading]),
+                        ]),
                         initial_hidden=not DEFAULT_VISIBILITY.get("sector", True)),
                 _widget("rrg", "RRG Sector Rotation (vs " + RRG_BENCHMARK + ")",
                         html.Div([
@@ -1377,20 +1477,20 @@ def build_layout() -> html.Div:
             # ---- MIDDLE 4 ----
             html.Div([
                 _widget("club97", "97 Club",
-                        _loading_wrap("club97-content", [loading]),
+                        _sortable_table_wrap("club97"),
                         variant="green",
                         initial_hidden=not DEFAULT_VISIBILITY.get("club97", True),
                         extra_header=html.Span([
                             _finviz_link("FinViz", "club97", {"marginLeft": "8px"}),
                         ])),
                 _widget("movers", "StockBee - 9 Million Movers",
-                        _loading_wrap("movers-content", [loading]),
+                        _sortable_table_wrap("movers"),
                         initial_hidden=not DEFAULT_VISIBILITY.get("movers", True),
                         extra_header=html.Span([
                             _finviz_link("FinViz", "9m_movers", {"marginLeft": "8px"}),
                         ])),
                 _widget("weekly", "StockBee - 20% Weekly Movers",
-                        _loading_wrap("weekly-content", [loading]),
+                        _sortable_table_wrap("weekly", default_sort_col="week", default_sort_asc=False),
                         variant="red",
                         initial_hidden=not DEFAULT_VISIBILITY.get("weekly", True),
                         extra_header=html.Span([
@@ -1399,7 +1499,7 @@ def build_layout() -> html.Div:
                             _finviz_link("-20", "20pct_weekly_down"),
                         ], style={"marginLeft": "6px"})),
                 _widget("daily", "StockBee - 4% Daily Gainers",
-                        _loading_wrap("daily-content", [loading]),
+                        _sortable_table_wrap("daily"),
                         variant="green",
                         initial_hidden=not DEFAULT_VISIBILITY.get("daily", True),
                         extra_header=html.Span([
@@ -1410,16 +1510,27 @@ def build_layout() -> html.Div:
             # ---- BOTTOM ROW ----
             html.Div([
                 _widget("leading", "Leading Industries — Top 20%",
-                        _loading_wrap("leading-content", [loading]),
+                        html.Div([
+                            dcc.Store(id="leading-data-store"),
+                            dcc.Store(id="leading-sort-store", data={"col": "top_both", "asc": False}),
+                            _loading_wrap("leading-content", [loading]),
+                        ]),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("leading", True),
                         extra_header=html.Span([
                             _finviz_link("FinViz", "leading", {"marginLeft": "8px"}),
                         ])),
+                _widget("earnings", "Earnings Yesterday + Today",
+                        _sortable_table_wrap("earnings"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("earnings", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "earnings_yesterday_today", {"marginLeft": "8px"}),
+                        ])),
                 _widget("stage", "Stage Analysis",
                         _loading_wrap("stage-content", [loading]),
                         initial_hidden=not DEFAULT_VISIBILITY.get("stage", True)),
-            ], id="row-bottom", style=HALF_ROW_STYLE),
+            ], id="row-bottom", style=THIRD_ROW_STYLE),
         ], style=CONTENT_AREA_STYLE),
 
     ], style=DASHBOARD_STYLE)

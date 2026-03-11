@@ -19,6 +19,7 @@ from src.calculations import (
     compute_9m_movers,
     compute_20pct_weekly,
     compute_4pct_daily,
+    compute_earnings_yesterday_today,
     compute_leading_industries,
     compute_stage_analysis,
 )
@@ -42,6 +43,7 @@ from src.layout import (
     build_9m_movers_table,
     build_20pct_weekly_table,
     build_4pct_daily_table,
+    build_earnings_table,
     build_leading_industries_table,
     build_stage_chart,
     build_stage_summary,
@@ -226,7 +228,10 @@ def register_callbacks(app):
     # 6. Watchlist: fetch Finviz data and render table
     # ------------------------------------------------------------------
     @app.callback(
-        Output("watchlist-content", "children"),
+        [
+            Output("watchlist-content", "children"),
+            Output("watchlist-data-store", "data"),
+        ],
         [
             Input("watchlist-store", "data"),
             Input("interval-refresh", "n_intervals"),
@@ -238,17 +243,17 @@ def register_callbacks(app):
             return html.Div("No tickers in watchlist. Add some above.", style={
                 "color": COLORS["text_muted"], "fontSize": "9px",
                 "padding": "8px",
-            })
+            }), []
         try:
             from src.data_fetcher import fetch_watchlist_quotes
             data = fetch_watchlist_quotes(wl_data)
             if not data:
                 # Fallback: show tickers with placeholder when Finviz returns no data
                 data = [{"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"} for t in wl_data]
-            return build_watchlist_table(data)
+            return build_watchlist_table(data, "watchlist", "change", False), data
         except Exception as e:
             logger.exception("Watchlist fetch failed: %s", e)
-            return _err_div(e)
+            return _err_div(e), []
 
     # ==================================================================
     #  PARALLEL WIDGET LOADING
@@ -314,8 +319,11 @@ def register_callbacks(app):
     @app.callback(
         [
             Output("qulla-content", "children"),
+            Output("qulla-data-store", "data"),
             Output("minervini-content", "children"),
+            Output("minervini-data-store", "data"),
             Output("oneil-content", "children"),
+            Output("oneil-data-store", "data"),
         ],
         [
             Input("interval-refresh", "n_intervals"),
@@ -326,18 +334,21 @@ def register_callbacks(app):
     def refresh_group_b(n_intervals, n_clicks):
         try:
             qulla_data = qullamaggie_screener()
-            qulla_table = build_qullamaggie_table(qulla_data)
+            qulla_table = build_qullamaggie_table(qulla_data, "qulla", "change", False)
             minervini_data = minervini_screener()
-            minervini_table = build_minervini_table(minervini_data)
+            minervini_table = build_minervini_table(minervini_data, "minervini", "change", False)
             oneil_data = oneil_screener()
-            oneil_table = build_oneil_table(oneil_data)
-            return [qulla_table, minervini_table, oneil_table]
+            oneil_table = build_oneil_table(oneil_data, "oneil", "change", False)
+            return [qulla_table, qulla_data, minervini_table, minervini_data, oneil_table, oneil_data]
         except Exception as e:
             logger.exception("Group B failed: %s", e)
-            return [_err_div(e), _disabled_msg, _disabled_msg]
+            return [_err_div(e), [], _disabled_msg, [], _disabled_msg, []]
 
     @app.callback(
-        Output("sector-content", "children"),
+        [
+            Output("sector-content", "children"),
+            Output("sector-data-store", "data"),
+        ],
         [
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
@@ -347,13 +358,16 @@ def register_callbacks(app):
     def refresh_group_c(n_intervals, n_clicks):
         try:
             sector_data = compute_sector_data()
-            return build_sector_table(sector_data)
+            return build_sector_table(sector_data, "sector", "chg", False), sector_data
         except Exception as e:
             logger.exception("Sector data failed: %s", e)
-            return _err_div(e)
+            return _err_div(e), []
 
     @app.callback(
-        Output("stockbee-content", "children"),
+        [
+            Output("stockbee-content", "children"),
+            Output("stockbee-data-store", "data"),
+        ],
         [
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
@@ -370,22 +384,22 @@ def register_callbacks(app):
             if not dates or not tickers:
                 return html.Div("No Momentum50 data. Check Stockbee sheet.", style={
                     "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
-                })
+                }), {}
             latest_date = dates[0]
             ticker_list = tickers.get(latest_date, [])
             if not ticker_list:
                 return html.Div("No tickers for latest date.", style={
                     "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
-                })
+                }), {}
             # Limit to 25 tickers for faster quote fetch (50 × ~2s = very slow)
             ticker_list = ticker_list[:25]
             data = fetch_watchlist_quotes(ticker_list)
             if not data:
                 data = [{"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"} for t in ticker_list]
-            return build_stockbee_momentum50_table(data, date_label=latest_date)
+            return build_stockbee_momentum50_table(data, date_label=latest_date, widget_id="stockbee", sort_col="change", sort_asc=False), {"data": data, "date_label": latest_date}
         except Exception as e:
             logger.exception("Stockbee Momentum50 failed: %s", e)
-            return _err_div(e)
+            return _err_div(e), []
 
     @app.callback(
         Output("breadth-content", "children"),
@@ -510,9 +524,15 @@ def register_callbacks(app):
     @app.callback(
         [
             Output("club97-content", "children"),
+            Output("club97-data-store", "data"),
             Output("movers-content", "children"),
+            Output("movers-data-store", "data"),
             Output("weekly-content", "children"),
+            Output("weekly-data-store", "data"),
             Output("daily-content", "children"),
+            Output("daily-data-store", "data"),
+            Output("earnings-content", "children"),
+            Output("earnings-data-store", "data"),
         ],
         [
             Input("interval-refresh", "n_intervals"),
@@ -523,21 +543,28 @@ def register_callbacks(app):
     def refresh_group_d(n_intervals, n_clicks):
         try:
             club97_data = compute_97_club([])
-            club97_table = build_97_club_table(club97_data)
+            club97_table = build_97_club_table(club97_data, "club97", "change", False)
             movers_data = compute_9m_movers([])
-            movers_table = build_9m_movers_table(movers_data)
+            movers_table = build_9m_movers_table(movers_data, "movers", "change", False)
             weekly_data = compute_20pct_weekly([])
-            weekly_table = build_20pct_weekly_table(weekly_data)
+            weekly_table = build_20pct_weekly_table(weekly_data, "weekly", "week", False)
             daily_data = compute_4pct_daily([])
-            daily_table = build_4pct_daily_table(daily_data)
-            return [club97_table, movers_table, weekly_table, daily_table]
+            daily_table = build_4pct_daily_table(daily_data, "daily", "chg", False)
+            earnings_data = compute_earnings_yesterday_today([])
+            earnings_table = build_earnings_table(earnings_data, "earnings", "change", False)
+            return [
+                club97_table, club97_data, movers_table, movers_data,
+                weekly_table, weekly_data, daily_table, daily_data,
+                earnings_table, earnings_data,
+            ]
         except Exception as e:
             logger.exception("Group D failed: %s", e)
-            return [_err_div(e), _disabled_msg, _disabled_msg, _disabled_msg]
+            return [_err_div(e), [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
 
     @app.callback(
         [
             Output("leading-content", "children"),
+            Output("leading-data-store", "data"),
             Output("stage-content", "children"),
         ],
         [
@@ -549,7 +576,7 @@ def register_callbacks(app):
     def refresh_group_e(n_intervals, n_clicks):
         try:
             leading_data = compute_leading_industries([], {})
-            leading_table = build_leading_industries_table(leading_data)
+            leading_table = build_leading_industries_table(leading_data, "leading", "top_both", False)
             stage_result = compute_stage_analysis([])
             counts = stage_result.get("counts", {})
             stage_chart = build_stage_chart(counts)
@@ -562,7 +589,71 @@ def register_callbacks(app):
                     style={"height": "100%", "width": "100%"},
                 ),
             ], style=CHART_WRAP_STYLE)
-            return [leading_table, stage_content]
+            return [leading_table, leading_data, stage_content]
         except Exception as e:
             logger.exception("Group E (Leading/Stage) failed: %s", e)
-            return [_err_div(e), _disabled_msg]
+            return [_err_div(e), [], _disabled_msg]
+
+    # ------------------------------------------------------------------
+    # Sortable table: header click -> re-sort and re-render
+    # ------------------------------------------------------------------
+    SORTABLE_WIDGETS = {
+        "qulla": (build_qullamaggie_table, "qulla-content", {}),
+        "minervini": (build_minervini_table, "minervini-content", {}),
+        "oneil": (build_oneil_table, "oneil-content", {}),
+        "watchlist": (build_watchlist_table, "watchlist-content", {}),
+        "sector": (build_sector_table, "sector-content", {}),
+        "club97": (build_97_club_table, "club97-content", {}),
+        "movers": (build_9m_movers_table, "movers-content", {}),
+        "weekly": (build_20pct_weekly_table, "weekly-content", {}),
+        "daily": (build_4pct_daily_table, "daily-content", {}),
+        "earnings": (build_earnings_table, "earnings-content", {}),
+        "leading": (build_leading_industries_table, "leading-content", {}),
+        "stockbee": (build_stockbee_momentum50_table, "stockbee-content", {}),
+    }
+
+    @app.callback(
+        [Output(f"{w}-content", "children", allow_duplicate=True) for w in SORTABLE_WIDGETS] +
+        [Output(f"{w}-sort-store", "data", allow_duplicate=True) for w in SORTABLE_WIDGETS],
+        Input({"type": "sort-header", "widget": ALL, "column": ALL}, "n_clicks"),
+        [State(f"{w}-data-store", "data") for w in SORTABLE_WIDGETS] +
+        [State(f"{w}-sort-store", "data") for w in SORTABLE_WIDGETS],
+        prevent_initial_call=True,
+    )
+    def sort_table(n_clicks_list, *stores):
+        if not ctx.triggered_id or not isinstance(ctx.triggered_id, dict):
+            return [no_update] * len(SORTABLE_WIDGETS) * 2
+        wid = ctx.triggered_id.get("widget")
+        col = ctx.triggered_id.get("column")
+        if not wid or wid not in SORTABLE_WIDGETS or not col:
+            return [no_update] * len(SORTABLE_WIDGETS) * 2
+        builder, content_id, extra = SORTABLE_WIDGETS[wid]
+        data_idx = list(SORTABLE_WIDGETS.keys()).index(wid)
+        sort_idx = len(SORTABLE_WIDGETS) + data_idx
+        data = stores[data_idx] if data_idx < len(stores) else []
+        sort_state = stores[sort_idx] if sort_idx < len(stores) else {}
+        raw = stores[data_idx]
+        if wid == "stockbee" and isinstance(raw, dict):
+            data = raw.get("data", [])
+            date_label = raw.get("date_label", "")
+        else:
+            data = raw or []
+            date_label = ""
+        if not data:
+            return [no_update] * len(SORTABLE_WIDGETS) * 2
+        cur_col = sort_state.get("col", "change")
+        cur_asc = sort_state.get("asc", True)
+        new_asc = not cur_asc if col == cur_col else True
+        new_sort = {"col": col, "asc": new_asc}
+        if wid == "stockbee":
+            raw = stores[data_idx]
+            date_label = raw.get("date_label", "") if isinstance(raw, dict) else ""
+            table = build_stockbee_momentum50_table(data, date_label=date_label, widget_id=wid, sort_col=col, sort_asc=new_asc)
+        else:
+            builder, _, _ = SORTABLE_WIDGETS[wid]
+            table = builder(data, wid, col, new_asc)
+        out_content = [no_update] * len(SORTABLE_WIDGETS)
+        out_sort = [no_update] * len(SORTABLE_WIDGETS)
+        out_content[data_idx] = table
+        out_sort[data_idx] = new_sort
+        return out_content + out_sort

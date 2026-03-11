@@ -125,6 +125,13 @@ QUARTER_ROW_STYLE = {
     "marginBottom": "4px",
 }
 
+THIRD_ROW_STYLE = {
+    "display": "grid",
+    "gridTemplateColumns": "1fr 1fr 1fr",
+    "gap": "4px",
+    "marginBottom": "4px",
+}
+
 # ---------- Widget card ----------
 WIDGET_STYLE = {
     "backgroundColor": COLORS["surface"],

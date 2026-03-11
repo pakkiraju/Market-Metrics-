@@ -191,6 +191,8 @@ FINVIZ_SCREENER_URLS = {
     "qullamaggie": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa%2Cta_gap_u10%2Csh_relvol_o2%2Csh_price_o1%2Csh_avgvol_o1000",
     # Leading Industries: $1B+, USA, RSI>60 (top 20% by weekly+monthly RS computed in-app)
     "leading": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1,tad_0_rsi:14:rsi:d|abveq:::|value:::60&o=-change",
+    # Earnings Yesterday + Today
+    "earnings_yesterday_today": "https://elite.finviz.com/screener.ashx?v=111&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=change",
 }
 
 # Stockbee (Pradeep Bonde) — external links
@@ -209,6 +211,7 @@ FINVIZ_EXPORT_URLS = {
     "20pct_weekly_down_tech": "https://elite.finviz.com/export.ashx?v=171&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1w20u&o=-change",
     "4pct_daily": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change",
     "4pct_daily_tech": "https://elite.finviz.com/export.ashx?v=171&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change",
+    "earnings_yesterday_today": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=change",
 }
 
 # ---------- Sector SPDR tickers ----------

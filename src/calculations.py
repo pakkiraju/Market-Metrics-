@@ -15,6 +15,7 @@ from src.data_fetcher import (
     fetch_sector_data as fetch_sector_data_raw,
     fetch_20pct_weekly_from_urls,
     fetch_4pct_daily_from_url,
+    fetch_screener_from_url,
     fetch_benchmark_performance,
 )
 from src.constants import SECTOR_ETFS, SECTOR_SPDRS_RRG, RRG_BENCHMARK, SECTOR_NAMES, KEY_METRIC_ROWS
@@ -558,6 +559,11 @@ def compute_20pct_weekly(tickers: list[str]) -> list[dict]:
 # -----------------------------------------------------------------------
 # Section 12: 4% Daily Gainers
 # -----------------------------------------------------------------------
+
+def compute_earnings_yesterday_today(tickers: list[str]) -> list[dict]:
+    """Earnings yesterday or today from FinViz. USA, avg vol 1K+, price $1+."""
+    return fetch_screener_from_url("earnings_yesterday_today", "earnings_yesterday_today", ttl=MEDIUM)
+
 
 def compute_4pct_daily(tickers: list[str]) -> list[dict]:
     """4% daily gainers from FinViz ta_perf_4to-d URL (all US stocks, not just composite indices)."""
