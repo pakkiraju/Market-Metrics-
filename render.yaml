@@ -1,0 +1,11 @@
+# Render Blueprint - Market Metrics Dashboard
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: market-metrics-dashboard
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:server --bind 0.0.0.0:$PORT
+    envVars:
+      - key: FINVIZ_API_KEY
+        sync: false  # Set manually in Render dashboard
