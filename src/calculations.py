@@ -10,11 +10,8 @@ from src import cache
 from src.cache import FAST, MEDIUM, SLOW
 from src.data_fetcher import (
     fetch_group_indicators,
+    fetch_group_indicators_from_url,
     fetch_sector_data as fetch_sector_data_raw,
-    load_nasdaq100,
-    load_sp500,
-    load_composite,
-    load_djia,
 )
 from src.constants import SECTOR_ETFS, KEY_METRIC_ROWS
 
@@ -175,12 +172,12 @@ def compute_group_indicators(tickers: list[str],
 # Section 1: Key Metrics aggregation
 # -----------------------------------------------------------------------
 
-def _above_below(series: pd.Series, threshold: float = 0):
+def _above_below(series: pd.Series, n: int, threshold: float = 0):
+    """Return (above, below, pct). pct = above / n * 100 (percent of total stocks above)."""
     s = pd.to_numeric(series, errors="coerce").dropna()
     above = int((s > threshold).sum())
     below = int((s <= threshold).sum())
-    total = above + below
-    pct = round(above / total * 100, 1) if total > 0 else 0
+    pct = round(above / n * 100, 1) if n > 0 else 0
     return above, below, pct
 
 
@@ -193,60 +190,53 @@ def compute_key_metrics_for_group(indicators: pd.DataFrame) -> list[dict]:
     n = len(indicators)
 
     # Day Chg
-    rows.append(_above_below(indicators["day_chg"]))
-    # Open Chg
-    rows.append(_above_below(indicators["open_chg"]))
+    rows.append(_above_below(indicators["day_chg"], n))
+    # Open Chg (URL-fetched via ta_changeopen_u/d, placeholder here)
+    rows.append(_above_below(indicators["open_chg"], n))
     # Week
-    rows.append(_above_below(indicators["week_chg"].dropna()))
+    rows.append(_above_below(indicators["week_chg"].dropna(), n))
     # Month
-    rows.append(_above_below(indicators["month_chg"].dropna()))
+    rows.append(_above_below(indicators["month_chg"].dropna(), n))
     # Qtr
-    rows.append(_above_below(indicators["qtr_chg"].dropna()))
+    rows.append(_above_below(indicators["qtr_chg"].dropna(), n))
     # Half Year
-    rows.append(_above_below(indicators["half_chg"].dropna()))
+    rows.append(_above_below(indicators["half_chg"].dropna(), n))
     # Year
-    rows.append(_above_below(indicators["year_chg"].dropna()))
+    rows.append(_above_below(indicators["year_chg"].dropna(), n))
 
     # Price to SMA10/20/50/200
     for col in ["sma10", "sma20", "sma50", "sma200"]:
         valid = indicators.dropna(subset=["close", col])
         above = int((valid["close"] > valid[col]).sum())
         below = len(valid) - above
-        total = above + below
-        pct = round(above / total * 100, 1) if total > 0 else 0
+        pct = round(above / n * 100, 1) if n > 0 else 0
         rows.append((above, below, pct))
 
     # EMA10 > SMA20
     valid = indicators.dropna(subset=["ema10", "sma20"])
     a = int((valid["ema10"] > valid["sma20"]).sum())
-    rows.append((a, len(valid) - a,
-                 round(a / len(valid) * 100, 1) if len(valid) > 0 else 0))
+    rows.append((a, len(valid) - a, round(a / n * 100, 1) if n > 0 else 0))
 
     # SMA20 > SMA50
     valid = indicators.dropna(subset=["sma20", "sma50"])
     a = int((valid["sma20"] > valid["sma50"]).sum())
-    rows.append((a, len(valid) - a,
-                 round(a / len(valid) * 100, 1) if len(valid) > 0 else 0))
+    rows.append((a, len(valid) - a, round(a / n * 100, 1) if n > 0 else 0))
 
     # SMA50 > SMA200
     valid = indicators.dropna(subset=["sma50", "sma200"])
     a = int((valid["sma50"] > valid["sma200"]).sum())
-    rows.append((a, len(valid) - a,
-                 round(a / len(valid) * 100, 1) if len(valid) > 0 else 0))
+    rows.append((a, len(valid) - a, round(a / n * 100, 1) if n > 0 else 0))
 
     # SMA20 > SMA50 > SMA200
     valid = indicators.dropna(subset=["sma20", "sma50", "sma200"])
     a = int(((valid["sma20"] > valid["sma50"]) &
              (valid["sma50"] > valid["sma200"])).sum())
-    rows.append((a, len(valid) - a,
-                 round(a / len(valid) * 100, 1) if len(valid) > 0 else 0))
+    rows.append((a, len(valid) - a, round(a / n * 100, 1) if n > 0 else 0))
 
     # 4% Up vs 4% Down
     up4 = int((indicators["day_chg"] >= 4).sum())
     dn4 = int((indicators["day_chg"] <= -4).sum())
-    total_4 = up4 + dn4
-    rows.append((up4, dn4,
-                 round(up4 / total_4 * 100, 1) if total_4 > 0 else 50))
+    rows.append((up4, dn4, round(up4 / n * 100, 1) if n > 0 else 50))
 
     # New 20-Day Highs
     highs = int(indicators["new_20_high"].sum())
@@ -256,37 +246,67 @@ def compute_key_metrics_for_group(indicators: pd.DataFrame) -> list[dict]:
     lows = int(indicators["new_20_low"].sum())
     rows.append((lows, None, round(lows / n * 100, 1) if n > 0 else 0))
 
-    # Price-to 20 Day Range (average)
-    avg_range = indicators["price_to_20_range"].mean()
-    rows.append((round(float(avg_range), 1) if pd.notna(avg_range) else 50,
-                 None, None))
-
     # Stocks count
     rows.append((n, None, None))
 
     return [{"above": r[0], "below": r[1], "pct": r[2]} for r in rows]
 
 
+def compute_key_metrics_single_group(name: str) -> list[dict]:
+    """Compute key metrics for one index group. Data from FinViz screeners directly."""
+    from src.constants import build_metric_screener_url
+    from src.data_fetcher import fetch_group_indicators, fetch_metric_count
+
+    groups = {
+        "NQ100": ("ind_QQQE", []),
+        "SPY500": ("ind_RSP", []),
+        "DJIA": ("ind_DJIA", []),
+        "RUS2000": ("ind_RUS2000", []),
+        "$1B+": ("ind_$1B+", []),
+    }
+    ck, tickers = groups.get(name, (None, []))
+    if not ck:
+        return []
+
+    ind = fetch_group_indicators(tickers, cache_key=ck)
+    rows = compute_key_metrics_for_group(ind)
+    n = len(ind) if not ind.empty else 0
+
+    URL_FETCH_METRICS = ["Open Chg", "EMA10>SMA20", "New 20-Day Highs", "New 20-Day Lows"]
+    url_fetch_indices = {m: KEY_METRIC_ROWS.index(m) for m in URL_FETCH_METRICS if m in KEY_METRIC_ROWS}
+
+    for metric_label, row_idx in url_fetch_indices.items():
+        above_url = build_metric_screener_url(name, metric_label, "above", for_export=True)
+        below_url = build_metric_screener_url(name, metric_label, "below", for_export=True)
+        if not above_url:
+            continue
+        above = fetch_metric_count(above_url, f"km_{name}_{metric_label}_above")
+        if below_url:
+            below = fetch_metric_count(below_url, f"km_{name}_{metric_label}_below")
+        else:
+            below = None
+        pct = round(above / n * 100, 1) if n > 0 else 0
+        rows[row_idx] = {"above": above, "below": below, "pct": pct}
+
+    return rows
+
+
 def compute_all_key_metrics() -> dict:
-    """Compute key metrics for all four index groups. Returns dict of group->rows."""
+    """Compute key metrics for all index groups. Uses cache when full result exists."""
+    import time
+
+    groups_order = ["NQ100", "SPY500", "DJIA", "RUS2000", "$1B+"]
     cached = cache.get("all_key_metrics")
     if cached is not None:
         return cached
 
-    composite = load_composite()
-    groups = {
-        "QQQE": (load_nasdaq100(), "ind_QQQE"),
-        "RSP": (load_sp500(), "ind_RSP"),
-        "Composite": (composite, "ind_Composite"),
-        "$1B+": (composite, "ind_Composite"),
-    }
-
     result = {}
-    for name, (tickers, ck) in groups.items():
-        ind = compute_group_indicators(tickers, cache_key=ck)
-        result[name] = compute_key_metrics_for_group(ind)
+    for i, name in enumerate(groups_order):
+        if i > 0:
+            time.sleep(2)
+        result[name] = compute_key_metrics_single_group(name)
 
-    cache.put("all_key_metrics", result, ttl=MEDIUM)
+    cache.put("all_key_metrics", result, ttl=cache.KEY_METRICS_TTL)
     return result
 
 
@@ -351,7 +371,7 @@ def compute_stage_analysis(tickers: list[str],
     if cached is not None:
         return cached
 
-    indicators = compute_group_indicators(tickers, cache_key="ind_Composite")
+    indicators = compute_group_indicators([], cache_key="ind_Composite")
     if indicators.empty:
         return {"counts": {s: 0 for s in ["1", "2A", "2B", "2C", "3", "4"]},
                 "tickers": []}
@@ -382,7 +402,7 @@ def compute_97_club(tickers: list[str]) -> list[dict]:
     if cached is not None:
         return cached
 
-    indicators = compute_group_indicators(tickers, cache_key="ind_Composite")
+    indicators = compute_group_indicators([], cache_key="ind_Composite")
     if indicators.empty:
         return []
 
@@ -447,7 +467,7 @@ def compute_9m_movers(tickers: list[str]) -> list[dict]:
     if cached is not None:
         return cached
 
-    indicators = compute_group_indicators(tickers, cache_key="ind_Composite")
+    indicators = compute_group_indicators([], cache_key="ind_Composite")
     if indicators.empty:
         return []
 
@@ -502,7 +522,7 @@ def compute_20pct_weekly(tickers: list[str]) -> list[dict]:
     if cached is not None:
         return cached
 
-    indicators = compute_group_indicators(tickers, cache_key="ind_Composite")
+    indicators = compute_group_indicators([], cache_key="ind_Composite")
     if indicators.empty:
         return []
 
@@ -540,7 +560,7 @@ def compute_4pct_daily(tickers: list[str]) -> list[dict]:
     if cached is not None:
         return cached
 
-    indicators = compute_group_indicators(tickers, cache_key="ind_Composite")
+    indicators = compute_group_indicators([], cache_key="ind_Composite")
     if indicators.empty:
         return []
 
@@ -577,7 +597,7 @@ def compute_leading_industries(tickers: list[str],
     if cached is not None:
         return cached
 
-    indicators = compute_group_indicators(tickers, cache_key="ind_Composite")
+    indicators = compute_group_indicators([], cache_key="ind_Composite")
     if indicators.empty:
         return []
 

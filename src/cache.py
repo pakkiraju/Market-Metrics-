@@ -1,96 +1,107 @@
-"""Two-layer cache: in-memory + disk (pickle) with per-key TTL.
+"""In-memory TTL cache for non-real-time data."""
 
-TTL tiers (shorter with Elite API for fresher data):
-  FAST   =  2 min  (daily movers, 97 club, 9M movers, 20% weekly)
-  MEDIUM = 10 min  (key metrics, sector SPDRs, composite indicators)
-  SLOW   = 30 min  (stage analysis, leading industries)
-
-When market is closed all tiers extend to 12 hours.
-"""
-
-import hashlib
-import logging
-import pickle
+import json
 import time
-from datetime import datetime, timezone, timedelta
+import threading
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+# TTL in seconds: 0 = no cache
+FAST = 300       # 5 min
+MEDIUM = 3600    # 1 hour
+SLOW = 7200      # 2 hours
 
-_mem: dict = {}
+# Key Metrics: 1 hour (not real-time)
+KEY_METRICS_TTL = 3600
 
-CACHE_DIR = Path(__file__).resolve().parent.parent / "config" / ".cache"
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
+# Keys that persist to disk (survive server restarts)
+_DISK_PERSISTENT_KEYS = frozenset({"all_key_metrics"})
 
-ET = timezone(timedelta(hours=-5))
-
-FAST = 120        # 2 min
-MEDIUM = 600      # 10 min
-SLOW = 1800       # 30 min
-CLOSED = 43200    # 12 hours
-
-
-def _is_market_open() -> bool:
-    now = datetime.now(ET)
-    if now.weekday() >= 5:
-        return False
-    t = now.hour * 60 + now.minute
-    return 9 * 60 + 30 <= t < 16 * 60
-
-
-def _effective_ttl(ttl: int) -> int:
-    if _is_market_open():
-        return ttl
-    return max(ttl, CLOSED)
+_store: dict[str, tuple[object, float]] = {}
+_lock = threading.Lock()
+_CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache"
 
 
 def _disk_path(key: str) -> Path:
-    safe = hashlib.md5(key.encode()).hexdigest()
-    return CACHE_DIR / f"{safe}.pkl"
+    return _CACHE_DIR / f"{key}.json"
+
+
+def _load_from_disk(key: str) -> tuple[object, float] | None:
+    """Load value from disk if present and not expired. Returns (value, monotonic_expiry) or None."""
+    if key not in _DISK_PERSISTENT_KEYS:
+        return None
+    path = _disk_path(key)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+        expiry = data.get("_expiry")
+        if expiry is not None and time.time() >= expiry:
+            path.unlink(missing_ok=True)
+            return None
+        value = data.get("value")
+        if value is None:
+            return None
+        # Convert absolute expiry to monotonic for in-memory store
+        if expiry is None:
+            monotonic_expiry = float("inf")
+        else:
+            remaining = max(0, expiry - time.time())
+            monotonic_expiry = time.monotonic() + remaining
+        return (value, monotonic_expiry)
+    except (json.JSONDecodeError, OSError, KeyError):
+        return None
+
+
+def _save_to_disk(key: str, value: object, expiry: float):
+    """Persist value to disk."""
+    if key not in _DISK_PERSISTENT_KEYS:
+        return
+    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path = _disk_path(key)
+    try:
+        payload = {"value": value, "_expiry": expiry if expiry != float("inf") else None}
+        path.write_text(json.dumps(payload, default=str))
+    except (TypeError, OSError):
+        pass
 
 
 def get(key: str):
-    """Return cached value or None if expired / missing."""
-    entry = _mem.get(key)
-    if entry is not None:
-        value, ts, ttl = entry
-        if time.time() - ts <= _effective_ttl(ttl):
-            return value
-        del _mem[key]
-
-    dp = _disk_path(key)
-    if dp.exists():
-        try:
-            with open(dp, "rb") as f:
-                value, ts, ttl = pickle.load(f)
-            if time.time() - ts <= _effective_ttl(ttl):
-                _mem[key] = (value, ts, ttl)
+    """Return cached value if present and not expired, else None."""
+    with _lock:
+        entry = _store.get(key)
+        if entry is not None:
+            value, expiry = entry
+            if expiry > 0 and time.monotonic() >= expiry:
+                del _store[key]
+            else:
                 return value
-            dp.unlink(missing_ok=True)
-        except Exception:
-            dp.unlink(missing_ok=True)
+        # Memory miss: try disk for persistent keys
+        disk_result = _load_from_disk(key)
+        if disk_result is not None:
+            disk_val, monotonic_expiry = disk_result
+            _store[key] = (disk_val, monotonic_expiry)
+            return disk_val
+        return None
 
-    return None
 
-
-def put(key: str, value, ttl: int = MEDIUM):
-    """Store value in both memory and disk."""
-    ts = time.time()
-    _mem[key] = (value, ts, ttl)
-    dp = _disk_path(key)
-    try:
-        with open(dp, "wb") as f:
-            pickle.dump((value, ts, ttl), f, protocol=pickle.HIGHEST_PROTOCOL)
-    except Exception as e:
-        logger.warning("Disk cache write failed for %s: %s", key, e)
+def put(key: str, value, ttl: int = 0):
+    """Store value with optional TTL in seconds. ttl=0 means no expiry."""
+    with _lock:
+        expiry = time.monotonic() + ttl if ttl > 0 else float("inf")
+        _store[key] = (value, expiry)
+        if key in _DISK_PERSISTENT_KEYS:
+            disk_expiry = time.time() + ttl if ttl > 0 else time.time() + 86400 * 365  # 1 year if no TTL
+            _save_to_disk(key, value, disk_expiry)
 
 
 def invalidate(key: str | None = None):
-    """Clear one key or everything."""
-    if key is None:
-        _mem.clear()
-        for p in CACHE_DIR.glob("*.pkl"):
-            p.unlink(missing_ok=True)
-    else:
-        _mem.pop(key, None)
-        _disk_path(key).unlink(missing_ok=True)
+    """Remove key from cache, or clear all if key is None."""
+    with _lock:
+        if key is None:
+            _store.clear()
+            for k in _DISK_PERSISTENT_KEYS:
+                _disk_path(k).unlink(missing_ok=True)
+        elif key in _store:
+            del _store[key]
+            if key in _DISK_PERSISTENT_KEYS:
+                _disk_path(key).unlink(missing_ok=True)

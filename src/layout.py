@@ -13,7 +13,8 @@ import plotly.graph_objects as go
 
 from src.constants import (
     COLORS, KEY_METRIC_ROWS, INDEX_GROUPS, SECTOR_NAMES,
-    STAGE_BAR_COLORS, STAGE_LABELS,
+    STAGE_BAR_COLORS, STAGE_LABELS, FINVIZ_SCREENER_URLS,
+    build_metric_screener_url,
 )
 from src.styles import (
     DASHBOARD_STYLE, HEADER_STYLE, HEADER_LOGO_STYLE,
@@ -21,8 +22,8 @@ from src.styles import (
     SETTINGS_BTN_STYLE,
     CONTENT_AREA_STYLE,
     PRIMARY_ROW_STYLE, QUARTER_ROW_STYLE, WIDE_ROW_STYLE, HALF_ROW_STYLE,
-    WIDGET_STYLE, WIDGET_PRIMARY_STYLE, WIDGET_SECONDARY_STYLE,
-    section_header_style, SECTION_BODY_STYLE,
+    WIDGET_STYLE, WIDGET_PRIMARY_STYLE, WIDGET_SECONDARY_STYLE, WIDGET_KEY_METRICS_STYLE,
+    section_header_style, SECTION_BODY_STYLE, KEY_METRICS_BODY_STYLE,
     TICKER_GRID_STYLE, ticker_pill_style,
     TABLE_STYLE, TABLE_HEADER_STYLE, TABLE_CELL_STYLE,
     CHART_WRAP_STYLE, LOADING_STYLE,
@@ -38,8 +39,8 @@ ET = timezone(timedelta(hours=-5))
 # is_primary_size only controls sizing (full-size vs max-height), NOT toggleability
 WIDGETS = [
     ("key-metrics",    "Key Metrics",                True),
-    ("chart2",         "NASDAQ100 & S&P500 Metrics", True),
-    ("chart3",         "Combined Index & $1B+ Stocks", True),
+    ("chart2",         "NQ100, SPY500 & DJIA Metrics", True),
+    ("chart3",         "RUS2000 & $1B+ Stocks", True),
     ("qulla",          "Qullamaggie",                False),
     ("minervini",      "Minervini",                  False),
     ("oneil",          "O'Neil",                     False),
@@ -54,7 +55,10 @@ WIDGETS = [
 ]
 
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
-DEFAULT_VISIBILITY = {w[0]: True for w in WIDGETS}
+# Key Metrics + bar charts + Qullamaggie enabled by default
+DEFAULT_VISIBILITY = {
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla") for w in WIDGETS
+}
 
 CLICKABLE_TICKER_STYLE = {
     "cursor": "pointer",
@@ -83,7 +87,8 @@ def _clickable_ticker(symbol, style=None):
 # -----------------------------------------------------------------------
 
 def _widget(widget_id, header_text, body_children, variant="default",
-            count=None, extra_header=None, primary=False):
+            count=None, extra_header=None, primary=False, initial_hidden=False,
+            body_style=None, card_style_override=None):
     header_kids = [html.Span(header_text)]
     if count is not None:
         header_kids.append(html.Span(
@@ -99,12 +104,15 @@ def _widget(widget_id, header_text, body_children, variant="default",
     if extra_header:
         header_kids.append(extra_header)
 
-    card_style = WIDGET_PRIMARY_STYLE if primary else WIDGET_SECONDARY_STYLE
+    card_style = card_style_override or (WIDGET_PRIMARY_STYLE if primary else WIDGET_SECONDARY_STYLE)
+    if initial_hidden:
+        card_style = {**card_style, "display": "none"}
 
+    body_style = body_style or SECTION_BODY_STYLE
     return html.Div(
         [
             html.Div(header_kids, style=section_header_style(variant)),
-            html.Div(body_children, style=SECTION_BODY_STYLE),
+            html.Div(body_children, style=body_style),
         ],
         style=card_style,
         id=f"widget-{widget_id}",
@@ -140,30 +148,63 @@ def _table(headers, rows, col_widths=None):
 # Section 1: Key Metrics Table
 # -----------------------------------------------------------------------
 
+def _finviz_link(text: str, url_key: str, style=None) -> html.A:
+    """Inline link to FinViz screener."""
+    url = FINVIZ_SCREENER_URLS.get(url_key, "#")
+    base = {"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"], "textDecoration": "none"}
+    if style:
+        base.update(style)
+    return html.A(text, href=url, target="_blank", rel="noopener noreferrer", style=base)
+
+
+def _screener_link(label: str, url_key: str) -> html.Th:
+    """Header cell with clickable FinViz screener link."""
+    url = FINVIZ_SCREENER_URLS.get(url_key, "")
+    style = {
+        **TABLE_HEADER_STYLE,
+        "background": "#1e3a5f",
+        "color": "#93c5fd",
+        "fontWeight": 700,
+        "fontSize": "8px",
+        "borderBottom": f"2px solid {COLORS['accent']}",
+    }
+    if url:
+        content = html.A(
+            label,
+            href=url,
+            target="_blank",
+            rel="noopener noreferrer",
+            style={"color": "#93c5fd", "textDecoration": "none", "cursor": "pointer"},
+        )
+    else:
+        content = label
+    return html.Th(content, colSpan=3, style=style)
+
+
 def build_key_metrics_table(metrics: dict) -> html.Table:
-    group_headers = ["NASDAQ (QQQE)", "S&P500 (RSP)", "RSP+QQQE+DIA", "$1B+ Universe"]
+    # (display_label, url_key for FinViz link)
+    group_config = [
+        ("NQ100", "NQ100"),
+        ("SPY500", "SPY500"),
+        ("DJIA", "DJIA"),
+        ("RUS2000", "RUS2000"),
+        ("$1B+ Universe", "$1B+"),
+    ]
     sub_headers = ["Above", "Below", "Pct"]
 
     header_row1 = [html.Th("Metric", style={
         **TABLE_HEADER_STYLE, "textAlign": "left", "width": "120px",
     })]
-    for gh in group_headers:
-        header_row1.append(html.Th(gh, colSpan=3, style={
-            **TABLE_HEADER_STYLE,
-            "background": "#1e3a5f",
-            "color": "#93c5fd",
-            "fontWeight": 700,
-            "fontSize": "8px",
-            "borderBottom": f"2px solid {COLORS['accent']}",
-        }))
+    for label, url_key in group_config:
+        header_row1.append(_screener_link(label, url_key))
 
     header_row2 = [html.Th("", style=TABLE_HEADER_STYLE)]
-    for _ in range(4):
+    for _ in range(5):
         for sh in sub_headers:
             header_row2.append(html.Th(sh, style=TABLE_HEADER_STYLE))
 
     body_rows = []
-    groups_ordered = ["QQQE", "RSP", "Composite", "$1B+"]
+    groups_ordered = ["NQ100", "SPY500", "DJIA", "RUS2000", "$1B+"]
     for i, label in enumerate(KEY_METRIC_ROWS):
         cells = [html.Td(label, style={
             **TABLE_CELL_STYLE,
@@ -182,7 +223,7 @@ def build_key_metrics_table(metrics: dict) -> html.Table:
                 below = r["below"]
                 pct = r["pct"]
 
-                is_info_row = label in ("Stocks", "Price-to 20 Day Range")
+                is_info_row = label == "Stocks"
                 if is_info_row:
                     st = {**TABLE_CELL_STYLE, "backgroundColor": COLORS["surface"],
                           "color": COLORS["text_muted"]}
@@ -196,10 +237,24 @@ def build_key_metrics_table(metrics: dict) -> html.Table:
                     bg, fg = pct_color(pct)
                     cell_st = {**TABLE_CELL_STYLE,
                                "backgroundColor": bg, "color": fg}
-                    cells.append(html.Td(
-                        str(above) if above is not None else "—", style=cell_st))
-                    cells.append(html.Td(
-                        str(below) if below is not None else "—", style=cell_st))
+                    # Make Above/Below cells clickable when we have a metric filter
+                    above_url = build_metric_screener_url(gname, label, "above")
+                    below_url = build_metric_screener_url(gname, label, "below")
+                    above_content = str(above) if above is not None else "—"
+                    below_content = str(below) if below is not None else "—"
+                    link_style = {**cell_st, "textDecoration": "none", "display": "block"}
+                    above_cell = (
+                        html.Td(html.A(above_content, href=above_url, target="_blank",
+                                       rel="noopener noreferrer", style=link_style), style=cell_st)
+                        if above_url else html.Td(above_content, style=cell_st)
+                    )
+                    below_cell = (
+                        html.Td(html.A(below_content, href=below_url, target="_blank",
+                                       rel="noopener noreferrer", style=link_style), style=cell_st)
+                        if below_url else html.Td(below_content, style=cell_st)
+                    )
+                    cells.append(above_cell)
+                    cells.append(below_cell)
                     cells.append(html.Td(
                         f"{pct}%" if pct is not None else "—", style=cell_st))
             else:
@@ -207,49 +262,66 @@ def build_key_metrics_table(metrics: dict) -> html.Table:
                     cells.append(html.Td("—", style=TABLE_CELL_STYLE))
         body_rows.append(html.Tr(cells))
 
+    # colgroup ensures narrow data columns (Above/Below/Pct)
+    cols = [html.Col(style={"width": "120px"})]  # Metric
+    for _ in range(15):
+        cols.append(html.Col(style={"width": "38px"}))  # 5 groups × 3 cols
     return html.Table(
         [
+            html.Colgroup(cols),
             html.Thead([html.Tr(header_row1), html.Tr(header_row2)]),
             html.Tbody(body_rows),
         ],
-        style={**TABLE_STYLE, "tableLayout": "auto"},
+        style={**TABLE_STYLE, "tableLayout": "fixed", "width": "max-content"},
     )
 
 
 # -----------------------------------------------------------------------
-# Sections 2-3: Stacked bar charts
+# Sections 2-3: Stacked bar charts (Key Metrics pct visualization)
 # -----------------------------------------------------------------------
 
-def build_metrics_bar_chart(data1_pcts, data2_pcts,
-                            label1, label2,
-                            color1_down, color1_up,
-                            color2_down, color2_up) -> go.Figure:
-    labels = KEY_METRIC_ROWS[:-2]
+def build_metrics_bar_chart(groups: list[tuple]) -> go.Figure:
+    """Build horizontal stacked bar chart from Key Metrics data.
 
-    pct1 = [d["pct"] if d["pct"] is not None else 50 for d in data1_pcts[:len(labels)]]
-    pct2 = [d["pct"] if d["pct"] is not None else 50 for d in data2_pcts[:len(labels)]]
+    groups: list of (data_list, label, color_down, color_up) tuples.
+    data_list: list of dicts with 'above' and 'below' keys (from Key Metrics).
+    Uses actual counts, not percentages.
+    """
+    labels = KEY_METRIC_ROWS[:-2]  # Exclude "New 20-Day Lows", "Stocks"
 
-    down1 = [-(100 - p) for p in pct1]
-    down2 = [-(100 - p) for p in pct2]
+    n = len(groups)
+    if n == 0:
+        return go.Figure()
 
+    # Bar width and offsets: 2 groups -> width 0.35, offsets -0.18, 0.18
+    # 3 groups -> width 0.25, offsets -0.25, 0, 0.25
+    width = 0.25 if n == 3 else 0.35
+    offsets = ([-0.25, 0, 0.25] if n == 3 else [-0.18, 0.18])[:n]
+
+    max_extent = 0
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        y=labels, x=down1, orientation="h", name=f"{label1} Down",
-        marker_color=color1_down, width=0.35, offset=-0.18,
-    ))
-    fig.add_trace(go.Bar(
-        y=labels, x=down2, orientation="h", name=f"{label2} Down",
-        marker_color=color2_down, width=0.35, offset=0.18,
-    ))
-    fig.add_trace(go.Bar(
-        y=labels, x=pct2, orientation="h", name=f"{label2} Up",
-        marker_color=color2_up, width=0.35, offset=0.18,
-    ))
-    fig.add_trace(go.Bar(
-        y=labels, x=pct1, orientation="h", name=f"{label1} Up",
-        marker_color=color1_up, width=0.35, offset=-0.18,
-    ))
+    for i, (data_rows, label, color_down, color_up) in enumerate(groups):
+        aboves_left = []
+        belows_right = []
+        for d in data_rows[:len(labels)]:
+            above = d.get("above")
+            below = d.get("below")
+            a = int(above) if above is not None else 0
+            b = int(below) if below is not None else 0
+            aboves_left.append(-a)   # Left side: Above (negative x)
+            belows_right.append(b)   # Right side: Below (positive x)
+            max_extent = max(max_extent, a, b)
+        off = offsets[i]
+        fig.add_trace(go.Bar(
+            y=labels, x=aboves_left, orientation="h", name=f"{label} Above",
+            marker_color=color_up, width=width, offset=off,
+        ))
+        fig.add_trace(go.Bar(
+            y=labels, x=belows_right, orientation="h", name=f"{label} Below",
+            marker_color=color_down, width=width, offset=off,
+        ))
 
+    x_range = max(max_extent * 1.1, 50)
     fig.update_layout(
         barmode="relative",
         paper_bgcolor=COLORS["surface"],
@@ -257,8 +329,9 @@ def build_metrics_bar_chart(data1_pcts, data2_pcts,
         margin=dict(l=2, r=4, t=2, b=2),
         showlegend=False,
         xaxis=dict(
-            range=[-100, 100],
-            showticklabels=False,
+            range=[-x_range, x_range],
+            showticklabels=True,
+            tickfont=dict(size=8, color=COLORS["text_muted"]),
             showgrid=True,
             gridcolor="rgba(255,255,255,0.05)",
             zeroline=True,
@@ -270,7 +343,7 @@ def build_metrics_bar_chart(data1_pcts, data2_pcts,
             showgrid=False,
         ),
         font=dict(family="Inter", size=8),
-        height=340,
+        height=420,
     )
     return fig
 
@@ -297,21 +370,74 @@ def build_ticker_grid(tickers: list[dict]) -> html.Div:
     return html.Div(pills, style=TICKER_GRID_STYLE)
 
 
-def build_qullamaggie_content(data: list[dict]) -> html.Div:
-    """Single table: Ticker, Tag (EP, BO, PS)."""
+def build_minervini_table(data: list[dict]) -> html.Table:
+    """Minervini screener: Ticker, Price, Avg Vol, Rel Vol, Change, Vol."""
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    rows = [
-        [
+    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol"]
+    rows = []
+    for r in data:
+        chg_val = r.get("change")
+        try:
+            chg_num = float(str(chg_val).replace("%", "")) if chg_val not in (None, "") else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        rows.append([
             {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
              "style": TABLE_CELL_STYLE},
+            str(r.get("price", "")),
+            avg_str,
+            str(r.get("rel_vol", "")),
+            {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
+             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
+        ])
+    return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px"])
+
+
+def _format_screener_vol(vol_raw, avg_raw):
+    """Format volume and avg vol for screener tables (FinViz avg_vol often in thousands)."""
+    try:
+        vol_num = float(str(vol_raw).replace(",", "")) if vol_raw else 0
+        avg_num = float(str(avg_raw).replace(",", "")) if avg_raw else 0
+    except (ValueError, TypeError):
+        return "", ""
+    vol_str = f"{vol_num/1e6:.2f}M" if vol_num >= 1e6 else f"{vol_num/1e3:.1f}K" if vol_num >= 1e3 else str(int(vol_num))
+    avg_adj = avg_num * 1000 if (avg_num and avg_num < 50000) else avg_num
+    avg_str = f"{avg_adj/1e6:.2f}M" if avg_adj and avg_adj >= 1e6 else f"{avg_adj/1e3:.1f}K" if avg_adj and avg_adj >= 1e3 else str(int(avg_adj)) if avg_adj else ""
+    return vol_str, avg_str
+
+
+def build_qullamaggie_table(data: list[dict]) -> html.Table:
+    """Qullamaggie: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, Tag."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", "Tag"]
+    rows = []
+    for r in data:
+        chg_val = r.get("change")
+        try:
+            chg_num = float(str(chg_val).replace("%", "")) if chg_val not in (None, "") else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        rows.append([
+            {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
+             "style": TABLE_CELL_STYLE},
+            str(r.get("price", "")),
+            avg_str,
+            str(r.get("rel_vol", "")),
+            {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
+             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
             r.get("tag", ""),
-        ]
-        for r in data
-    ]
-    return _table(["Ticker", "Tag"], rows, col_widths=["120px", "60px"])
+        ])
+    return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px"])
 
 
 # -----------------------------------------------------------------------
@@ -710,7 +836,7 @@ def build_settings_drawer() -> html.Div:
                 dcc.Checklist(
                     id=f"toggle-{wid}",
                     options=[{"label": "", "value": "on"}],
-                    value=["on"],
+                    value=["on"] if DEFAULT_VISIBILITY.get(wid, False) else [],
                     style={"display": "inline-block", "marginRight": "6px"},
                     inputStyle={"cursor": "pointer"},
                 ),
@@ -730,7 +856,7 @@ def build_settings_drawer() -> html.Div:
 
 def _initial_watchlist() -> list[str]:
     from pathlib import Path
-    wl_path = Path(__file__).resolve().parent.parent / "config" / "watchlist.csv"
+    wl_path = Path(__file__).resolve().parent.parent / "watchlist.csv"
     if not wl_path.exists():
         return []
     lines = wl_path.read_text().strip().splitlines()
@@ -750,6 +876,7 @@ def _loading_wrap(content_id, children=None, style=None):
 
 def build_layout() -> html.Div:
     loading = html.Div("Loading data...", style=LOADING_STYLE)
+    empty_table = build_key_metrics_table({})
 
     return html.Div([
         dcc.Interval(id="interval-refresh", interval=300_000, n_intervals=0),
@@ -763,61 +890,85 @@ def build_layout() -> html.Div:
             # ---- PRIMARY ROW: full-size widgets ----
             html.Div([
                 _widget("key-metrics", "Key Metrics",
-                        _loading_wrap("key-metrics-content", [loading]),
-                        primary=True),
-                _widget("chart2", "NASDAQ100 & S&P500 Metrics",
+                        html.Div(id="key-metrics-content", children=[empty_table], style={"minHeight": "40px"}),
+                        primary=True,
+                        initial_hidden=not DEFAULT_VISIBILITY.get("key-metrics", True),
+                        body_style=KEY_METRICS_BODY_STYLE,
+                        card_style_override=WIDGET_KEY_METRICS_STYLE),
+                _widget("chart2", "NQ100, SPY500 & DJIA Metrics",
                         _loading_wrap("chart2-content", [loading],
                                       style=CHART_WRAP_STYLE),
-                        variant="teal", primary=True),
-                _widget("chart3", "Combined Index & $1B+ Stocks",
+                        variant="teal", primary=True,
+                        initial_hidden=not DEFAULT_VISIBILITY.get("chart2", True)),
+                _widget("chart3", "RUS2000 & $1B+ Stocks",
                         _loading_wrap("chart3-content", [loading],
                                       style=CHART_WRAP_STYLE),
-                        variant="teal", primary=True),
+                        variant="teal", primary=True,
+                        initial_hidden=not DEFAULT_VISIBILITY.get("chart3", True)),
             ], id="row-primary", style=PRIMARY_ROW_STYLE),
 
             # ---- SCREENERS ROW (4 across) ----
             html.Div([
                 _widget("qulla", "Qullamaggie",
                         _loading_wrap("qulla-content"),
-                        variant="green"),
+                        variant="green",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("qulla", True)),
                 _widget("minervini", "Minervini",
                         _loading_wrap("minervini-content"),
-                        variant="purple"),
+                        variant="purple",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("minervini", True)),
                 _widget("oneil", "O'Neil",
                         _loading_wrap("oneil-content"),
-                        variant="orange"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("oneil", True)),
                 _widget("watchlist", "Watchlist",
-                        build_watchlist_body()),
+                        build_watchlist_body(),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("watchlist", True)),
             ], id="row-screeners", style=QUARTER_ROW_STYLE),
 
             # ---- SECTOR ROW (full width) ----
             html.Div([
                 _widget("sector", "Sector SPDR ETFs",
-                        _loading_wrap("sector-content", [loading])),
+                        _loading_wrap("sector-content", [loading]),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("sector", True)),
             ], id="row-sector", style=WIDE_ROW_STYLE),
 
             # ---- MIDDLE 4 ----
             html.Div([
                 _widget("club97", "97 Club",
                         _loading_wrap("club97-content", [loading]),
-                        variant="green"),
+                        variant="green",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("club97", True)),
                 _widget("movers", "9 Million Movers",
-                        _loading_wrap("movers-content", [loading])),
+                        _loading_wrap("movers-content", [loading]),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("movers", True)),
                 _widget("weekly", "20% Weekly Movers",
                         _loading_wrap("weekly-content", [loading]),
-                        variant="red"),
+                        variant="red",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("weekly", True),
+                        extra_header=html.Span([
+                            _finviz_link("+20", "20pct_weekly_up", {"marginLeft": "8px"}),
+                            html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
+                            _finviz_link("-20", "20pct_weekly_down"),
+                        ], style={"marginLeft": "6px"})),
                 _widget("daily", "4% Daily Gainers",
                         _loading_wrap("daily-content", [loading]),
-                        variant="green"),
+                        variant="green",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("daily", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "4pct_daily", {"marginLeft": "8px"}),
+                        ])),
             ], id="row-middle4", style=QUARTER_ROW_STYLE),
 
             # ---- BOTTOM ROW ----
             html.Div([
                 _widget("leading", "Leading Industries — Top 20%",
                         _loading_wrap("leading-content", [loading]),
-                        variant="teal"),
+                        variant="teal",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("leading", True)),
                 _widget("stage", "Stage Analysis",
-                        _loading_wrap("stage-content", [loading])),
+                        _loading_wrap("stage-content", [loading]),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("stage", True)),
             ], id="row-bottom", style=HALF_ROW_STYLE),
         ], style=CONTENT_AREA_STYLE),
 

@@ -11,9 +11,6 @@ import plotly.graph_objects as go
 
 from src import cache
 from src.constants import COLORS
-from src.data_fetcher import (
-    load_nasdaq100, load_sp500, load_composite, load_watchlist,
-)
 from src.calculations import (
     compute_all_key_metrics,
     compute_sector_data,
@@ -41,7 +38,8 @@ from src.layout import (
     build_stage_chart,
     build_stage_summary,
     build_ticker_grid,
-    build_qullamaggie_content,
+    build_minervini_table,
+    build_qullamaggie_table,
     WIDGETS, ALL_WIDGET_IDS,
     CHART_WRAP_STYLE,
 )
@@ -57,7 +55,7 @@ logger = logging.getLogger(__name__)
 
 ET = timezone(timedelta(hours=-5))
 
-WATCHLIST_FILE = Path(__file__).resolve().parent.parent / "config" / "watchlist.csv"
+WATCHLIST_FILE = Path(__file__).resolve().parent.parent / "watchlist.csv"
 
 
 def _load_watchlist_from_file() -> list[str]:
@@ -240,13 +238,11 @@ def register_callbacks(app):
         })
 
     # ==================================================================
-    #  PROGRESSIVE GROUP CALLBACKS
-    #  Each group fires independently on the shared interval / refresh.
+    #  PARALLEL WIDGET LOADING
+    #  Each group loads independently; widgets appear as soon as ready.
     # ==================================================================
 
-    # ------------------------------------------------------------------
-    # Group A: Key Metrics + Charts 2 & 3
-    # ------------------------------------------------------------------
+    # Key Metrics: sequential fetch (parallel causes rate limits)
     @app.callback(
         [
             Output("key-metrics-content", "children"),
@@ -264,45 +260,44 @@ def register_callbacks(app):
         try:
             metrics = compute_all_key_metrics()
             key_metrics_table = build_key_metrics_table(metrics)
-
-            qqqe_data = metrics.get("QQQE", [])
-            rsp_data = metrics.get("RSP", [])
-            comp_data = metrics.get("Composite", [])
+            nq100_data = metrics.get("NQ100", [])
+            spy500_data = metrics.get("SPY500", [])
+            djia_data = metrics.get("DJIA", [])
+            rus_data = metrics.get("RUS2000", [])
             b1_data = metrics.get("$1B+", [])
 
-            chart2_fig = build_metrics_bar_chart(
-                qqqe_data, rsp_data,
-                "QQQE", "RSP",
-                "#991b1b", "#166534",
-                "#dc2626", "#22c55e",
-            )
+            # Chart 2: NQ100 vs SPY500 vs DJIA (3-way)
+            chart2_fig = build_metrics_bar_chart([
+                (nq100_data, "NQ100", "#991b1b", "#dc2626"),
+                (spy500_data, "SPY500", "#166534", "#22c55e"),
+                (djia_data, "DJIA", "#1e3a5f", "#3b82f6"),
+            ])
             chart2 = dcc.Graph(
                 figure=chart2_fig,
                 config={"displayModeBar": False},
                 style={"height": "100%", "width": "100%"},
             )
-
-            chart3_fig = build_metrics_bar_chart(
-                comp_data, b1_data,
-                "Composite", "$1B+",
-                "#7f1d1d", "#14532d",
-                "#ef4444", "#4ade80",
-            )
+            # Chart 3: RUS2000 vs $1B+
+            chart3_fig = build_metrics_bar_chart([
+                (rus_data, "RUS2000", "#7f1d1d", "#ef4444"),
+                (b1_data, "$1B+", "#14532d", "#4ade80"),
+            ])
             chart3 = dcc.Graph(
                 figure=chart3_fig,
                 config={"displayModeBar": False},
                 style={"height": "100%", "width": "100%"},
             )
-
             return [key_metrics_table, chart2, chart3, _now_str()]
         except Exception as e:
-            logger.exception("Group A (Key Metrics) failed: %s", e)
+            logger.exception("Group A failed: %s", e)
             err = _err_div(e)
             return [err, err, err, f"Error at {_now_str()}"]
 
-    # ------------------------------------------------------------------
-    # Group B: Screeners (Qullamaggie, Minervini, O'Neil)
-    # ------------------------------------------------------------------
+    # Qullamaggie: enabled
+    _disabled_msg = html.Div("Widget disabled", style={
+        "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+    })
+
     @app.callback(
         [
             Output("qulla-content", "children"),
@@ -317,37 +312,21 @@ def register_callbacks(app):
     )
     def refresh_group_b(n_intervals, n_clicks):
         try:
-            qulla = build_qullamaggie_content(qullamaggie_screener())
-            minerv = build_ticker_grid(minervini_screener())
-            oneil = build_ticker_grid(oneil_screener())
-            return [qulla, minerv, oneil]
+            data = qullamaggie_screener()
+            qulla_table = build_qullamaggie_table(data)
+            return [qulla_table, _disabled_msg, _disabled_msg]
         except Exception as e:
-            logger.exception("Group B (Screeners) failed: %s", e)
-            err = _err_div(e)
-            return [err, err, err]
+            logger.exception("Qullamaggie failed: %s", e)
+            return [_err_div(e), _disabled_msg, _disabled_msg]
 
-    # ------------------------------------------------------------------
-    # Group C: Sector SPDRs
-    # ------------------------------------------------------------------
     @app.callback(
         Output("sector-content", "children"),
-        [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
-        ],
+        Input("interval-refresh", "n_intervals"),
         prevent_initial_call=False,
     )
-    def refresh_group_c(n_intervals, n_clicks):
-        try:
-            sector_data = compute_sector_data()
-            return build_sector_table(sector_data)
-        except Exception as e:
-            logger.exception("Group C (Sector) failed: %s", e)
-            return _err_div(e)
+    def refresh_group_c(_):
+        return _disabled_msg
 
-    # ------------------------------------------------------------------
-    # Group D: Fast-refresh — 97 Club, 9M Movers, 20% Weekly, 4% Daily
-    # ------------------------------------------------------------------
     @app.callback(
         [
             Output("club97-content", "children"),
@@ -355,72 +334,19 @@ def register_callbacks(app):
             Output("weekly-content", "children"),
             Output("daily-content", "children"),
         ],
-        [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
-        ],
+        Input("interval-refresh", "n_intervals"),
         prevent_initial_call=False,
     )
-    def refresh_group_d(n_intervals, n_clicks):
-        try:
-            composite_tickers = load_composite()
+    def refresh_group_d(_):
+        return [_disabled_msg, _disabled_msg, _disabled_msg, _disabled_msg]
 
-            club_data = compute_97_club(composite_tickers)
-            club_table = build_97_club_table(club_data)
-
-            movers_data = compute_9m_movers(composite_tickers)
-            movers_table = build_9m_movers_table(movers_data)
-
-            weekly_data = compute_20pct_weekly(composite_tickers)
-            weekly_table = build_20pct_weekly_table(weekly_data)
-
-            daily_data = compute_4pct_daily(composite_tickers)
-            daily_table = build_4pct_daily_table(daily_data)
-
-            return [club_table, movers_table, weekly_table, daily_table]
-        except Exception as e:
-            logger.exception("Group D (Fast-refresh) failed: %s", e)
-            err = _err_div(e)
-            return [err, err, err, err]
-
-    # ------------------------------------------------------------------
-    # Group E: Slow — Leading Industries, Stage Analysis
-    # ------------------------------------------------------------------
     @app.callback(
         [
             Output("leading-content", "children"),
             Output("stage-content", "children"),
         ],
-        [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
-        ],
+        Input("interval-refresh", "n_intervals"),
         prevent_initial_call=False,
     )
-    def refresh_group_e(n_intervals, n_clicks):
-        try:
-            composite_tickers = load_composite()
-
-            leading_data = compute_leading_industries(composite_tickers, {})
-            leading_table = build_leading_industries_table(leading_data)
-
-            stage_result = compute_stage_analysis(composite_tickers)
-            stage_counts = stage_result["counts"]
-            stage_fig = build_stage_chart(stage_counts)
-            stage_content = html.Div([
-                html.Div(
-                    dcc.Graph(
-                        figure=stage_fig,
-                        config={"displayModeBar": False},
-                        style={"width": "100%"},
-                    ),
-                    style={"padding": "2px"},
-                ),
-                build_stage_summary(stage_counts),
-            ])
-
-            return [leading_table, stage_content]
-        except Exception as e:
-            logger.exception("Group E (Slow) failed: %s", e)
-            err = _err_div(e)
-            return [err, err]
+    def refresh_group_e(_):
+        return [_disabled_msg, _disabled_msg]

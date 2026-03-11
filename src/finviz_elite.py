@@ -9,6 +9,7 @@ Uses export.ashx with auth query param per FinViz API docs:
 
 import os
 import logging
+import time
 from pathlib import Path
 
 import requests
@@ -236,32 +237,85 @@ def fetch_elite_by_url(url: str) -> list[dict]:
     return all_data
 
 
-def _fetch_elite_csv(filters: list[str], table: str, order: str) -> list[dict]:
-    """Fetch Elite screener data via export.ashx (CSV). Uses auth= query param per FinViz API docs."""
+def fetch_csv_from_url(url: str) -> list[dict]:
+    """Fetch CSV directly from a FinViz export.ashx URL. Adds auth= if API key set.
+    Returns list of dicts (one per row). Fast - single request, no delays."""
+    auth_params = get_auth_params()
+    if auth_params:
+        sep = "&" if "?" in url else "?"
+        url = f"{url}{sep}auth={auth_params['auth']}"
+    req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    try:
+        resp = requests.get(url, headers=req_headers, timeout=30, verify=False)
+        resp.raise_for_status()
+    except Exception as e:
+        logger.warning("fetch_csv_from_url failed: %s", e)
+        return []
+    if resp.text.strip().startswith("<"):
+        logger.debug("URL returned HTML (login page?)")
+        return []
+    import csv
+    import io
+    try:
+        reader = csv.DictReader(io.StringIO(resp.text))
+        rows = list(reader)
+        if rows and "ticker" in rows[0] and "Ticker" not in rows[0]:
+            for r in rows:
+                r["Ticker"] = r.get("ticker", "")
+        return rows
+    except Exception as e:
+        logger.warning("CSV parse failed: %s", e)
+        return []
+
+
+def _fetch_elite_csv(filters: list[str] | str, table: str, order: str, ft: str = "3") -> list[dict]:
+    """Fetch Elite screener data via export.ashx (CSV). Uses auth= query param per FinViz API docs.
+    filters: list of simple filters (joined by comma) OR raw filter string for complex tad_* filters.
+    ft: filter type (3=technical, 4=performance). Retries on 429 with exponential backoff."""
     auth_params = get_auth_params()
     if not auth_params:
         return []
 
     table_code = TABLE_CODES.get(table, table) if isinstance(table, str) else table
+    filter_str = filters if isinstance(filters, str) else ",".join(filters) if filters else ""
     params = {
         "v": table_code,
-        "f": ",".join(filters) if filters else "",
+        "f": filter_str,
         "o": order,
-        "ft": "3",  # filter type for tad_* (technical) filters
+        "ft": ft,
         **auth_params,
     }
     req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    try:
-        resp = requests.get(
-            f"{ELITE_BASE}/export.ashx",
-            params=params,
-            headers=req_headers,
-            timeout=30,
-            verify=False,
-        )
-        resp.raise_for_status()
-    except Exception as e:
-        logger.warning("Elite export.ashx failed: %s", e)
+
+    for attempt in range(4):
+        try:
+            resp = requests.get(
+                f"{ELITE_BASE}/export.ashx",
+                params=params,
+                headers=req_headers,
+                timeout=30,
+                verify=False,
+            )
+            if resp.status_code == 429:
+                wait_sec = (2 ** attempt) * 15
+                logger.warning("FinViz 429 rate limit, waiting %ds before retry %d", wait_sec, attempt + 1)
+                time.sleep(wait_sec)
+                continue
+            resp.raise_for_status()
+            break
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 429:
+                wait_sec = (2 ** attempt) * 15
+                logger.warning("FinViz 429 rate limit, waiting %ds before retry %d", wait_sec, attempt + 1)
+                time.sleep(wait_sec)
+                continue
+            logger.warning("Elite export.ashx failed: %s", e)
+            return []
+        except Exception as e:
+            logger.warning("Elite export.ashx failed: %s", e)
+            return []
+    else:
+        logger.warning("Elite export.ashx failed after 4 retries (429)")
         return []
 
     # If we got HTML (login page) instead of CSV, fall through to screener
@@ -285,11 +339,12 @@ def _fetch_elite_csv(filters: list[str], table: str, order: str) -> list[dict]:
 
 
 def fetch_elite_screener(filters: list[str], table: str = "Overview",
-                         order: str = "-change", rows: int | None = None) -> list[dict]:
+                         order: str = "-change", rows: int | None = None, ft: str = "3") -> list[dict]:
     """
     Fetch screener data from Elite (real-time). Returns list of dicts like Screener.data.
     Uses export.ashx with auth= query param when FINVIZ_API_KEY is set.
     Falls back to HTML screener.ashx only when using cookie auth (no API key).
+    ft: filter type (3=technical, 4=performance).
     """
     auth_params = get_auth_params()
     headers = get_auth_headers()
@@ -302,13 +357,13 @@ def fetch_elite_screener(filters: list[str], table: str = "Overview",
         "v": table_code,
         "f": ",".join(filters) if filters else "",
         "o": order,
-        "ft": "3",  # filter type for tad_* (technical) filters
+        "ft": ft,
         **auth_params,
     }
     req_headers = {**headers, "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
     # 1. Try export.ashx first (CSV, uses auth= query param)
-    csv_data = _fetch_elite_csv(filters, table, order)
+    csv_data = _fetch_elite_csv(filters, table, order, ft=ft)
     if csv_data:
         if rows:
             return csv_data[:rows]

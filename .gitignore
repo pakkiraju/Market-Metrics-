@@ -7,7 +7,7 @@ venv/
 env/
 
 # Disk cache (auto-generated)
-config/.cache/
+.cache/
 
 # IDE
 .vscode/

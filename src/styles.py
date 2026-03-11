@@ -87,12 +87,13 @@ CONTENT_AREA_STYLE = {
     "padding": "4px",
 }
 
-# ---------- Primary row (Key Metrics + 2 charts) - no scroll ----------
+# ---------- Primary row: Key Metrics + 2 bar charts side by side ----------
 PRIMARY_ROW_STYLE = {
     "display": "grid",
-    "gridTemplateColumns": "1fr 1fr 1fr",
-    "gap": "4px",
+    "gridTemplateColumns": "auto minmax(420px, 1fr) minmax(420px, 1fr)",
+    "gap": "8px",
     "marginBottom": "4px",
+    "alignItems": "stretch",
 }
 
 # ---------- Flexible grid for secondary widgets ----------
@@ -136,7 +137,14 @@ WIDGET_STYLE = {
 
 WIDGET_PRIMARY_STYLE = {
     **WIDGET_STYLE,
-    "minHeight": "380px",
+    "minHeight": "420px",
+}
+
+# Key Metrics: width fits table content, no stretch to viewport
+WIDGET_KEY_METRICS_STYLE = {
+    **WIDGET_PRIMARY_STYLE,
+    "width": "fit-content",
+    "maxWidth": "100%",
 }
 
 WIDGET_SECONDARY_STYLE = {
@@ -167,6 +175,12 @@ SECTION_BODY_STYLE = {
     "flex": 1,
     "overflow": "auto",
     "minHeight": 0,
+}
+
+# Key Metrics: sized to fit data, no scrollbar
+KEY_METRICS_BODY_STYLE = {
+    **SECTION_BODY_STYLE,
+    "overflow": "hidden",
 }
 
 # ---------- Settings drawer (overlay) ----------

@@ -111,11 +111,75 @@ KEY_METRIC_ROWS = [
     "4% Up vs 4% Down",
     "New 20-Day Highs",
     "New 20-Day Lows",
-    "Price-to 20 Day Range",
     "Stocks",
 ]
 
-INDEX_GROUPS = ["QQQE", "RSP", "Composite", "$1B+"]
+INDEX_GROUPS = ["NQ100", "SPY500", "DJIA", "RUS2000", "$1B+"]
+
+# Base filter for each index (for building metric-specific screener URLs)
+INDEX_BASE_FILTERS = {
+    "NQ100": "geo_usa,idx_ndx",
+    "SPY500": "geo_usa,idx_sp500",
+    "DJIA": "geo_usa,idx_dji",
+    "RUS2000": "geo_usa,idx_rut",
+    "$1B+": "cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1",
+}
+
+# Metric filters for Key Metrics table row links: (above_filter, below_filter)
+# Above = stocks meeting positive condition; Below = stocks meeting negative condition
+KEY_METRIC_FILTERS = {
+    "Open Chg": ("ta_changeopen_u", "ta_changeopen_d"),
+    "Week": ("ta_perf_1wup", "ta_perf_1wdown"),
+    "Month": ("ta_perf_4wup", "ta_perf_4wdown"),
+    "Qtr": ("ta_perf_13wup", "ta_perf_13wdown"),
+    "Half Year": ("ta_perf_26wup", "ta_perf_26wdown"),
+    "Year": ("ta_perf_ytdup", "ta_perf_ytddown"),
+    "Price to SMA10": ("tad_0_sma:10:sma:d|abv:::1|close::close:d", "tad_0_sma:10:sma:d|blw:::1|close::close:d"),
+    "Price to SMA20": ("tad_0_sma:20:sma:d|abv:::1|close::close:d", "tad_0_sma:20:sma:d|blw:::1|close::close:d"),
+    "Price to SMA50": ("tad_0_sma:50:sma:d|abv:::1|close::close:d", "tad_0_sma:50:sma:d|blw:::1|close::close:d"),
+    "Price to SMA200": ("tad_0_sma:200:sma:d|abv:::1|close::close:d", "tad_0_sma:200:sma:d|blw:::1|close::close:d"),
+    # Format from FinViz: tad_0_close::close:d,tad_1_ema:10:ema:d|abv:::|sma:20:sma:d
+    "EMA10>SMA20": ("tad_0_close::close:d,tad_1_ema:10:ema:d|abv:::|sma:20:sma:d", "tad_0_close::close:d,tad_1_ema:10:ema:d|blw:::|sma:20:sma:d"),
+    "SMA20>SMA50": ("tad_0_sma:50:sma:d|abv:::1|sma:20:sma:d", None),  # below not applicable
+    "SMA50>SMA200": ("tad_0_sma:200:sma:d|abv:::1|sma:50:sma:d", None),
+    "SMA20>SMA50>SMA200": ("tad_0_sma:200:sma:d|abv:::1|sma:50:sma:d,tad_1_sma:20:sma:d|abv:::|sma:50:sma:d", None),
+    "New 20-Day Highs": ("ta_highlow20d_nh", None),
+    "New 20-Day Lows": ("ta_highlow20d_nl", None),
+}
+
+
+def build_metric_screener_url(index_key: str, metric_label: str, direction: str, for_export: bool = False) -> str | None:
+    """Build FinViz URL for a metric row. direction is 'above' or 'below'.
+    for_export=True: export.ashx (CSV, for fetch_metric_count). for_export=False: screener.ashx (opens in browser)."""
+    from urllib.parse import quote
+    base = INDEX_BASE_FILTERS.get(index_key)
+    filters = KEY_METRIC_FILTERS.get(metric_label)
+    if not base or not filters:
+        return None
+    up_f, down_f = filters
+    if direction == "above" and up_f:
+        filter_str = up_f
+    elif direction == "below" and down_f:
+        filter_str = down_f
+    else:
+        return None
+    encoded = quote(f"{base},{filter_str}", safe="")
+    ft = "&ft=3" if ("tad_" in filter_str or filter_str.startswith("ta_")) else ""
+    endpoint = "export.ashx" if for_export else "screener.ashx"
+    return f"https://elite.finviz.com/{endpoint}?v=111&f={encoded}{ft}"
+
+
+# ---------- FinViz Elite screener links (open in browser, not CSV download) ----------
+FINVIZ_SCREENER_URLS = {
+    "NQ100": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa%2Cidx_ndx",
+    "SPY500": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa%2Cidx_sp500",
+    "DJIA": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa%2Cidx_dji",
+    "RUS2000": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa%2Cidx_rut",
+    "$1B+": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to%2Cgeo_usa%2Csh_avgvol_o1000%2Csh_price_o1",
+    "4pct_daily": "https://elite.finviz.com/export.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-price&ar=10",
+    "20pct_weekly_up": "https://elite.finviz.com/export.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1wup&ft=3&o=-change",
+    "20pct_weekly_down": "https://elite.finviz.com/export.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1wdown&ft=3&o=-change",
+}
 
 # ---------- Sector SPDR tickers ----------
 SECTOR_ETFS = [
