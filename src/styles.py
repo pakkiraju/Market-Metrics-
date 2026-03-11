@@ -26,6 +26,8 @@ HEADER_STYLE = {
     "top": 0,
     "zIndex": 200,
     "flexShrink": 0,
+    "boxShadow": "0 2px 8px rgba(0,0,0,0.4)",
+    "isolation": "isolate",
 }
 
 HEADER_LOGO_STYLE = {
@@ -140,6 +142,7 @@ WIDGET_STYLE = {
     "display": "flex",
     "flexDirection": "column",
     "overflow": "hidden",
+    "isolation": "isolate",
 }
 
 WIDGET_PRIMARY_STYLE = {
@@ -176,18 +179,30 @@ def section_header_style(variant="default"):
         "minHeight": "18px",
         "maxHeight": "20px",
         "borderRadius": "3px 3px 0 0",
+        "position": "relative",
+        "zIndex": 1,
+        "isolation": "isolate",
     }
+
+# ~15 rows visible; rest scroll. Row ~22px: 15 * 22 + header ~30 = 360px
+SCROLLABLE_BODY_HEIGHT = 360
 
 SECTION_BODY_STYLE = {
     "flex": 1,
     "overflow": "auto",
-    "minHeight": 0,
+    "minHeight": SCROLLABLE_BODY_HEIGHT,
+    "maxHeight": SCROLLABLE_BODY_HEIGHT,
+    "backgroundColor": COLORS["surface"],
+    "position": "relative",
+    "isolation": "isolate",
 }
 
-# Key Metrics: sized to fit data, no scrollbar
+# Key Metrics: sized to fit data, no scrollbar, no fixed height
 KEY_METRICS_BODY_STYLE = {
     **SECTION_BODY_STYLE,
     "overflow": "hidden",
+    "minHeight": 0,
+    "maxHeight": "none",
 }
 
 # ---------- Settings drawer (overlay) ----------
@@ -320,6 +335,15 @@ CHART_WRAP_STYLE = {
     "flex": 1,
     "padding": "2px",
     "minHeight": 0,
+    "position": "relative",
+}
+
+# Breadth chart widgets: fit chart height (200px), no extra padding like table widgets
+BREADTH_CHART_BODY_STYLE = {
+    "overflow": "hidden",
+    "minHeight": 0,
+    "height": "220px",
+    "backgroundColor": COLORS["surface"],
     "position": "relative",
 }
 

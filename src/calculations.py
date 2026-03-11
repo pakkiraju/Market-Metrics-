@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from src import cache
-from src.cache import MEDIUM
+from src.cache import FAST, MEDIUM
 from src.data_fetcher import (
     fetch_group_indicators,
     fetch_group_indicators_from_url,
@@ -15,6 +15,7 @@ from src.data_fetcher import (
     fetch_sector_data as fetch_sector_data_raw,
     fetch_20pct_weekly_from_urls,
     fetch_4pct_daily_from_url,
+    fetch_earnings_yesterday_today,
     fetch_screener_from_url,
     fetch_benchmark_performance,
 )
@@ -504,6 +505,14 @@ def compute_97_club(tickers: list[str]) -> list[dict]:
             "rel_vol": round(rel_v, 2) if rel_v is not None else "",
             "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
         })
+    # Ensure change descending (biggest gainers first)
+    def _chg_val(r):
+        v = r.get("change")
+        if v is None: return 0.0
+        if isinstance(v, (int, float)): return float(v)
+        try: return float(str(v).replace("%", "").replace(",", "")) or 0
+        except (ValueError, TypeError): return 0.0
+    rows.sort(key=_chg_val, reverse=True)
     if rows:
         cache.put("97_club", rows, ttl=MEDIUM)
     return rows
@@ -561,8 +570,8 @@ def compute_20pct_weekly(tickers: list[str]) -> list[dict]:
 # -----------------------------------------------------------------------
 
 def compute_earnings_yesterday_today(tickers: list[str]) -> list[dict]:
-    """Earnings yesterday or today from FinViz. USA, avg vol 1K+, price $1+."""
-    return fetch_screener_from_url("earnings_yesterday_today", "earnings_yesterday_today", ttl=MEDIUM)
+    """Earnings yesterday or today from FinViz. USA, avg vol 1K+, price $1+. Merges Performance view for avg_vol/rel_vol."""
+    return fetch_earnings_yesterday_today(ttl=MEDIUM)
 
 
 def compute_4pct_daily(tickers: list[str]) -> list[dict]:
@@ -589,12 +598,13 @@ def compute_leading_industries(tickers: list[str],
     """Top 20% industries by weekly+monthly relative strength. Data from FinViz: $1B+, USA, RSI>60.
     Green = top 20% on BOTH weekly and monthly RS. Shows 4 best-performing stocks for the day per industry."""
     cached = cache.get("leading_industries")
-    if cached is not None and len(cached) > 0:
+    if cached is not None:
         return cached
 
     # Use ind_$1B+ (same universe as 97 Club)
     indicators = compute_group_indicators([], cache_key="ind_$1B+")
     if indicators.empty:
+        cache.put("leading_industries", [], ttl=FAST)  # cache empty to avoid refetching every interval
         return []
 
     # Industry/Sector from Overview export (FinViz merge may omit these columns)

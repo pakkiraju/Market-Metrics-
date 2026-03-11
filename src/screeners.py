@@ -247,7 +247,16 @@ def qullamaggie_screener(indicators=None) -> list[dict]:
             by_ticker[t] = {**r, "tag": "BO"}
         else:
             by_ticker[t]["tag"] = ", ".join(sorted(set(by_ticker[t]["tag"].split(", ") + ["BO"])))
-    return [by_ticker[t] for t in sorted(by_ticker.keys())]
+    # Sort by change descending (biggest gainers first)
+    def _chg(r):
+        v = r.get("change")
+        if v is None or v == "":
+            return 0.0
+        try:
+            return float(str(v).replace("%", "").replace(",", "")) or 0
+        except (ValueError, TypeError):
+            return 0.0
+    return sorted([by_ticker[t] for t in by_ticker], key=_chg, reverse=True)
 
 
 # Minervini Trend Template: FinViz Elite filters (same as screener.ashx URL)

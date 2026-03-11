@@ -6,6 +6,7 @@ max-height with internal scroll. Clicking any ticker opens a TradingView
 chart modal. Watchlist supports user add/remove.
 """
 
+import math
 from datetime import datetime, timezone, timedelta
 
 from dash import html, dcc
@@ -19,6 +20,7 @@ from src.constants import (
 )
 from src.styles import (
     DASHBOARD_STYLE, HEADER_STYLE, HEADER_LOGO_STYLE,
+    SCROLLABLE_BODY_HEIGHT,
     HEADER_DATE_STYLE, MARKET_STATUS_STYLE_CLOSED, REFRESH_BTN_STYLE,
     SETTINGS_BTN_STYLE,
     CONTENT_AREA_STYLE,
@@ -27,7 +29,7 @@ from src.styles import (
     section_header_style, SECTION_BODY_STYLE, KEY_METRICS_BODY_STYLE,
     TICKER_GRID_STYLE, ticker_pill_style,
     TABLE_STYLE, TABLE_HEADER_STYLE, TABLE_CELL_STYLE,
-    CHART_WRAP_STYLE, LOADING_STYLE,
+    CHART_WRAP_STYLE, BREADTH_CHART_BODY_STYLE, LOADING_STYLE,
     SETTINGS_OVERLAY_STYLE_HIDDEN, SETTINGS_TITLE_STYLE,
     SETTINGS_ITEM_STYLE, TOGGLE_LABEL_STYLE,
     stage_badge_style,
@@ -827,7 +829,7 @@ def build_leading_industries_table(data: list[dict], widget_id: str = None, sort
 
     if widget_id and sort_col:
         data = sort_data(data, sort_col, sort_asc, LEADING_SORT_KEYS)
-    headers = [("Industry", "industry"), ("1st", None), ("2nd", None), ("3rd", None), ("4th", None)]
+    headers = [("Industry", None), ("1st", None), ("2nd", None), ("3rd", None), ("4th", None)]
     rows = []
     for r in data:
         ind_color = COLORS["green_light"] if r.get("top_both") else COLORS["text_muted"]
@@ -861,7 +863,7 @@ def build_leading_industries_table(data: list[dict], widget_id: str = None, sort
 # -----------------------------------------------------------------------
 
 def build_stockbee_momentum50_table(data: list[dict], date_label: str = "", widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Div:
-    """Stockbee Momentum50: ticker table with FinViz quotes. Same layout as Minervini."""
+    """Stockbee Momentum50: default = spreadsheet order; user can sort by any column via header click."""
     if not data:
         return html.Div("No Momentum50 data. Check Stockbee sheet.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
@@ -955,11 +957,21 @@ def build_sp500_chart(history: list[dict]) -> go.Figure:
         return go.Figure()
     dates = [h["date"] for h in history]
     sp500 = [h.get("sp500", 0) for h in history]
+    valid = [v for v in sp500 if v and v > 0]
+    y_min, y_max = None, None
+    if valid:
+        low = min(valid)
+        high = max(valid)
+        y_min = math.floor(low / 1000) * 1000
+        y_max = math.ceil(high / 1000) * 1000
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=dates, y=sp500, name="S&P 500", fill="tozeroy",
         line=dict(color=COLORS["accent"], width=2),
         fillcolor=_hex_to_rgba(COLORS["accent"], 0.15)))
-    fig.update_layout(**_breadth_chart_layout())
+    layout = dict(**_breadth_chart_layout())
+    if y_min is not None and y_max is not None:
+        layout["yaxis"] = dict(**layout.get("yaxis", {}), range=[y_min, y_max])
+    fig.update_layout(**layout)
     return fig
 
 
@@ -1090,7 +1102,7 @@ def build_rrg_chart(rrg_data: list[dict]) -> go.Figure:
             zeroline=False, range=y_range,
         ),
         font=dict(family="Inter"),
-        height=340,
+        height=SCROLLABLE_BODY_HEIGHT,
         annotations=[
             dict(x=0.98, y=0.98, xref="paper", yref="paper", text="Leading", showarrow=False,
                  font=dict(size=8, color=COLORS["green_light"])),
@@ -1351,7 +1363,8 @@ def build_layout() -> html.Div:
     empty_table = build_key_metrics_table({})
 
     return html.Div([
-        dcc.Interval(id="interval-refresh", interval=300_000, n_intervals=0),
+        dcc.Interval(id="interval-refresh", interval=3600_000, n_intervals=0),
+        dcc.Interval(id="market-hours-check", interval=60_000, n_intervals=0),
         dcc.Store(id="watchlist-store", data=_initial_watchlist()),
 
         build_header(),
@@ -1391,7 +1404,7 @@ def build_layout() -> html.Div:
                 _widget("stockbee", "Stockbee Momentum50",
                         html.Div([
                             dcc.Store(id="stockbee-data-store"),
-                            dcc.Store(id="stockbee-sort-store", data={"col": "change", "asc": False}),
+                            dcc.Store(id="stockbee-sort-store", data={"col": None, "asc": True}),
                             _loading_wrap("stockbee-content", [loading]),
                         ]),
                         variant="green",
@@ -1407,21 +1420,25 @@ def build_layout() -> html.Div:
                         _loading_wrap("breadth-primary-content", [loading], style=CHART_WRAP_STYLE),
                         variant="green",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-primary", True),
+                        body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
                 _widget("breadth-ratios", "StockBee - Breadth Ratios — 5-Day & 10-Day",
                         _loading_wrap("breadth-ratios-content", [loading], style=CHART_WRAP_STYLE),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-ratios", True),
+                        body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
                 _widget("breadth-secondary", "StockBee - Secondary Breadth — Up/Down 25%+ Qtr",
                         _loading_wrap("breadth-secondary-content", [loading], style=CHART_WRAP_STYLE),
                         variant="purple",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-secondary", True),
+                        body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
                 _widget("breadth-sp500", "StockBee - S&P 500 — Last 60 Days",
                         _loading_wrap("breadth-sp500-content", [loading], style=CHART_WRAP_STYLE),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-sp500", True),
+                        body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
             ], id="row-breadth-charts", style=QUARTER_ROW_STYLE),
 
@@ -1469,7 +1486,7 @@ def build_layout() -> html.Div:
                                 html.Div(id="rrg-content", children=[loading], style=CHART_WRAP_STYLE),
                                 type="circle", color=COLORS["accent"], style={"minHeight": "40px"},
                             ),
-                        ], style={"minHeight": "340px"}),
+                        ], style={"minHeight": f"{SCROLLABLE_BODY_HEIGHT}px"}),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("rrg", True)),
             ], id="row-sector", style=HALF_ROW_STYLE),

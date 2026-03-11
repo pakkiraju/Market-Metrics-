@@ -128,6 +128,7 @@ INDEX_BASE_FILTERS = {
 # Metric filters for Key Metrics table row links: (above_filter, below_filter)
 # Above = stocks meeting positive condition; Below = stocks meeting negative condition
 KEY_METRIC_FILTERS = {
+    "Day Chg": ("ta_change_u", "ta_change_d"),
     "Open Chg": ("ta_changeopen_u", "ta_changeopen_d"),
     "Week": ("ta_perf_1wup", "ta_perf_1wdown"),
     "Month": ("ta_perf_4wup", "ta_perf_4wdown"),
@@ -143,6 +144,7 @@ KEY_METRIC_FILTERS = {
     "SMA20>SMA50": ("tad_0_sma:50:sma:d|abv:::1|sma:20:sma:d", None),  # below not applicable
     "SMA50>SMA200": ("tad_0_sma:200:sma:d|abv:::1|sma:50:sma:d", None),
     "SMA20>SMA50>SMA200": ("tad_0_sma:200:sma:d|abv:::1|sma:50:sma:d,tad_1_sma:20:sma:d|abv:::|sma:50:sma:d", None),
+    "4% Up vs 4% Down": ("ta_change_u4", "ta_change_d4"),
     "New 20-Day Highs": ("ta_highlow20d_nh", None),
     "New 20-Day Lows": ("ta_highlow20d_nl", None),
 }
@@ -212,6 +214,7 @@ FINVIZ_EXPORT_URLS = {
     "4pct_daily": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change",
     "4pct_daily_tech": "https://elite.finviz.com/export.ashx?v=171&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change",
     "earnings_yesterday_today": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=change",
+    "earnings_yesterday_today_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change",
 }
 
 # ---------- Sector SPDR tickers ----------

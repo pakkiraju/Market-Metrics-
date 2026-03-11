@@ -67,6 +67,19 @@ logger = logging.getLogger(__name__)
 
 ET = timezone(timedelta(hours=-5))
 
+# Refresh: 1 hr when market open; 24 hr when closed (after 4:30 PM EST or weekend)
+REFRESH_INTERVAL_OPEN = 3600_000   # 1 hr
+REFRESH_INTERVAL_CLOSED = 86400_000  # 24 hr
+
+
+def _is_market_closed() -> bool:
+    """True if market closed: after 4:30 PM EST or weekend."""
+    now = datetime.now(ET)
+    if now.weekday() >= 5:  # Saturday=5, Sunday=6
+        return True
+    return now.hour > 16 or (now.hour == 16 and now.minute >= 30)
+
+
 WATCHLIST_FILE = Path(__file__).resolve().parent.parent / "watchlist.csv"
 
 
@@ -98,6 +111,17 @@ def _err_div(e):
 
 def register_callbacks(app):
     """Register all Dash callbacks on the app."""
+
+    # ------------------------------------------------------------------
+    # 0. Market hours: slow refresh when closed (after 4:30 PM EST or weekend)
+    # ------------------------------------------------------------------
+    @app.callback(
+        Output("interval-refresh", "interval"),
+        Input("market-hours-check", "n_intervals"),
+        prevent_initial_call=False,
+    )
+    def set_refresh_interval(n):
+        return REFRESH_INTERVAL_CLOSED if _is_market_closed() else REFRESH_INTERVAL_OPEN
 
     # ------------------------------------------------------------------
     # 1. Settings drawer toggle
@@ -377,7 +401,7 @@ def register_callbacks(app):
     def refresh_stockbee(n_intervals, n_clicks):
         try:
             from src.stockbee import fetch_stockbee_momentum50
-            from src.data_fetcher import fetch_watchlist_quotes
+            from src.data_fetcher import fetch_tickers_bulk_csv
             mom = fetch_stockbee_momentum50()
             dates = mom.get("dates", [])
             tickers = mom.get("tickers", {})
@@ -391,12 +415,14 @@ def register_callbacks(app):
                 return html.Div("No tickers for latest date.", style={
                     "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
                 }), {}
-            # Limit to 25 tickers for faster quote fetch (50 × ~2s = very slow)
-            ticker_list = ticker_list[:25]
-            data = fetch_watchlist_quotes(ticker_list)
+            cache_key = f"momentum50_quotes_{','.join(sorted(t.strip().upper() for t in ticker_list))}"
+            data = fetch_tickers_bulk_csv(ticker_list, cache_key=cache_key)
             if not data:
                 data = [{"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"} for t in ticker_list]
-            return build_stockbee_momentum50_table(data, date_label=latest_date, widget_id="stockbee", sort_col="change", sort_asc=False), {"data": data, "date_label": latest_date}
+            else:
+                by_ticker = {r["ticker"]: r for r in data}
+                data = [by_ticker.get(t.upper(), {"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"}) for t in ticker_list]
+            return build_stockbee_momentum50_table(data, date_label=latest_date, widget_id="stockbee", sort_col=None, sort_asc=True), {"data": data, "date_label": latest_date}
         except Exception as e:
             logger.exception("Stockbee Momentum50 failed: %s", e)
             return _err_div(e), []
@@ -489,14 +515,14 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def rrg_hover_dim(hover_data, store_data):
+        import copy
         if not store_data:
             return no_update
-        hovered_idx = None
-        if hover_data and hover_data.get("points"):
-            hovered_idx = hover_data["points"][0].get("curveNumber")
-        if hovered_idx is None:
-            return store_data
-        import copy
+        # When not hovering (hoverData clears when mouse leaves), restore original
+        points = hover_data.get("points") if hover_data else None
+        if not points:
+            return copy.deepcopy(store_data)
+        hovered_idx = points[0].get("curveNumber")
         from src.layout import _hex_to_rgba
         fig = copy.deepcopy(store_data)
         traces = fig.get("data", [])

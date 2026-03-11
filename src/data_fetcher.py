@@ -456,6 +456,16 @@ def fetch_4pct_daily_from_url(ttl: int = MEDIUM) -> list[dict]:
     return rows
 
 
+def fetch_earnings_yesterday_today(ttl: int = MEDIUM) -> list[dict]:
+    """Earnings yesterday or today. Use Performance view (v=141) - has Avg Vol, Rel Vol, Change, Volume."""
+    cached = cache.get("earnings_yesterday_today")
+    if cached:
+        s = cached[0]
+        if not s.get("avg_vol") and not s.get("rel_vol"):
+            cache.invalidate("earnings_yesterday_today")
+    return fetch_screener_from_url("earnings_yesterday_today_perf", "earnings_yesterday_today", ttl=ttl)
+
+
 def fetch_metric_count(url: str, cache_key: str) -> int:
     """Fetch screener URL, return row count. Cached 1hr. 2s delay before each fetch to avoid rate limit."""
     cached = cache.get(cache_key)
@@ -917,6 +927,85 @@ def fetch_gainers_screener(cache_key: str = "finviz_gainers", ttl: int = MEDIUM)
         return rows
     except Exception as e:
         logger.warning("FinViz gainers failed: %s", e)
+        return []
+
+
+def fetch_tickers_bulk_csv(tickers: list[str], cache_key: str | None = None, ttl: int = MEDIUM) -> list[dict]:
+    """Fetch multiple tickers in one request via FinViz export.ashx.
+    Uses v=141 (Performance) for Avg Vol, Rel Vol. URL format: v=141&f=geo_usa&t=AMD,NVDA,GOOGL
+    Returns list of dicts with ticker, price, change, volume, avg_vol, rel_vol, atr_pct."""
+    if not tickers:
+        return []
+    tickers = [t.strip().upper() for t in tickers if t and str(t).strip()]
+    if not tickers:
+        return []
+
+    if cache_key:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            s = cached[0] if cached else {}
+            if s.get("avg_vol") or s.get("rel_vol"):
+                return cached
+            cache.invalidate(cache_key)
+
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+
+        if not is_elite_configured():
+            return []
+        ticker_str = ",".join(tickers)
+        url = f"https://elite.finviz.com/export.ashx?v=141&f=geo_usa&t={ticker_str}"
+        data = fetch_export_from_url(url)
+        if not data:
+            return []
+
+        keys = list(data[0].keys())
+        ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+        price_col = _find_csv_col(keys, exact="Price") or _find_csv_col(keys, "price")
+        change_col = _find_csv_col(keys, exact="Change") or _find_csv_col(keys, "change")
+        vol_col = _find_csv_col(keys, exact="Volume") or _find_csv_col(keys, "volume")
+        avg_vol_col = _find_csv_col(keys, "average", "vol") or _find_csv_col(keys, "avg", "vol")
+        rel_vol_col = _find_csv_col(keys, "relative", "vol") or _find_csv_col(keys, "rel", "vol")
+        atr_col = _find_csv_col(keys, exact="ATR") or _find_csv_col(keys, "atr")
+
+        def _val(row: dict, col: str | None, *fallbacks: str):
+            if col and row.get(col) not in (None, "", "-"):
+                v = row.get(col)
+                if v is not None and str(v).strip():
+                    return v
+            return _get_csv_val(row, *fallbacks) if fallbacks else ""
+
+        rows = []
+        for row in data:
+            t = str(row.get(ticker_col, "") or "").strip().upper()
+            if not t:
+                continue
+            price = _val(row, price_col, "Price", "price", "Last", "Close")
+            change = _val(row, change_col, "Change", "change")
+            vol = _val(row, vol_col, "Volume", "volume")
+            avg_vol = _val(row, avg_vol_col, "Avg Volume", "Average Volume", "avg_volume", "Avg Vol")
+            rel_vol = _val(row, rel_vol_col, "Rel Volume", "Relative Volume", "rel_volume", "Rel Vol")
+            if not rel_vol and vol and avg_vol:
+                v_num, a_num = _parse_num(vol), _parse_num(avg_vol)
+                if v_num and a_num and a_num != 0:
+                    rel_vol = f"{v_num / a_num:.2f}"
+            atr_val = _parse_num(_val(row, atr_col, "ATR", "atr")) if atr_col else None
+            price_num = _parse_num(price) if price else None
+            atr_pct = round((atr_val / price_num * 100), 2) if atr_val and price_num and price_num != 0 else None
+            rows.append({
+                "ticker": t,
+                "price": price,
+                "change": change,
+                "volume": vol,
+                "avg_vol": avg_vol,
+                "rel_vol": rel_vol,
+                "atr_pct": atr_pct,
+            })
+        if rows and cache_key:
+            cache.put(cache_key, rows, ttl=ttl)
+        return rows
+    except Exception as e:
+        logger.warning("fetch_tickers_bulk_csv failed: %s", e)
         return []
 
 
