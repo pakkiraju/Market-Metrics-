@@ -334,11 +334,7 @@ def compute_rrg_data(
     if not vti:
         return []
 
-    vti_chg = vti.get("chg") or 0.0
-    vti_week = vti.get("week") or 0.0
-    vti_month = vti.get("month") or 0.0
     vti_qtr = vti.get("qtr") or 0.0
-    vti_hyear = vti.get("hyear") or 0.0
     vti_year = vti.get("year") or 0.0
 
     sector_by_ticker = {r["ticker"]: r for r in sector_rows}
@@ -347,27 +343,13 @@ def compute_rrg_data(
         r = sector_by_ticker.get(t)
         if not r:
             continue
-        chg_val = r.get("chg") or r.get("ochg") or 0.0
-        week_val = r.get("week") or 0.0
-        month_val = r.get("month") or 0.0
-        qtr_val = r.get("qtr") or 0.0
-        hyear_val = r.get("hyear") or 0.0
         year_val = r.get("year") or 0.0
-        # Tail points: year → hyear → qtr → month → week → today
-        # (X, Y) = (longer-term vs VTI, shorter-term vs VTI)
-        tail_raw = [
-            (year_val - vti_year, hyear_val - vti_hyear),
-            (hyear_val - vti_hyear, qtr_val - vti_qtr),
-            (qtr_val - vti_qtr, month_val - vti_month),
-            (month_val - vti_month, week_val - vti_week),
-            (week_val - vti_week, chg_val - vti_chg),
-        ]
+        qtr_val = r.get("qtr") or 0.0
         rows.append({
             "ticker": t,
             "name": SECTOR_NAMES.get(t, t),
             "rs_ratio_raw": year_val - vti_year,
             "rs_momentum_raw": qtr_val - vti_qtr,
-            "tail_raw": tail_raw,
         })
 
     if not rows:
@@ -388,10 +370,8 @@ def compute_rrg_data(
     for i, row in enumerate(rows):
         row["rs_ratio"] = _norm_r(ratio_vals[i])
         row["rs_momentum"] = _norm_m(mom_vals[i])
-        row["tail"] = [(_norm_r(x), _norm_m(y)) for x, y in row["tail_raw"]]
         del row["rs_ratio_raw"]
         del row["rs_momentum_raw"]
-        del row["tail_raw"]
 
     cache.put(cache_key, rows, ttl=MEDIUM)
     return rows

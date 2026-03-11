@@ -967,42 +967,27 @@ def _hex_to_rgba(hex_color: str, alpha: float = 1.0) -> str:
 
 
 def build_rrg_chart(rrg_data: list[dict]) -> go.Figure:
-    """RRG scatter: one trace per sector with distinct color. Tail: year → hyear → qtr → month → week → today."""
+    """RRG scatter: one point per sector with distinct color (no tails)."""
     if not rrg_data:
         return go.Figure()
 
-    has_tails = "tail" in rrg_data[0]
     fig = go.Figure()
 
     for i, r in enumerate(rrg_data):
         color = RRG_COLORS[i % len(RRG_COLORS)]
-        xs, ys = [r["rs_ratio"]], [r["rs_momentum"]]
-        if has_tails:
-            for tx, ty in reversed(r["tail"]):
-                xs.insert(0, tx)
-                ys.insert(0, ty)
-        # Text only at head (last point)
-        text_vals = [""] * (len(xs) - 1) + [r["ticker"]]
         fig.add_trace(go.Scatter(
-            x=xs, y=ys, mode="lines+markers+text",
-            text=text_vals, textposition="top center",
+            x=[r["rs_ratio"]], y=[r["rs_momentum"]], mode="markers+text",
+            text=[r["ticker"]], textposition="top center",
             textfont=dict(size=9, color=color),
-            line=dict(color=color, width=2, shape="spline", smoothing=0.3),
             marker=dict(size=10, color=color, line=dict(width=1, color=COLORS["border"]), symbol="circle"),
             name=r["name"],
-            customdata=[r["name"]] * len(xs),
-            hovertemplate="%{customdata} (%{text})<br>RS-Ratio: %{x:.1f}<br>RS-Momentum: %{y:.1f}<extra></extra>",
+            customdata=[r["name"]],
+            hovertemplate="%{customdata}<br>RS-Ratio: %{x:.1f}<br>RS-Momentum: %{y:.1f}<extra></extra>",
         ))
 
-    # Quadrant lines at 100; extend range to include all points
-    all_x, all_y = [], []
-    for r in rrg_data:
-        all_x.append(r["rs_ratio"])
-        all_y.append(r["rs_momentum"])
-        if has_tails:
-            for tx, ty in r["tail"]:
-                all_x.append(tx)
-                all_y.append(ty)
+    # Quadrant lines at 100; range from current points only
+    all_x = [r["rs_ratio"] for r in rrg_data]
+    all_y = [r["rs_momentum"] for r in rrg_data]
     x_range = [min(all_x) - 5, max(all_x) + 5] if all_x else [90, 110]
     y_range = [min(all_y) - 5, max(all_y) + 5] if all_y else [90, 110]
     fig.add_vline(x=100, line_dash="dot", line_color=COLORS["border_light"], opacity=0.6)
