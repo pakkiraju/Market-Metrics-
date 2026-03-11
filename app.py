@@ -143,9 +143,6 @@ app.index_string = f"""<!DOCTYPE html>
 app.layout = build_layout()
 register_callbacks(app)
 
-# Expose server for gunicorn (Render, etc.)
-server = app.server
-
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 8050))
