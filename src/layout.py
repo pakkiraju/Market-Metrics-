@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 from src.constants import (
     COLORS, KEY_METRIC_ROWS, INDEX_GROUPS, SECTOR_NAMES,
     STAGE_BAR_COLORS, STAGE_LABELS, FINVIZ_SCREENER_URLS,
-    build_metric_screener_url,
+    build_metric_screener_url, RRG_BENCHMARK, RRG_COLORS,
 )
 from src.styles import (
     DASHBOARD_STYLE, HEADER_STYLE, HEADER_LOGO_STYLE,
@@ -46,6 +46,7 @@ WIDGETS = [
     ("oneil",          "O'Neil",                     False),
     ("watchlist",      "Watchlist",                  False),
     ("sector",         "Sector SPDR ETFs",           False),
+    ("rrg",            "RRG Sector Rotation",        False),
     ("club97",         "97 Club",                    False),
     ("movers",         "9 Million Movers",           False),
     ("weekly",         "20% Weekly Movers",          False),
@@ -57,7 +58,7 @@ WIDGETS = [
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers + 20% Weekly + 4% Daily + Leading Industries enabled by default
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "club97", "movers", "weekly", "daily", "leading", "stage") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "leading", "stage") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -792,6 +793,89 @@ def build_stage_chart(counts: dict) -> go.Figure:
     return fig
 
 
+def _hex_to_rgba(hex_color: str, alpha: float = 1.0) -> str:
+    """Convert #RRGGBB to rgba(r,g,b,alpha)."""
+    hex_color = hex_color.lstrip("#")
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def build_rrg_chart(rrg_data: list[dict]) -> go.Figure:
+    """RRG scatter: one trace per sector with distinct color. Tail: year → hyear → qtr → month → week → today."""
+    if not rrg_data:
+        return go.Figure()
+
+    has_tails = "tail" in rrg_data[0]
+    fig = go.Figure()
+
+    for i, r in enumerate(rrg_data):
+        color = RRG_COLORS[i % len(RRG_COLORS)]
+        xs, ys = [r["rs_ratio"]], [r["rs_momentum"]]
+        if has_tails:
+            for tx, ty in reversed(r["tail"]):
+                xs.insert(0, tx)
+                ys.insert(0, ty)
+        # Text only at head (last point)
+        text_vals = [""] * (len(xs) - 1) + [r["ticker"]]
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, mode="lines+markers+text",
+            text=text_vals, textposition="top center",
+            textfont=dict(size=9, color=color),
+            line=dict(color=color, width=2, shape="spline", smoothing=0.3),
+            marker=dict(size=10, color=color, line=dict(width=1, color=COLORS["border"]), symbol="circle"),
+            name=r["name"],
+            customdata=[r["name"]] * len(xs),
+            hovertemplate="%{customdata} (%{text})<br>RS-Ratio: %{x:.1f}<br>RS-Momentum: %{y:.1f}<extra></extra>",
+        ))
+
+    # Quadrant lines at 100; extend range to include all points
+    all_x, all_y = [], []
+    for r in rrg_data:
+        all_x.append(r["rs_ratio"])
+        all_y.append(r["rs_momentum"])
+        if has_tails:
+            for tx, ty in r["tail"]:
+                all_x.append(tx)
+                all_y.append(ty)
+    x_range = [min(all_x) - 5, max(all_x) + 5] if all_x else [90, 110]
+    y_range = [min(all_y) - 5, max(all_y) + 5] if all_y else [90, 110]
+    fig.add_vline(x=100, line_dash="dot", line_color=COLORS["border_light"], opacity=0.6)
+    fig.add_hline(y=100, line_dash="dot", line_color=COLORS["border_light"], opacity=0.6)
+    fig.update_layout(
+        paper_bgcolor=COLORS["surface"],
+        plot_bgcolor=COLORS["surface"],
+        margin=dict(l=4, r=4, t=24, b=4),
+        showlegend=False,
+        xaxis=dict(
+            title=dict(text="RS-Ratio (1Y vs " + RRG_BENCHMARK + ")", font=dict(size=9, color=COLORS["text_muted"])),
+            tickfont=dict(size=8, color=COLORS["text_muted"]),
+            showgrid=True, gridcolor="rgba(255,255,255,0.05)",
+            zeroline=False, range=x_range,
+        ),
+        yaxis=dict(
+            title=dict(text="RS-Momentum (Qtr vs " + RRG_BENCHMARK + ")", font=dict(size=9, color=COLORS["text_muted"])),
+            tickfont=dict(size=8, color=COLORS["text_muted"]),
+            showgrid=True, gridcolor="rgba(255,255,255,0.05)",
+            zeroline=False, range=y_range,
+        ),
+        font=dict(family="Inter"),
+        height=340,
+        annotations=[
+            dict(x=0.98, y=0.98, xref="paper", yref="paper", text="Leading", showarrow=False,
+                 font=dict(size=8, color=COLORS["green_light"])),
+            dict(x=0.02, y=0.98, xref="paper", yref="paper", text="Weakening", showarrow=False,
+                 font=dict(size=8, color=COLORS["yellow"])),
+            dict(x=0.02, y=0.02, xref="paper", yref="paper", text="Lagging", showarrow=False,
+                 font=dict(size=8, color=COLORS["red_light"])),
+            dict(x=0.98, y=0.02, xref="paper", yref="paper", text="Improving", showarrow=False,
+                 font=dict(size=8, color=COLORS["accent"])),
+        ],
+    )
+    return fig
+
+
 def build_stage_summary(counts: dict) -> html.Div:
     stage2_total = counts.get("2A", 0) + counts.get("2B", 0) + counts.get("2C", 0)
     bullish = stage2_total > (counts.get("3", 0) + counts.get("4", 0))
@@ -1082,12 +1166,22 @@ def build_layout() -> html.Div:
                         initial_hidden=not DEFAULT_VISIBILITY.get("watchlist", True)),
             ], id="row-screeners", style=QUARTER_ROW_STYLE),
 
-            # ---- SECTOR ROW (full width) ----
+            # ---- SECTOR + RRG ROW ----
             html.Div([
                 _widget("sector", "Sector SPDR ETFs",
                         _loading_wrap("sector-content", [loading]),
                         initial_hidden=not DEFAULT_VISIBILITY.get("sector", True)),
-            ], id="row-sector", style=WIDE_ROW_STYLE),
+                _widget("rrg", "RRG Sector Rotation (vs " + RRG_BENCHMARK + ")",
+                        html.Div([
+                            dcc.Store(id="rrg-figure-store"),
+                            dcc.Loading(
+                                html.Div(id="rrg-content", children=[loading], style=CHART_WRAP_STYLE),
+                                type="circle", color=COLORS["accent"], style={"minHeight": "40px"},
+                            ),
+                        ], style={"minHeight": "340px"}),
+                        variant="teal",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("rrg", True)),
+            ], id="row-sector", style=HALF_ROW_STYLE),
 
             # ---- MIDDLE 4 ----
             html.Div([

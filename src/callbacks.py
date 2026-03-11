@@ -14,6 +14,7 @@ from src.constants import COLORS
 from src.calculations import (
     compute_all_key_metrics,
     compute_sector_data,
+    compute_rrg_data,
     compute_97_club,
     compute_9m_movers,
     compute_20pct_weekly,
@@ -30,6 +31,7 @@ from src.layout import (
     build_key_metrics_table,
     build_metrics_bar_chart,
     build_sector_table,
+    build_rrg_chart,
     build_97_club_table,
     build_9m_movers_table,
     build_20pct_weekly_table,
@@ -343,6 +345,71 @@ def register_callbacks(app):
         except Exception as e:
             logger.exception("Sector data failed: %s", e)
             return _err_div(e)
+
+    @app.callback(
+        [
+            Output("rrg-figure-store", "data"),
+            Output("rrg-content", "children"),
+        ],
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_rrg(n_intervals, n_clicks):
+        try:
+            rrg_data = compute_rrg_data()
+            fig = build_rrg_chart(rrg_data)
+            graph = dcc.Graph(
+                id="rrg-graph",
+                figure=fig,
+                config={"displayModeBar": False},
+                style={"height": "100%", "width": "100%"},
+            )
+            return fig.to_dict(), graph
+        except Exception as e:
+            logger.exception("RRG failed: %s", e)
+            return None, _err_div(e)
+
+    @app.callback(
+        Output("rrg-graph", "figure"),
+        Input("rrg-graph", "hoverData"),
+        State("rrg-figure-store", "data"),
+        prevent_initial_call=True,
+    )
+    def rrg_hover_dim(hover_data, store_data):
+        if not store_data:
+            return no_update
+        hovered_idx = None
+        if hover_data and hover_data.get("points"):
+            hovered_idx = hover_data["points"][0].get("curveNumber")
+        if hovered_idx is None:
+            return store_data
+        import copy
+        from src.layout import _hex_to_rgba
+        fig = copy.deepcopy(store_data)
+        traces = fig.get("data", [])
+        if not traces:
+            return no_update
+        dim_alpha = 0.18
+        for i, tr in enumerate(traces):
+            color = tr.get("line", {}).get("color", tr.get("marker", {}).get("color", "#888"))
+            full = color
+            dimmed = _hex_to_rgba(color, dim_alpha) if isinstance(color, str) and color.startswith("#") else f"rgba(136,136,136,{dim_alpha})"
+            if hovered_idx is not None and i != hovered_idx:
+                if "line" in tr:
+                    tr.setdefault("line", {})["color"] = dimmed
+                if "marker" in tr:
+                    tr.setdefault("marker", {})["opacity"] = dim_alpha
+                    tr["marker"]["color"] = dimmed
+            else:
+                if "line" in tr:
+                    tr.setdefault("line", {})["color"] = full
+                if "marker" in tr:
+                    tr.setdefault("marker", {})["opacity"] = 1.0
+                    tr["marker"]["color"] = full
+        return fig
 
     @app.callback(
         [

@@ -212,6 +212,20 @@ SECTOR_ETFS = [
     "RSP", "QQQE",
 ]
 
+# RRG sector colors (distinct, dark-theme friendly)
+RRG_COLORS = [
+    "#06b6d4", "#22c55e", "#eab308", "#f97316", "#a855f7",
+    "#ec4899", "#14b8a6", "#3b82f6", "#84cc16", "#f43f5e",
+    "#8b5cf6",
+]
+
+# Sector SPDRs only (for RRG; excludes RSP, QQQE)
+SECTOR_SPDRS_RRG = [
+    "XLK", "XLV", "XLC", "XLY", "XLU", "XLI",
+    "XLE", "XLRE", "XLF", "XLB", "XLP",
+]
+RRG_BENCHMARK = "VTI"
+
 SECTOR_NAMES = {
     "XLK": "Technology",
     "XLV": "Healthcare",

@@ -848,6 +848,50 @@ def fetch_sector_data(cache_key: str = "sector_data") -> list[dict]:
     return rows
 
 
+def fetch_benchmark_performance(benchmark: str = "VTI", cache_key: str = "rrg_benchmark") -> dict | None:
+    """Fetch benchmark (VTI) performance from FinViz via same quote.ashx as sector ETFs.
+    Returns {chg, week, month, qtr, hyear, year} or None if unavailable."""
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        from src.finviz_elite import fetch_elite_stock, is_elite_configured
+        if not is_elite_configured():
+            return None
+        s = fetch_elite_stock(benchmark)
+        if not s:
+            return None
+
+        def _safe_pct(val):
+            p = _parse_pct(val)
+            return 0.0 if pd.isna(p) else float(p)
+
+        def _q(key, *fallbacks):
+            v = s.get(key)
+            if v is not None and str(v).strip() and str(v).strip() != "-":
+                return v
+            for k in fallbacks:
+                v = s.get(k)
+                if v is not None and str(v).strip() and str(v).strip() != "-":
+                    return v
+            return ""
+
+        result = {
+            "chg": _safe_pct(_q("Change", "change")),
+            "week": _safe_pct(_q("Perf Week", "Week")),
+            "month": _safe_pct(_q("Perf Month", "Month")),
+            "qtr": _safe_pct(_q("Perf Quarter", "Perf Quarter", "Quarter")),
+            "hyear": _safe_pct(_q("Perf Half Y", "Perf Half Y", "Half Y")),
+            "year": _safe_pct(_q("Perf Year", "Perf Y", "Perf YTD", "Return% 1Y", "1Y")),
+        }
+        cache.put(cache_key, result, ttl=MEDIUM)
+        return result
+    except Exception as e:
+        logger.warning("fetch_benchmark_performance %s failed: %s", benchmark, e)
+        return None
+
+
 def fetch_gainers_screener(cache_key: str = "finviz_gainers", ttl: int = MEDIUM) -> list[dict]:
     """Top gainers from FinViz (pre-built screen). Uses Elite export.ashx when configured."""
     cached = cache.get(cache_key)
