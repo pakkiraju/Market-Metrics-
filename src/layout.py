@@ -55,9 +55,9 @@ WIDGETS = [
 ]
 
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
-# Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers + 20% Weekly + 4% Daily enabled by default
+# Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers + 20% Weekly + 4% Daily + Leading Industries enabled by default
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "club97", "movers", "weekly", "daily") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "club97", "movers", "weekly", "daily", "leading") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -1125,7 +1125,10 @@ def build_layout() -> html.Div:
                 _widget("leading", "Leading Industries — Top 20%",
                         _loading_wrap("leading-content", [loading]),
                         variant="teal",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("leading", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("leading", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "leading", {"marginLeft": "8px"}),
+                        ])),
                 _widget("stage", "Stage Analysis",
                         _loading_wrap("stage-content", [loading]),
                         initial_hidden=not DEFAULT_VISIBILITY.get("stage", True)),

@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 
 from src import cache
-from src.cache import FAST, MEDIUM, SLOW
+from src.cache import MEDIUM
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +183,42 @@ def _find_csv_col(keys: list, *substrings: str, exact: str | None = None) -> str
     return None
 
 
-def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = FAST) -> list[dict]:
+def fetch_industry_map_from_overview(cache_key: str = "leading_industry_map", ttl: int = MEDIUM) -> dict[str, str]:
+    """Fetch ticker->industry from FinViz Overview export ($1B+, USA). Industry/Sector columns from v=111."""
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS
+
+        if not is_elite_configured():
+            return {}
+        url = FINVIZ_EXPORT_URLS.get("club97")
+        if not url:
+            return {}
+        data = fetch_export_from_url(url)
+        if not data:
+            return {}
+
+        industry_map = {}
+        for row in data:
+            t = str(row.get("Ticker", row.get("ticker", "")) or "").strip().upper()
+            if not t:
+                continue
+            ind = str(row.get("Industry", row.get("industry", "")) or "").strip()
+            sec = str(row.get("Sector", row.get("sector", "")) or "").strip()
+            industry_map[t] = ind or sec or ""
+        if industry_map:
+            cache.put(cache_key, industry_map, ttl=ttl)
+        return industry_map
+    except Exception as e:
+        logger.warning("fetch_industry_map_from_overview failed: %s", e)
+        return {}
+
+
+def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> list[dict]:
     """Fetch screener data directly from FINVIZ_EXPORT_URLS. Returns list of dicts for table display.
     Same pattern as Minervini/O'Neil - one URL, get the data, display it."""
     cached = cache.get(cache_key)
@@ -259,7 +294,7 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = FAST) -> li
         return []
 
 
-def fetch_20pct_weekly_from_urls(ttl: int = FAST) -> list[dict]:
+def fetch_20pct_weekly_from_urls(ttl: int = MEDIUM) -> list[dict]:
     """Fetch 20% weekly movers from both +20 and -20 FinViz URLs. Merges Performance + Technical for ATR."""
     cached = cache.get("20pct_weekly")
     if cached is not None:
@@ -377,7 +412,7 @@ def fetch_20pct_weekly_from_urls(ttl: int = FAST) -> list[dict]:
         return []
 
 
-def fetch_4pct_daily_from_url(ttl: int = FAST) -> list[dict]:
+def fetch_4pct_daily_from_url(ttl: int = MEDIUM) -> list[dict]:
     """Fetch 4% daily gainers from FinViz URL. Merges Performance (price, vol) + Technical (ATR) for full data."""
     cached = cache.get("4pct_daily")
     if cached is not None:
@@ -574,12 +609,14 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
     # FinViz: idx_sp500 = S&P 500, idx_ndx = NASDAQ 100, idx_dji = DJIA, idx_rut = Russell 2000.
     # geo_usa = all US-listed; sh_price_o1 = price over $1; sh_avgvol_o1000 = 1M; cap_1to = $1B+ mcap.
     # sh_curvol_9000tox = 9M+ volume; sh_relvol_1.25to = 1.25+ rel vol.
+    # Leading Industries: $1B+, USA, RSI>60, then top 20% by weekly+monthly RS; top 4 by day.
     filter_sets_by_group = {
         "ind_QQQE": [["idx_ndx"]],
         "ind_RSP": [["idx_sp500"]],
         "ind_DJIA": [["idx_dji"]],
         "ind_RUS2000": [["idx_rut"]],
         "ind_Composite": [["idx_sp500"], ["idx_ndx"], ["idx_dji"]],
+        "ind_leading": [["cap_1to", "geo_usa", "sh_avgvol_o1000", "sh_price_o1"]],
         "ind_$1B+": [["cap_1to", "geo_usa", "sh_avgvol_o1000", "sh_price_o1"]],
         "ind_9m_movers": [["cap_1to", "geo_usa", "sh_curvol_9000tox", "sh_price_o1", "sh_relvol_1.25to"]],
         "ind_USA": [["geo_usa", "sh_price_o1", "sh_avgvol_o1000"]],
@@ -797,7 +834,7 @@ def fetch_sector_data(cache_key: str = "sector_data") -> list[dict]:
     return rows
 
 
-def fetch_gainers_screener(cache_key: str = "finviz_gainers", ttl: int = FAST) -> list[dict]:
+def fetch_gainers_screener(cache_key: str = "finviz_gainers", ttl: int = MEDIUM) -> list[dict]:
     """Top gainers from FinViz (pre-built screen). Uses Elite export.ashx when configured."""
     cached = cache.get(cache_key)
     if cached is not None:
@@ -867,7 +904,7 @@ def fetch_watchlist_quotes(tickers: list[str]) -> list[dict]:
             pass
 
     if rows:
-        cache.put(cache_key, rows, ttl=FAST)
+        cache.put(cache_key, rows, ttl=MEDIUM)
     return rows
 
 

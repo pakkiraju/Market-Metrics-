@@ -26,6 +26,8 @@ _DISK_PERSISTENT_KEYS = frozenset({
     "9m_movers",
     "20pct_weekly",
     "4pct_daily",
+    "leading_industries",
+    "leading_industry_map",
 })
 
 # Key prefixes that persist to disk (e.g. watchlist_quotes_AAPL,MSFT)
@@ -114,6 +116,26 @@ def put(key: str, value, ttl: int = 0):
         if _should_persist(key):
             disk_expiry = time.time() + ttl if ttl > 0 else time.time() + 86400 * 365  # 1 year if no TTL
             _save_to_disk(key, value, disk_expiry)
+
+
+def warm_from_disk():
+    """Preload all persistent keys from disk into memory. Call on app startup for instant display on restart."""
+    with _lock:
+        for key in _DISK_PERSISTENT_KEYS:
+            if key not in _store:
+                disk_result = _load_from_disk(key)
+                if disk_result is not None:
+                    disk_val, monotonic_expiry = disk_result
+                    _store[key] = (disk_val, monotonic_expiry)
+        # Also load prefix-matched keys (e.g. watchlist_quotes_*)
+        if _CACHE_DIR.exists():
+            for p in _CACHE_DIR.iterdir():
+                if p.suffix == ".json" and p.stem not in _store:
+                    if any(p.stem.startswith(prefix) for prefix in _DISK_PERSISTENT_PREFIXES):
+                        disk_result = _load_from_disk(p.stem)
+                        if disk_result is not None:
+                            disk_val, monotonic_expiry = disk_result
+                            _store[p.stem] = (disk_val, monotonic_expiry)
 
 
 def invalidate(key: str | None = None):

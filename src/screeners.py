@@ -12,7 +12,7 @@ from src.data_fetcher import (
     _fetch_screener,
 )
 from src import cache
-from src.cache import FAST, MEDIUM
+from src.cache import MEDIUM
 
 
 def _get_atr_pct_from_row(row: dict) -> float | None:
@@ -99,7 +99,7 @@ def episodic_pivot_screener() -> list[dict]:
             table="Performance",
             cache_key="qulla_ep_usa",
             order="-change",
-            ttl=FAST,
+            ttl=MEDIUM,
         )
         atr_map = _fetch_atr_map(ep_filters, "qulla_ep_usa", ft="3")
         results = []
@@ -120,7 +120,7 @@ def episodic_pivot_screener() -> list[dict]:
                     "tag": "EP",
                 })
         if results:
-            cache.put("qulla_episodic_v2", results, ttl=FAST)
+            cache.put("qulla_episodic_v2", results, ttl=MEDIUM)
         return results
     except Exception:
         return []

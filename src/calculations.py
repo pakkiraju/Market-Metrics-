@@ -7,10 +7,11 @@ import numpy as np
 import pandas as pd
 
 from src import cache
-from src.cache import FAST, MEDIUM, SLOW
+from src.cache import MEDIUM
 from src.data_fetcher import (
     fetch_group_indicators,
     fetch_group_indicators_from_url,
+    fetch_industry_map_from_overview,
     fetch_sector_data as fetch_sector_data_raw,
     fetch_20pct_weekly_from_urls,
     fetch_4pct_daily_from_url,
@@ -389,7 +390,7 @@ def compute_stage_analysis(tickers: list[str],
         counts[s] = int((stage_series == s).sum())
 
     result = {"counts": counts, "tickers": stages}
-    cache.put(cache_key, result, ttl=SLOW)
+    cache.put(cache_key, result, ttl=MEDIUM)
     return result
 
 
@@ -439,7 +440,7 @@ def compute_97_club(tickers: list[str]) -> list[dict]:
             "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
         })
     if rows:
-        cache.put("97_club", rows, ttl=FAST)
+        cache.put("97_club", rows, ttl=MEDIUM)
     return rows
 
 
@@ -477,7 +478,7 @@ def compute_9m_movers(tickers: list[str]) -> list[dict]:
             "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
         })
     if rows:
-        cache.put("9m_movers", rows, ttl=FAST)
+        cache.put("9m_movers", rows, ttl=MEDIUM)
     return rows
 
 
@@ -487,7 +488,7 @@ def compute_9m_movers(tickers: list[str]) -> list[dict]:
 
 def compute_20pct_weekly(tickers: list[str]) -> list[dict]:
     """20% weekly movers from FinViz ta_perf_1w20o (up) and ta_perf_1w20u (down) URLs."""
-    return fetch_20pct_weekly_from_urls(ttl=FAST)
+    return fetch_20pct_weekly_from_urls(ttl=MEDIUM)
 
 
 # -----------------------------------------------------------------------
@@ -496,7 +497,7 @@ def compute_20pct_weekly(tickers: list[str]) -> list[dict]:
 
 def compute_4pct_daily(tickers: list[str]) -> list[dict]:
     """4% daily gainers from FinViz ta_perf_4to-d URL (all US stocks, not just composite indices)."""
-    rows = fetch_4pct_daily_from_url(ttl=FAST)
+    rows = fetch_4pct_daily_from_url(ttl=MEDIUM)
     for r in rows:
         r["chg"] = r.get("change", "")
     def _chg_val(r):
@@ -515,20 +516,32 @@ def compute_4pct_daily(tickers: list[str]) -> list[dict]:
 
 def compute_leading_industries(tickers: list[str],
                                industry_map: dict[str, str]) -> list[dict]:
-    """Top 20% industries by weekly+monthly strength."""
+    """Top 20% industries by weekly+monthly relative strength. Data from FinViz: $1B+, USA, RSI>60.
+    Green = top 20% on BOTH weekly and monthly RS. Shows 4 best-performing stocks for the day per industry."""
     cached = cache.get("leading_industries")
-    if cached is not None:
+    if cached is not None and len(cached) > 0:
         return cached
 
-    indicators = compute_group_indicators([], cache_key="ind_Composite")
+    # Use ind_$1B+ (same universe as 97 Club)
+    indicators = compute_group_indicators([], cache_key="ind_$1B+")
     if indicators.empty:
         return []
 
+    # Industry/Sector from Overview export (FinViz merge may omit these columns)
+    overview_map = fetch_industry_map_from_overview()
     if industry_map:
         indicators["industry"] = indicators["ticker"].map(industry_map)
-    elif "industry" not in indicators.columns:
+    elif overview_map:
+        indicators["industry"] = indicators["ticker"].map(overview_map)
+    elif "industry" in indicators.columns:
+        pass
+    else:
         indicators["industry"] = indicators.get("sector", pd.Series(dtype=str))
+    # Fill empty with sector, then "Uncategorized"
     indicators["industry"] = indicators["industry"].fillna("").astype(str).str.strip()
+    sector_fallback = indicators.get("sector", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+    indicators["industry"] = indicators["industry"].where(indicators["industry"] != "", sector_fallback)
+    indicators["industry"] = indicators["industry"].where(indicators["industry"] != "", "Uncategorized")
     indicators = indicators[indicators["industry"] != ""]
 
     grouped = indicators.groupby("industry").agg(
@@ -539,9 +552,12 @@ def compute_leading_industries(tickers: list[str],
     grouped["week_rank"] = grouped["week_avg"].rank(pct=True)
     grouped["month_rank"] = grouped["month_avg"].rank(pct=True)
 
-    top_20_week = set(grouped[grouped["week_rank"] >= 0.80]["industry"])
-    top_20_month = set(grouped[grouped["month_rank"] >= 0.80]["industry"])
+    top_20_week = set(grouped[grouped["week_rank"] >= 0.80]["industry"].dropna())
+    top_20_month = set(grouped[grouped["month_rank"] >= 0.80]["industry"].dropna())
     top_industries = top_20_week | top_20_month
+    # If ranks are all NaN (e.g. missing Perf Week/Month), show all industries by week strength
+    if not top_industries:
+        top_industries = set(grouped["industry"].dropna())
 
     grouped = grouped[grouped["industry"].isin(top_industries)]
     grouped = grouped.sort_values("week_avg", ascending=False)
@@ -560,5 +576,6 @@ def compute_leading_industries(tickers: list[str],
             "t1": top4[0], "t2": top4[1], "t3": top4[2], "t4": top4[3],
         })
 
-    cache.put("leading_industries", rows, ttl=SLOW)
+    if rows:
+        cache.put("leading_industries", rows, ttl=MEDIUM)
     return rows

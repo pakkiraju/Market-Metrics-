@@ -189,6 +189,8 @@ FINVIZ_SCREENER_URLS = {
     "minervini": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa%2Csh_avgvol_o1000%2Csh_price_o1%2Cta_sma200_pa",
     # Qullamaggie Episodic Pivot (gap up 10%+, rel vol 2+)
     "qullamaggie": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa%2Cta_gap_u10%2Csh_relvol_o2%2Csh_price_o1%2Csh_avgvol_o1000",
+    # Leading Industries: $1B+, USA, RSI>60 (top 20% by weekly+monthly RS computed in-app)
+    "leading": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1,tad_0_rsi:14:rsi:d|abveq:::|value:::60&o=-change",
 }
 
 # Export URLs for data fetching (export.ashx returns CSV). v=111 Overview, v=141 Performance (Perf Week), v=171 Technical (ATR).

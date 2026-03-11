@@ -377,8 +377,29 @@ def register_callbacks(app):
             Output("leading-content", "children"),
             Output("stage-content", "children"),
         ],
-        Input("interval-refresh", "n_intervals"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+        ],
         prevent_initial_call=False,
     )
-    def refresh_group_e(_):
-        return [_disabled_msg, _disabled_msg]
+    def refresh_group_e(n_intervals, n_clicks):
+        try:
+            leading_data = compute_leading_industries([], {})
+            leading_table = build_leading_industries_table(leading_data)
+            stage_result = compute_stage_analysis([])
+            counts = stage_result.get("counts", {})
+            stage_chart = build_stage_chart(counts)
+            stage_summary = build_stage_summary(counts)
+            stage_content = html.Div([
+                stage_summary,
+                dcc.Graph(
+                    figure=stage_chart,
+                    config={"displayModeBar": False},
+                    style={"height": "100%", "width": "100%"},
+                ),
+            ], style=CHART_WRAP_STYLE)
+            return [leading_table, stage_content]
+        except Exception as e:
+            logger.exception("Group E (Leading/Stage) failed: %s", e)
+            return [_err_div(e), _disabled_msg]

@@ -20,6 +20,10 @@ from dash import Dash
 from src.layout import build_layout
 from src.callbacks import register_callbacks
 from src.constants import COLORS
+from src import cache
+
+# Preload cache from disk so widgets show instantly on restart
+cache.warm_from_disk()
 
 logging.basicConfig(
     level=logging.INFO,
