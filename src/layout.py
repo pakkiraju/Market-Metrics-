@@ -55,9 +55,9 @@ WIDGETS = [
 ]
 
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
-# Key Metrics + bar charts + Qullamaggie enabled by default
+# Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers enabled by default
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "club97", "movers") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -370,12 +370,8 @@ def build_ticker_grid(tickers: list[dict]) -> html.Div:
     return html.Div(pills, style=TICKER_GRID_STYLE)
 
 
-def build_minervini_table(data: list[dict]) -> html.Table:
-    """Minervini screener: Ticker, Price, Avg Vol, Rel Vol, Change, Vol."""
-    if not data:
-        return html.Div("No results", style={
-            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
-        })
+def _build_screener_table(data: list[dict]) -> html.Table:
+    """Shared table for screener data: Ticker, Price, Avg Vol, Rel Vol, Change, Vol."""
     headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol"]
     rows = []
     for r in data:
@@ -398,17 +394,64 @@ def build_minervini_table(data: list[dict]) -> html.Table:
     return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px"])
 
 
+def build_minervini_table(data: list[dict]) -> html.Table:
+    """Minervini screener: Ticker, Price, Avg Vol, Rel Vol, Change, Vol."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data)
+
+
+def _parse_vol(val):
+    """Parse volume string (e.g. '48.29M', '28,578,735') to float. Handles K/M/B suffixes."""
+    if val is None or val == "":
+        return 0
+    import re
+    s = str(val).strip().replace(",", "").replace("$", "").replace("%", "")
+    if not s or s == "-":
+        return 0
+    m = re.match(r"([\d.-]+)\s*([KMB])?", s, re.I)
+    if m:
+        v = float(m.group(1))
+        suf = (m.group(2) or "").upper()
+        if suf == "K":
+            v *= 1e3
+        elif suf == "M":
+            v *= 1e6
+        elif suf == "B":
+            v *= 1e9
+        return v
+    try:
+        return float(s)
+    except ValueError:
+        return 0
+
+
 def _format_screener_vol(vol_raw, avg_raw):
     """Format volume and avg vol for screener tables (FinViz avg_vol often in thousands)."""
-    try:
-        vol_num = float(str(vol_raw).replace(",", "")) if vol_raw else 0
-        avg_num = float(str(avg_raw).replace(",", "")) if avg_raw else 0
-    except (ValueError, TypeError):
-        return "", ""
-    vol_str = f"{vol_num/1e6:.2f}M" if vol_num >= 1e6 else f"{vol_num/1e3:.1f}K" if vol_num >= 1e3 else str(int(vol_num))
+    vol_num = _parse_vol(vol_raw)
+    avg_num = _parse_vol(avg_raw)
+    vol_str = f"{vol_num/1e6:.2f}M" if vol_num >= 1e6 else f"{vol_num/1e3:.1f}K" if vol_num >= 1e3 else str(int(vol_num)) if vol_num else ""
     avg_adj = avg_num * 1000 if (avg_num and avg_num < 50000) else avg_num
     avg_str = f"{avg_adj/1e6:.2f}M" if avg_adj and avg_adj >= 1e6 else f"{avg_adj/1e3:.1f}K" if avg_adj and avg_adj >= 1e3 else str(int(avg_adj)) if avg_adj else ""
     return vol_str, avg_str
+
+
+def _tag_badge(tag: str) -> html.Span:
+    """Style tag: PS = red background, EP = green background."""
+    tag = (tag or "").strip()
+    if not tag:
+        return html.Span("")
+    if tag == "PS":
+        style = {"backgroundColor": COLORS["red_cell"], "color": COLORS["red_light"],
+                 "padding": "1px 4px", "borderRadius": "2px", "fontSize": "8px", "fontWeight": 600}
+    elif tag == "EP":
+        style = {"backgroundColor": COLORS["green_cell"], "color": COLORS["green_light"],
+                 "padding": "1px 4px", "borderRadius": "2px", "fontSize": "8px", "fontWeight": 600}
+    else:
+        style = {"fontSize": "8px"}
+    return html.Span(tag, style=style)
 
 
 def build_qullamaggie_table(data: list[dict]) -> html.Table:
@@ -426,6 +469,12 @@ def build_qullamaggie_table(data: list[dict]) -> html.Table:
         except (ValueError, TypeError):
             chg_num = 0
         vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        tag_raw = r.get("tag", "")
+        # Tag can be "EP", "PS", "EP, PS", etc. — render each with its color
+        tag_parts = [p.strip() for p in str(tag_raw).split(",") if p.strip()]
+        tag_content = html.Span([
+            _tag_badge(t) for t in tag_parts
+        ], style={"display": "flex", "gap": "4px", "flexWrap": "wrap"}) if tag_parts else html.Span("")
         rows.append([
             {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
              "style": TABLE_CELL_STYLE},
@@ -435,9 +484,96 @@ def build_qullamaggie_table(data: list[dict]) -> html.Table:
             {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
              "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
             vol_str,
-            r.get("tag", ""),
+            {"text": tag_content, "style": TABLE_CELL_STYLE},
         ])
     return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px"])
+
+
+def build_watchlist_table(data: list[dict]) -> html.Table:
+    """Watchlist: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, Remove."""
+    if not data:
+        return html.Div("No tickers in watchlist. Add some above.", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", ""]
+    rows = []
+    for r in data:
+        chg_val = r.get("change")
+        try:
+            chg_num = float(str(chg_val).replace("%", "")) if chg_val not in (None, "") else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        t = r["ticker"]
+        remove_btn = html.Button(
+            "×",
+            id={"type": "wl-remove", "ticker": t},
+            n_clicks=0,
+            style={
+                "background": "transparent",
+                "border": "none",
+                "color": COLORS["red_light"],
+                "cursor": "pointer",
+                "fontSize": "12px",
+                "fontWeight": 700,
+                "padding": "0 4px",
+                "lineHeight": 1,
+            },
+        )
+        rows.append([
+            {"text": _clickable_ticker(t, {"fontWeight": 700}),
+             "style": TABLE_CELL_STYLE},
+            str(r.get("price", "")),
+            avg_str,
+            str(r.get("rel_vol", "")),
+            {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
+             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
+            {"text": remove_btn, "style": {**TABLE_CELL_STYLE, "width": "24px", "padding": "2px"}},
+        ])
+    return _table(
+        headers,
+        rows,
+        col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "28px"],
+    )
+
+
+def build_oneil_table(data: list[dict]) -> html.Table:
+    """O'Neil / CANSLIM screener: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ROE, Net Margin."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", "ROE", "Net Margin"]
+    rows = []
+    for r in data:
+        chg_val = r.get("change")
+        try:
+            chg_num = float(str(chg_val).replace("%", "")) if chg_val not in (None, "") else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        roe_val = r.get("roe")
+        margin_val = r.get("net_margin")
+        roe_str = f"{roe_val:.1f}%" if roe_val is not None else ""
+        margin_str = f"{margin_val:.1f}%" if margin_val is not None else ""
+        rows.append([
+            {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
+             "style": TABLE_CELL_STYLE},
+            str(r.get("price", "")),
+            avg_str,
+            str(r.get("rel_vol", "")),
+            {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
+             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
+            roe_str,
+            margin_str,
+        ])
+    return _table(
+        headers,
+        rows,
+        col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px", "65px"],
+    )
 
 
 # -----------------------------------------------------------------------
@@ -496,28 +632,12 @@ def build_sector_table(sector_data: list[dict]) -> html.Table:
 # -----------------------------------------------------------------------
 
 def build_97_club_table(club_data: list[dict]) -> html.Table:
-    headers = ["Ticker", "Stage", "Day RS", "Week RS", "Month RS", "ATR %", "ATR Ext", "TML"]
-    rows = []
-    for r in club_data:
-        ticker_st = {"fontWeight": 700, "cursor": "pointer"}
-        if r.get("tml"):
-            ticker_st["color"] = "#60a5fa"
-            ticker_st["backgroundColor"] = COLORS["blue_tml_bg"]
-
-        rows.append([
-            {"text": _clickable_ticker(r["ticker"], ticker_st),
-             "style": TABLE_CELL_STYLE},
-            {"text": html.Span(r["stage"], style=stage_badge_style(r["stage"])),
-             "style": TABLE_CELL_STYLE},
-            f"{r.get('rs_day', 0):.1f}",
-            f"{r.get('rs_week', 0):.1f}",
-            f"{r.get('rs_month', 0):.1f}",
-            f"{r.get('atr_pct', 0)}%",
-            str(r.get("atr_ext", "")),
-            {"text": "Y" if r.get("tml") else "",
-             "style": {**TABLE_CELL_STYLE, "color": "#60a5fa"}},
-        ])
-    return _table(headers, rows)
+    """97 Club: same layout as Minervini (Ticker, Price, Avg Vol, Rel Vol, Change, Vol) from export URL."""
+    if not club_data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(club_data)
 
 
 # -----------------------------------------------------------------------
@@ -525,22 +645,12 @@ def build_97_club_table(club_data: list[dict]) -> html.Table:
 # -----------------------------------------------------------------------
 
 def build_9m_movers_table(data: list[dict]) -> html.Table:
-    headers = ["Ticker", "Vol.", "Rel Vol", "Chg", "Stage", "ATR %", "ATR Ext"]
-    rows = []
-    for r in data:
-        rows.append([
-            {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
-             "style": TABLE_CELL_STYLE},
-            {"text": f"{r.get('volume', 0):,}", "style": {**TABLE_CELL_STYLE, "fontSize": "8px"}},
-            str(r.get("rel_vol", "")),
-            {"text": f"{r.get('chg', 0)}%",
-             "style": {**TABLE_CELL_STYLE, "color": chg_color(r.get("chg", 0))}},
-            {"text": html.Span(r.get("stage", ""), style=stage_badge_style(r.get("stage", "1"))),
-             "style": TABLE_CELL_STYLE},
-            f"{r.get('atr_pct', 0)}%",
-            str(r.get("atr_ext", "")),
-        ])
-    return _table(headers, rows)
+    """9M Movers: same layout as Minervini (Ticker, Price, Avg Vol, Rel Vol, Change, Vol) from export URL."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data)
 
 
 def build_20pct_weekly_table(data: list[dict]) -> html.Table:
@@ -700,7 +810,7 @@ def build_watchlist_body() -> html.Div:
             dcc.Input(
                 id="watchlist-input",
                 type="text",
-                placeholder="Add ticker (e.g. AAPL)",
+                placeholder="Add ticker (e.g. AAPL or AMD, aapl, GOOGL)",
                 debounce=True,
                 style={
                     "backgroundColor": COLORS["surface2"],
@@ -912,15 +1022,24 @@ def build_layout() -> html.Div:
                 _widget("qulla", "Qullamaggie",
                         _loading_wrap("qulla-content"),
                         variant="green",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("qulla", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("qulla", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "qullamaggie", {"marginLeft": "8px"}),
+                        ])),
                 _widget("minervini", "Minervini",
                         _loading_wrap("minervini-content"),
                         variant="purple",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("minervini", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("minervini", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "minervini", {"marginLeft": "8px"}),
+                        ])),
                 _widget("oneil", "O'Neil",
                         _loading_wrap("oneil-content"),
                         variant="orange",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("oneil", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("oneil", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "oneil", {"marginLeft": "8px"}),
+                        ])),
                 _widget("watchlist", "Watchlist",
                         build_watchlist_body(),
                         initial_hidden=not DEFAULT_VISIBILITY.get("watchlist", True)),
@@ -938,10 +1057,16 @@ def build_layout() -> html.Div:
                 _widget("club97", "97 Club",
                         _loading_wrap("club97-content", [loading]),
                         variant="green",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("club97", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("club97", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "club97", {"marginLeft": "8px"}),
+                        ])),
                 _widget("movers", "9 Million Movers",
                         _loading_wrap("movers-content", [loading]),
-                        initial_hidden=not DEFAULT_VISIBILITY.get("movers", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("movers", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "9m_movers", {"marginLeft": "8px"}),
+                        ])),
                 _widget("weekly", "20% Weekly Movers",
                         _loading_wrap("weekly-content", [loading]),
                         variant="red",

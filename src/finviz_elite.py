@@ -85,7 +85,13 @@ def is_elite_configured() -> bool:
     return False
 
 
-TABLE_CODES = {"Overview": "111", "Valuation": "121", "Performance": "141", "Technical": "171"}
+TABLE_CODES = {
+    "Overview": "111",
+    "Valuation": "121",
+    "Performance": "141",
+    "Technical": "171",
+    "Financial": "161",
+}
 
 
 def _parse_elite_table(resp_text: str) -> tuple[list[str], list[dict]]:
@@ -268,16 +274,53 @@ def fetch_csv_from_url(url: str) -> list[dict]:
         return []
 
 
+def fetch_export_from_url(url: str) -> list[dict]:
+    """Fetch all rows from export.ashx URL with pagination (20 per page). Same as fetch_csv_from_url but gets all pages."""
+    auth_params = get_auth_params()
+    if not auth_params:
+        return []
+    sep = "&" if "?" in url else "?"
+    base_url = f"{url}{sep}auth={auth_params['auth']}"
+    req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    all_rows = []
+    page = 0
+    while True:
+        page_url = f"{base_url}&r={1 + page * 20}" if page > 0 else base_url
+        try:
+            resp = requests.get(page_url, headers=req_headers, timeout=30, verify=False)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.warning("fetch_export_from_url failed: %s", e)
+            break
+        if resp.text.strip().startswith("<"):
+            break
+        import csv
+        import io
+        try:
+            reader = csv.DictReader(io.StringIO(resp.text))
+            rows = list(reader)
+            if rows and "ticker" in rows[0] and "Ticker" not in rows[0]:
+                for r in rows:
+                    r["Ticker"] = r.get("ticker", "")
+            all_rows.extend(rows)
+        except Exception:
+            break
+        if len(rows) < 20:
+            break
+        page += 1
+        time.sleep(0.5)
+    return all_rows
+
+
 def _fetch_elite_csv(filters: list[str] | str, table: str, order: str, ft: str = "3") -> list[dict]:
-    """Fetch Elite screener data via export.ashx (CSV). Uses auth= query param per FinViz API docs.
-    filters: list of simple filters (joined by comma) OR raw filter string for complex tad_* filters.
-    ft: filter type (3=technical, 4=performance). Retries on 429 with exponential backoff."""
+    """Fetch Elite screener data via export.ashx (CSV). Single request, 20 rows."""
     auth_params = get_auth_params()
     if not auth_params:
         return []
 
     table_code = TABLE_CODES.get(table, table) if isinstance(table, str) else table
     filter_str = filters if isinstance(filters, str) else ",".join(filters) if filters else ""
+    req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     params = {
         "v": table_code,
         "f": filter_str,
@@ -285,8 +328,6 @@ def _fetch_elite_csv(filters: list[str] | str, table: str, order: str, ft: str =
         "ft": ft,
         **auth_params,
     }
-    req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-
     for attempt in range(4):
         try:
             resp = requests.get(
@@ -318,7 +359,6 @@ def _fetch_elite_csv(filters: list[str] | str, table: str, order: str, ft: str =
         logger.warning("Elite export.ashx failed after 4 retries (429)")
         return []
 
-    # If we got HTML (login page) instead of CSV, fall through to screener
     if resp.text.strip().startswith("<"):
         logger.debug("Elite export.ashx returned HTML (login?), trying screener.ashx")
         return []
@@ -328,7 +368,6 @@ def _fetch_elite_csv(filters: list[str] | str, table: str, order: str, ft: str =
     try:
         reader = csv.DictReader(io.StringIO(resp.text))
         rows = list(reader)
-        # Normalize column names (CSV may use "Ticker" or "ticker")
         if rows and "ticker" in rows[0] and "Ticker" not in rows[0]:
             for r in rows:
                 r["Ticker"] = r.get("ticker", "")

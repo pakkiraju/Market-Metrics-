@@ -16,8 +16,6 @@ from src.calculations import (
     compute_sector_data,
     compute_97_club,
     compute_9m_movers,
-    compute_20pct_weekly,
-    compute_4pct_daily,
     compute_leading_industries,
     compute_stage_analysis,
 )
@@ -39,7 +37,9 @@ from src.layout import (
     build_stage_summary,
     build_ticker_grid,
     build_minervini_table,
+    build_oneil_table,
     build_qullamaggie_table,
+    build_watchlist_table,
     WIDGETS, ALL_WIDGET_IDS,
     CHART_WRAP_STYLE,
 )
@@ -150,6 +150,7 @@ def register_callbacks(app):
         ],
         [
             Input("btn-watchlist-add", "n_clicks"),
+            Input("watchlist-input", "n_submit"),
         ],
         [
             State("watchlist-input", "value"),
@@ -157,16 +158,25 @@ def register_callbacks(app):
         ],
         prevent_initial_call=True,
     )
-    def add_to_watchlist(n_clicks, ticker_input, current_list):
+    def add_to_watchlist(n_clicks, n_submit, ticker_input, store_data):
         if not ticker_input or not ticker_input.strip():
+            return no_update, no_update
+        # Parse comma-separated tickers (e.g. "AMD, aapl, GOOGL")
+        raw_tickers = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
+        if not raw_tickers:
             return no_update, ""
-        ticker = ticker_input.strip().upper()
-        if current_list is None:
-            current_list = []
-        if ticker not in current_list:
-            current_list.append(ticker)
-            _save_watchlist_to_file(current_list)
-        return current_list, ""
+        # Use file as source of truth; fallback to store if file empty (e.g. first add)
+        current = _load_watchlist_from_file()
+        if not current and store_data:
+            current = list(store_data)
+        added = False
+        for ticker in raw_tickers:
+            if ticker and ticker not in current:
+                current.append(ticker)
+                added = True
+        if added:
+            _save_watchlist_to_file(current)
+        return (current if added else no_update), ""
 
     # ------------------------------------------------------------------
     # 5. Watchlist: remove ticker (pattern-matching callback)
@@ -181,61 +191,54 @@ def register_callbacks(app):
         if not ctx.triggered_id or not isinstance(ctx.triggered_id, dict):
             return no_update
         ticker = ctx.triggered_id.get("ticker")
-        if ticker and current_list and ticker in current_list:
-            current_list.remove(ticker)
-            _save_watchlist_to_file(current_list)
-            return current_list
-        return no_update
+        if not ticker or not current_list or ticker not in current_list:
+            return no_update
+        # Only remove on actual click (n_clicks > 0). Prevents false triggers when
+        # table re-renders and component count changes (add/remove rows).
+        try:
+            idx = current_list.index(ticker)
+            if idx >= len(n_clicks_list) or not (n_clicks_list[idx] or 0):
+                return no_update
+        except (ValueError, IndexError, TypeError):
+            return no_update
+        # Use file as source, return new list (never mutate)
+        current = _load_watchlist_from_file()
+        if ticker not in current:
+            return no_update
+        new_list = [t for t in current if t != ticker]
+        _save_watchlist_to_file(new_list)
+        # Invalidate old cache so deleted ticker is not shown from stale cache
+        old_key = f"watchlist_quotes_{','.join(sorted(current))}"
+        cache.invalidate(old_key)
+        return new_list
 
     # ------------------------------------------------------------------
-    # 6. Watchlist: render from store
+    # 6. Watchlist: fetch Finviz data and render table
     # ------------------------------------------------------------------
     @app.callback(
         Output("watchlist-content", "children"),
-        Input("watchlist-store", "data"),
+        [
+            Input("watchlist-store", "data"),
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+        ],
     )
-    def render_watchlist(wl_data):
+    def render_watchlist(wl_data, n_intervals, n_clicks):
         if not wl_data:
             return html.Div("No tickers in watchlist. Add some above.", style={
                 "color": COLORS["text_muted"], "fontSize": "9px",
                 "padding": "8px",
             })
-
-        from src.styles import ticker_pill_style
-        pills = []
-        for t in wl_data:
-            pill_st = ticker_pill_style("green")
-            pill_st["cursor"] = "pointer"
-            pill_st["position"] = "relative"
-            pill_st["paddingRight"] = "16px"
-
-            pills.append(html.Span([
-                html.Span(
-                    t,
-                    className="tv-ticker",
-                    style={"cursor": "pointer"},
-                ),
-                html.Span(
-                    "x",
-                    id={"type": "wl-remove", "ticker": t},
-                    n_clicks=0,
-                    style={
-                        "position": "absolute",
-                        "top": "-1px",
-                        "right": "1px",
-                        "fontSize": "8px",
-                        "color": COLORS["red_light"],
-                        "cursor": "pointer",
-                        "fontWeight": 700,
-                        "lineHeight": "1",
-                    },
-                ),
-            ], style={**pill_st, "display": "inline-block", "position": "relative"}))
-
-        return html.Div(pills, style={
-            "display": "flex", "flexWrap": "wrap", "gap": "3px",
-            "padding": "3px",
-        })
+        try:
+            from src.data_fetcher import fetch_watchlist_quotes
+            data = fetch_watchlist_quotes(wl_data)
+            if not data:
+                # Fallback: show tickers with placeholder when Finviz returns no data
+                data = [{"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"} for t in wl_data]
+            return build_watchlist_table(data)
+        except Exception as e:
+            logger.exception("Watchlist fetch failed: %s", e)
+            return _err_div(e)
 
     # ==================================================================
     #  PARALLEL WIDGET LOADING
@@ -312,20 +315,32 @@ def register_callbacks(app):
     )
     def refresh_group_b(n_intervals, n_clicks):
         try:
-            data = qullamaggie_screener()
-            qulla_table = build_qullamaggie_table(data)
-            return [qulla_table, _disabled_msg, _disabled_msg]
+            qulla_data = qullamaggie_screener()
+            qulla_table = build_qullamaggie_table(qulla_data)
+            minervini_data = minervini_screener()
+            minervini_table = build_minervini_table(minervini_data)
+            oneil_data = oneil_screener()
+            oneil_table = build_oneil_table(oneil_data)
+            return [qulla_table, minervini_table, oneil_table]
         except Exception as e:
-            logger.exception("Qullamaggie failed: %s", e)
+            logger.exception("Group B failed: %s", e)
             return [_err_div(e), _disabled_msg, _disabled_msg]
 
     @app.callback(
         Output("sector-content", "children"),
-        Input("interval-refresh", "n_intervals"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+        ],
         prevent_initial_call=False,
     )
-    def refresh_group_c(_):
-        return _disabled_msg
+    def refresh_group_c(n_intervals, n_clicks):
+        try:
+            sector_data = compute_sector_data()
+            return build_sector_table(sector_data)
+        except Exception as e:
+            logger.exception("Sector data failed: %s", e)
+            return _err_div(e)
 
     @app.callback(
         [
@@ -334,11 +349,22 @@ def register_callbacks(app):
             Output("weekly-content", "children"),
             Output("daily-content", "children"),
         ],
-        Input("interval-refresh", "n_intervals"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+        ],
         prevent_initial_call=False,
     )
-    def refresh_group_d(_):
-        return [_disabled_msg, _disabled_msg, _disabled_msg, _disabled_msg]
+    def refresh_group_d(n_intervals, n_clicks):
+        try:
+            club97_data = compute_97_club([])
+            club97_table = build_97_club_table(club97_data)
+            movers_data = compute_9m_movers([])
+            movers_table = build_9m_movers_table(movers_data)
+            return [club97_table, movers_table, _disabled_msg, _disabled_msg]
+        except Exception as e:
+            logger.exception("Group D failed: %s", e)
+            return [_err_div(e), _disabled_msg, _disabled_msg, _disabled_msg]
 
     @app.callback(
         [

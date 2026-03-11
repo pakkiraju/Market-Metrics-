@@ -314,19 +314,113 @@ def minervini_screener(indicators=None) -> list[dict]:
         return []
 
 
-def oneil_screener(indicators=None) -> list[dict]:
-    """Placeholder: William O'Neil / CANSLIM screener.
+# O'Neil / CANSLIM: EPS growth, positive ROE, positive net margin, US
+ONEIL_FILTERS = (
+    "fa_epsyoy_o25,fa_epsyoy1_o25,fa_epsyoyttm_pos,"
+    "fa_netmargin_pos,fa_roe_pos,geo_usa"
+)
 
-    V2 will implement CAN SLIM criteria:
-    - C: Current quarterly earnings growth
-    - A: Annual earnings growth
-    - N: New highs / new products
-    - S: Supply and demand (volume)
-    - L: Leader or laggard (RS)
-    - I: Institutional sponsorship
-    - M: Market direction
+
+def _parse_pct(val) -> float | None:
+    """Parse percentage string (e.g. '25.5%', '25.5', '-') to float or None."""
+    if val is None or val == "" or str(val).strip() in ("-", "—"):
+        return None
+    s = str(val).strip().replace("%", "").replace(",", "")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _fetch_oneil_from_url() -> tuple[pd.DataFrame | None, dict[str, dict]]:
+    """Fetch O'Neil via Elite export.ashx. Returns (Financial df, ticker->{avg_vol,rel_vol} from Performance)."""
+    from src.finviz_elite import _fetch_elite_csv, is_elite_configured
+
+    if not is_elite_configured():
+        return None, {}
+    # ft=2 = fundamental filter type for fa_* filters
+    financial_data = _fetch_elite_csv(ONEIL_FILTERS, "Financial", "-change", ft="2")
+    perf_data = _fetch_elite_csv(ONEIL_FILTERS, "Performance", "-change", ft="2")
+    df = pd.DataFrame(financial_data) if financial_data else None
+    # Build ticker -> {avg_vol, rel_vol} from Performance (has Avg Vol, Rel Vol)
+    vol_map = {}
+    if perf_data:
+        first = perf_data[0]
+        ticker_col = "Ticker" if "Ticker" in first else "ticker"
+        avg_col = next((c for c in first if "average" in c.lower() and "vol" in c.lower()), "Average Volume")
+        rel_col = next((c for c in first if "relative" in c.lower() and "vol" in c.lower()), "Relative Volume")
+        for r in perf_data:
+            t = str(r.get(ticker_col, "")).strip().upper()
+            if t:
+                vol_map[t] = {
+                    "avg_vol": r.get(avg_col, r.get("Average Volume", r.get("avg_volume", ""))),
+                    "rel_vol": r.get(rel_col, r.get("Relative Volume", r.get("rel_volume", ""))),
+                }
+    return df, vol_map
+
+
+def oneil_screener(indicators=None) -> list[dict]:
+    """O'Neil / CANSLIM screener.
+
+    Uses Finviz filters: EPS YoY >25%, EPS YoY1 >25%, EPS TTM pos, Net Margin pos, ROE pos, USA.
+    Fetches ROE and Net Profit Margin, filters to ROE + Net Margin >= 25%.
     """
-    return []
+    cached = cache.get("oneil_table")
+    if cached is not None:
+        return cached
+    try:
+        df, vol_map = _fetch_oneil_from_url()
+        if df is None or df.empty:
+            return []
+
+        ticker_col = "Ticker" if "Ticker" in df.columns else "ticker"
+        # Finviz Financial view: ROE, Profit M (Net Profit Margin); Performance has Avg Vol, Rel Vol
+        roe_col = next(
+            (c for c in df.columns if "roe" in c.lower() or "return on equity" in c.lower()),
+            None,
+        )
+        margin_col = next(
+            (
+                c
+                for c in df.columns
+                if ("net" in c.lower() and "margin" in c.lower())
+                or c.lower() in ("profit m", "profit margin", "net margin")
+            ),
+            None,
+        )
+
+        rows = []
+        for _, r in df.iterrows():
+            t = str(r.get(ticker_col, "")).strip().upper()
+            if not t:
+                continue
+
+            roe_val = _parse_pct(r.get(roe_col) if roe_col else None)
+            margin_val = _parse_pct(r.get(margin_col) if margin_col else None)
+
+            # Filter: ROE + Net Profit Margin >= 25%
+            roe_num = roe_val if roe_val is not None else 0
+            margin_num = margin_val if margin_val is not None else 0
+            if roe_num + margin_num < 25:
+                continue
+
+            vol_info = vol_map.get(t, {})
+            rows.append({
+                "ticker": t,
+                "price": r.get("Price", r.get("price", "")),
+                "avg_vol": vol_info.get("avg_vol", ""),
+                "rel_vol": vol_info.get("rel_vol", ""),
+                "change": r.get("Change", r.get("change", "")),
+                "volume": r.get("Volume", r.get("volume", "")),
+                "roe": roe_val,
+                "net_margin": margin_val,
+            })
+
+        if rows:
+            cache.put("oneil_table", rows, ttl=MEDIUM)
+        return rows
+    except Exception:
+        return []
 
 
 def watchlist_tickers() -> list[dict]:

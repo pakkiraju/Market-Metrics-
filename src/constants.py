@@ -179,6 +179,22 @@ FINVIZ_SCREENER_URLS = {
     "4pct_daily": "https://elite.finviz.com/export.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-price&ar=10",
     "20pct_weekly_up": "https://elite.finviz.com/export.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1wup&ft=3&o=-change",
     "20pct_weekly_down": "https://elite.finviz.com/export.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1wdown&ft=3&o=-change",
+    # 9M Movers: $1B+ cap, 9M+ volume, 1.25+ rel vol (screener for link)
+    "9m_movers": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,geo_usa,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to",
+    # 97 Club: $1B+ universe (screener for link)
+    "club97": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1",
+    # O'Neil / CANSLIM: EPS growth, ROE, net margin
+    "oneil": "https://elite.finviz.com/screener.ashx?v=161&f=fa_epsyoy_o25%2Cfa_epsyoy1_o25%2Cfa_epsyoyttm_pos%2Cfa_netmargin_pos%2Cfa_roe_pos%2Cgeo_usa",
+    # Minervini Trend Template (base filters; full template uses tad_*)
+    "minervini": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa%2Csh_avgvol_o1000%2Csh_price_o1%2Cta_sma200_pa",
+    # Qullamaggie Episodic Pivot (gap up 10%+, rel vol 2+)
+    "qullamaggie": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa%2Cta_gap_u10%2Csh_relvol_o2%2Csh_price_o1%2Csh_avgvol_o1000",
+}
+
+# Export URLs for data fetching (export.ashx returns CSV). v=111 (Overview) has Price, Change, Volume, Average Volume, Relative Volume.
+FINVIZ_EXPORT_URLS = {
+    "9m_movers": "https://elite.finviz.com/export.ashx?v=111&f=cap_1to,geo_usa,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to",
+    "club97": "https://elite.finviz.com/export.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1",
 }
 
 # ---------- Sector SPDR tickers ----------

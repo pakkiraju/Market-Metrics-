@@ -14,11 +14,31 @@ SLOW = 7200      # 2 hours
 KEY_METRICS_TTL = 3600
 
 # Keys that persist to disk (survive server restarts)
-_DISK_PERSISTENT_KEYS = frozenset({"all_key_metrics"})
+_DISK_PERSISTENT_KEYS = frozenset({
+    "all_key_metrics",
+    "qulla_episodic_v2",
+    "qulla_parabolic_v2",
+    "qulla_breakouts_v2",
+    "minervini_table",
+    "oneil_table",
+    "sector_data",
+    "97_club",
+    "9m_movers",
+})
+
+# Key prefixes that persist to disk (e.g. watchlist_quotes_AAPL,MSFT)
+_DISK_PERSISTENT_PREFIXES = frozenset({"watchlist_quotes_"})
 
 _store: dict[str, tuple[object, float]] = {}
 _lock = threading.Lock()
 _CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache"
+
+
+def _should_persist(key: str) -> bool:
+    """True if key should be persisted to disk."""
+    if key in _DISK_PERSISTENT_KEYS:
+        return True
+    return any(key.startswith(p) for p in _DISK_PERSISTENT_PREFIXES)
 
 
 def _disk_path(key: str) -> Path:
@@ -27,7 +47,7 @@ def _disk_path(key: str) -> Path:
 
 def _load_from_disk(key: str) -> tuple[object, float] | None:
     """Load value from disk if present and not expired. Returns (value, monotonic_expiry) or None."""
-    if key not in _DISK_PERSISTENT_KEYS:
+    if not _should_persist(key):
         return None
     path = _disk_path(key)
     if not path.exists():
@@ -54,7 +74,7 @@ def _load_from_disk(key: str) -> tuple[object, float] | None:
 
 def _save_to_disk(key: str, value: object, expiry: float):
     """Persist value to disk."""
-    if key not in _DISK_PERSISTENT_KEYS:
+    if not _should_persist(key):
         return
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     path = _disk_path(key)
@@ -89,7 +109,7 @@ def put(key: str, value, ttl: int = 0):
     with _lock:
         expiry = time.monotonic() + ttl if ttl > 0 else float("inf")
         _store[key] = (value, expiry)
-        if key in _DISK_PERSISTENT_KEYS:
+        if _should_persist(key):
             disk_expiry = time.time() + ttl if ttl > 0 else time.time() + 86400 * 365  # 1 year if no TTL
             _save_to_disk(key, value, disk_expiry)
 
@@ -101,7 +121,12 @@ def invalidate(key: str | None = None):
             _store.clear()
             for k in _DISK_PERSISTENT_KEYS:
                 _disk_path(k).unlink(missing_ok=True)
+            # Remove disk files for prefix-matched keys (e.g. watchlist_quotes_*)
+            if _CACHE_DIR.exists():
+                for p in _CACHE_DIR.iterdir():
+                    if p.suffix == ".json" and any(p.stem.startswith(prefix) for prefix in _DISK_PERSISTENT_PREFIXES):
+                        p.unlink(missing_ok=True)
         elif key in _store:
             del _store[key]
-            if key in _DISK_PERSISTENT_KEYS:
+            if _should_persist(key):
                 _disk_path(key).unlink(missing_ok=True)

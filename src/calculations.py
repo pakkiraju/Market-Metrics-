@@ -396,65 +396,46 @@ def compute_stage_analysis(tickers: list[str],
 # -----------------------------------------------------------------------
 
 def compute_97_club(tickers: list[str]) -> list[dict]:
-    """$1B+ stocks in top 3% Relative Strength on Day, Week, and Month.
-    Falls back to top 15 by min(day,week,month) rank when none meet strict 97+."""
+    """$1B+ stocks in top 3% relative strength across Day, Week, Month. Data from FinViz API (Overview+Performance+Technical)."""
     cached = cache.get("97_club")
     if cached is not None:
         return cached
 
-    indicators = compute_group_indicators([], cache_key="ind_Composite")
+    indicators = fetch_group_indicators([], cache_key="ind_$1B+")
     if indicators.empty:
         return []
 
-    valid = indicators.dropna(subset=["day_chg", "week_chg", "month_chg"]).copy()
-    if valid.empty:
-        return []
+    # Relative strength: top 3% = rank >= 97
+    for col in ["day_chg", "week_chg", "month_chg"]:
+        if col in indicators.columns:
+            indicators[f"rs_rank_{col}"] = indicators[col].rank(pct=True, method="average") * 100
 
-    if "market_cap" in valid.columns:
-        valid = valid[(valid["market_cap"].fillna(0) >= 1e9)]
-        if valid.empty:
-            valid = indicators.dropna(subset=["day_chg", "week_chg", "month_chg"]).copy()
+    mask = True
+    for col in ["day_chg", "week_chg", "month_chg"]:
+        rcol = f"rs_rank_{col}"
+        if rcol in indicators.columns:
+            mask = mask & (indicators[rcol] >= 97)
 
-    for period in ["day_chg", "week_chg", "month_chg"]:
-        col = f"rs_rank_{period}"
-        valid[col] = valid[period].rank(pct=True, method="average") * 100
-
-    mask = (
-        (valid["rs_rank_day_chg"] >= 97) &
-        (valid["rs_rank_week_chg"] >= 97) &
-        (valid["rs_rank_month_chg"] >= 97)
-    )
-    club = valid[mask].copy()
-
-    if club.empty:
-        valid["rs_min"] = valid[["rs_rank_day_chg", "rs_rank_week_chg", "rs_rank_month_chg"]].min(axis=1)
-        club = valid.nlargest(15, "rs_min").copy()
+    valid = indicators[mask].copy()
+    valid = valid.sort_values("day_chg", ascending=False).head(35)
 
     rows = []
-    for _, r in club.iterrows():
-        stage = classify_stage(r.to_dict())
-        rs_day = _to_float(r.get("rs_rank_day_chg")) or 0.0
-        rs_week = _to_float(r.get("rs_rank_week_chg")) or 0.0
-        rs_month = _to_float(r.get("rs_rank_month_chg")) or 0.0
-        tml = rs_day >= 99 and rs_week >= 99
-        atr_v = _to_float(r.get("atr"))
-        sma20_v = _to_float(r.get("sma20"))
-        close_v = _to_float(r.get("close"))
-        atr_ext = 0.0
-        if atr_v and sma20_v and close_v and atr_v != 0:
-            atr_ext = round((close_v - sma20_v) / atr_v, 2)
+    for _, r in valid.iterrows():
+        avg_v = r.get("avg_volume")
+        rel_v = r.get("rel_volume")
+        vol = r.get("volume")
+        if rel_v is None and vol and avg_v and avg_v != 0:
+            rel_v = vol / avg_v
         rows.append({
             "ticker": r["ticker"],
-            "stage": stage,
-            "rs_day": round(rs_day, 1),
-            "rs_week": round(rs_week, 1),
-            "rs_month": round(rs_month, 1),
-            "atr_pct": round(_to_float(r.get("atr_pct")) or 0.0, 2),
-            "atr_ext": atr_ext,
-            "tml": tml,
+            "price": r.get("close") or "",
+            "change": r.get("day_chg") if r.get("day_chg") is not None else "",
+            "volume": vol or "",
+            "avg_vol": avg_v if avg_v is not None else "",
+            "rel_vol": round(rel_v, 2) if rel_v is not None else "",
         })
-
-    cache.put("97_club", rows, ttl=FAST)
+    if rows:
+        cache.put("97_club", rows, ttl=FAST)
     return rows
 
 
@@ -463,53 +444,34 @@ def compute_97_club(tickers: list[str]) -> list[dict]:
 # -----------------------------------------------------------------------
 
 def compute_9m_movers(tickers: list[str]) -> list[dict]:
+    """9M+ volume, 1.25+ rel vol. Data from FinViz API (Overview+Performance+Technical) with Avg Vol, Rel Vol."""
     cached = cache.get("9m_movers")
     if cached is not None:
         return cached
 
-    indicators = compute_group_indicators([], cache_key="ind_Composite")
+    indicators = fetch_group_indicators([], cache_key="ind_9m_movers")
     if indicators.empty:
         return []
 
-    vol_ok = indicators["volume"].fillna(0) >= 9_000_000
-    cap_ok = indicators["market_cap"].fillna(0) >= 1e9
-    rel = indicators.get("rel_volume")
-    if rel is not None:
-        rel_ok = rel.fillna(0) >= 1.25
-    else:
-        avg = indicators["avg_volume"].fillna(float("inf"))
-        rel_ok = (indicators["volume"].fillna(0) / avg.replace(0, float("inf"))).fillna(0) >= 1.25
-    mask = vol_ok & cap_ok & rel_ok
-    movers = indicators[mask].copy()
+    valid = indicators.sort_values("day_chg", ascending=False).head(40)
 
     rows = []
-    for _, r in movers.iterrows():
-        stage = classify_stage(r.to_dict())
-        vol = _to_float(r.get("volume")) or 0.0
-        rel_vol_val = _to_float(r.get("rel_volume"))
-        if rel_vol_val is None:
-            avg_vol = _to_float(r.get("avg_volume"))
-            rel_vol = round(vol / avg_vol, 2) if avg_vol and avg_vol != 0 else 0.0
-        else:
-            rel_vol = round(rel_vol_val, 2)
-        atr_v = _to_float(r.get("atr"))
-        sma20_v = _to_float(r.get("sma20"))
-        close_v = _to_float(r.get("close"))
-        atr_ext = 0.0
-        if atr_v and sma20_v and close_v and atr_v != 0:
-            atr_ext = round((close_v - sma20_v) / atr_v, 2)
+    for _, r in valid.iterrows():
+        avg_v = r.get("avg_volume")
+        rel_v = r.get("rel_volume")
+        vol = r.get("volume")
+        if rel_v is None and vol and avg_v and avg_v != 0:
+            rel_v = vol / avg_v
         rows.append({
             "ticker": r["ticker"],
-            "volume": int(vol),
-            "rel_vol": rel_vol,
-            "chg": round(_to_float(r.get("day_chg")) or 0.0, 2),
-            "stage": stage,
-            "atr_pct": round(_to_float(r.get("atr_pct")) or 0.0, 2),
-            "atr_ext": atr_ext,
+            "price": r.get("close") or "",
+            "change": r.get("day_chg") if r.get("day_chg") is not None else "",
+            "volume": vol or "",
+            "avg_vol": avg_v if avg_v is not None else "",
+            "rel_vol": round(rel_v, 2) if rel_v is not None else "",
         })
-
-    rows.sort(key=lambda x: x["volume"], reverse=True)
-    cache.put("9m_movers", rows, ttl=FAST)
+    if rows:
+        cache.put("9m_movers", rows, ttl=FAST)
     return rows
 
 

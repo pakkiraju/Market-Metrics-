@@ -157,6 +157,101 @@ def _fetch_screener_multi(filter_sets: list[list[str]], table: str,
     return pd.DataFrame(dfs)
 
 
+def _get_csv_val(row: dict, *candidates: str):
+    """Get value from row using first matching key (case-insensitive). Handles FinViz export column variations."""
+    row_lower = {str(k).strip().lower(): (k, v) for k, v in row.items()}
+    for c in candidates:
+        cl = str(c).strip().lower()
+        if cl in row_lower:
+            _, v = row_lower[cl]
+            if v is not None and str(v).strip() not in ("", "-"):
+                return v
+    return ""
+
+
+def _find_csv_col(keys: list, *substrings: str, exact: str | None = None) -> str | None:
+    """Find first key where all substrings appear (case-insensitive). exact= prefers key equal to exact (case-insensitive)."""
+    if exact:
+        el = str(exact).lower()
+        for k in keys:
+            if str(k).strip().lower() == el:
+                return k
+    for k in keys:
+        kl = str(k).lower()
+        if all(s.lower() in kl for s in substrings):
+            return k
+    return None
+
+
+def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = FAST) -> list[dict]:
+    """Fetch screener data directly from FINVIZ_EXPORT_URLS. Returns list of dicts for table display.
+    Same pattern as Minervini/O'Neil - one URL, get the data, display it."""
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS
+
+        if not is_elite_configured():
+            return []
+        url = FINVIZ_EXPORT_URLS.get(url_key)
+        if not url:
+            return []
+        data = fetch_export_from_url(url)
+        if not data:
+            return []
+
+        # Dynamic column detection (FinViz export column names vary by view)
+        keys = list(data[0].keys())
+        ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+        price_col = _find_csv_col(keys, exact="Price") or _find_csv_col(keys, "price")
+        change_col = _find_csv_col(keys, exact="Change") or _find_csv_col(keys, "change")
+        vol_col = _find_csv_col(keys, exact="Volume") or _find_csv_col(keys, "volume")
+        avg_vol_col = _find_csv_col(keys, "average", "vol") or _find_csv_col(keys, "avg", "vol")
+        rel_vol_col = _find_csv_col(keys, "relative", "vol") or _find_csv_col(keys, "rel", "vol")
+
+        def _val(row: dict, col: str | None, *fallbacks: str):
+            if col and row.get(col) not in (None, "", "-"):
+                v = row.get(col)
+                if v is not None and str(v).strip():
+                    return v
+            return _get_csv_val(row, *fallbacks) if fallbacks else ""
+
+        rows = []
+        for row in data:
+            t = str(row.get(ticker_col, "") or "").strip().upper()
+            if not t:
+                continue
+            price = _val(row, price_col, "Price", "price", "Last", "Close")
+            change = _val(row, change_col, "Change", "change")
+            vol = _val(row, vol_col, "Volume", "volume")
+            avg_vol = _val(row, avg_vol_col, "Avg Volume", "Average Volume", "avg_volume", "Avg Vol")
+            rel_vol = _val(row, rel_vol_col, "Rel Volume", "Relative Volume", "rel_volume", "Rel Vol")
+            # Compute rel_vol from volume/avg_vol when missing
+            if not rel_vol and vol and avg_vol:
+                v_num, a_num = _parse_num(vol), _parse_num(avg_vol)
+                if v_num and a_num and a_num != 0:
+                    rel_vol = f"{v_num / a_num:.2f}"
+            rows.append({
+                "ticker": t,
+                "price": price,
+                "change": change,
+                "volume": vol,
+                "avg_vol": avg_vol,
+                "rel_vol": rel_vol,
+            })
+        if rows and not any(r.get("price") or r.get("change") or r.get("volume") for r in rows[:3]):
+            logger.info("FinViz export CSV keys (first row): %s", list(data[0].keys()) if data else [])
+        if rows:
+            cache.put(cache_key, rows, ttl=ttl)
+        return rows
+    except Exception as e:
+        logger.warning("fetch_screener_from_url failed: %s", e)
+        return []
+
+
 def fetch_metric_count(url: str, cache_key: str) -> int:
     """Fetch screener URL, return row count. Cached 1hr. 2s delay before each fetch to avoid rate limit."""
     cached = cache.get(cache_key)
@@ -309,7 +404,7 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
 
     # FinViz: idx_sp500 = S&P 500, idx_ndx = NASDAQ 100, idx_dji = DJIA, idx_rut = Russell 2000.
     # geo_usa = all US-listed; sh_price_o1 = price over $1; sh_avgvol_o1000 = 1M; cap_1to = $1B+ mcap.
-    # All data comes from FinViz screeners; no CSV ticker lists used.
+    # sh_curvol_9000tox = 9M+ volume; sh_relvol_1.25to = 1.25+ rel vol.
     filter_sets_by_group = {
         "ind_QQQE": [["idx_ndx"]],
         "ind_RSP": [["idx_sp500"]],
@@ -317,6 +412,7 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
         "ind_RUS2000": [["idx_rut"]],
         "ind_Composite": [["idx_sp500"], ["idx_ndx"], ["idx_dji"]],
         "ind_$1B+": [["cap_1to", "geo_usa", "sh_avgvol_o1000", "sh_price_o1"]],
+        "ind_9m_movers": [["cap_1to", "geo_usa", "sh_curvol_9000tox", "sh_price_o1", "sh_relvol_1.25to"]],
         "ind_USA": [["geo_usa", "sh_price_o1", "sh_avgvol_o1000"]],
     }
     filter_sets = filter_sets_by_group.get(cache_key, [["idx_sp500"], ["idx_ndx"]])
@@ -557,6 +653,48 @@ def fetch_gainers_screener(cache_key: str = "finviz_gainers", ttl: int = FAST) -
     except Exception as e:
         logger.warning("FinViz gainers failed: %s", e)
         return []
+
+
+def fetch_watchlist_quotes(tickers: list[str]) -> list[dict]:
+    """Fetch day's data from Finviz quote.ashx for watchlist tickers.
+    Returns list of dicts with ticker, price, change, volume, avg_vol, rel_vol."""
+    from src.finviz_elite import fetch_elite_stock, is_elite_configured
+
+    if not is_elite_configured() or not tickers:
+        return []
+
+    cache_key = f"watchlist_quotes_{','.join(sorted(tickers))}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    rows = []
+    for t in tickers[:50]:
+        try:
+            s = fetch_elite_stock(t)
+            if not s:
+                continue
+            price = s.get("Price", s.get("price", ""))
+            change = s.get("Change", s.get("change", ""))
+            # Finviz quote.ashx uses "Volume", "Avg Volume", "Rel Volume"
+            volume = s.get("Volume", s.get("volume", ""))
+            avg_vol = s.get("Avg Volume", s.get("Average Volume", s.get("avg_volume", "")))
+            rel_vol = s.get("Rel Volume", s.get("Relative Volume", s.get("rel_volume", "")))
+            rows.append({
+                "ticker": t,
+                "price": price,
+                "change": change,
+                "volume": volume,
+                "avg_vol": avg_vol,
+                "rel_vol": rel_vol,
+            })
+            time.sleep(_FINVIZ_DELAY_SEC)
+        except Exception:
+            pass
+
+    if rows:
+        cache.put(cache_key, rows, ttl=FAST)
+    return rows
 
 
 def fetch_current_quotes(tickers: list[str], cache_key: str | None = None) -> pd.DataFrame:
