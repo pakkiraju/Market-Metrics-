@@ -25,7 +25,7 @@
    - **Root Directory**: `Market Metrics Dashboard` (if repo root is parent) or leave blank
    - **Runtime**: Python 3
    - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `gunicorn app:server --bind 0.0.0.0:$PORT`
+   - **Start Command**: `gunicorn app:server --bind 0.0.0.0:$PORT --timeout 120 --workers 1`
 5. Add environment variable:
    - **Key**: `FINVIZ_API_KEY`
    - **Value**: your FinViz Elite API key
@@ -39,6 +39,7 @@
 
 ## Notes
 
+- **Security**: If your API key ever appears in logs, rotate it immediately in your FinViz account and update the Render env var.
 - **Free tier**: Service spins down after ~15 min of inactivity. First visit after that may take 30–60 seconds to wake up.
 - **Cache**: In-memory cache resets on each deploy. Disk cache (`.cache/`) is ephemeral on Render.
 - **Root directory**: If your repo root is `PradlyPortal` and this app is in `Market Metrics Dashboard/`, set **Root Directory** to `Market Metrics Dashboard` in Render.

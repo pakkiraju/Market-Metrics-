@@ -4,6 +4,7 @@ plotly>=5.24
 python-dotenv>=1.0
 pandas>=2.2
 lxml>=5.0
+cssselect>=1.2.0
 numpy>=1.26
 requests>=2.31
 gunicorn>=21.0
