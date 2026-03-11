@@ -806,17 +806,31 @@ def fetch_sector_data(cache_key: str = "sector_data") -> list[dict]:
             atr_val = _parse_num(s.get("ATR (14)", s.get("ATR", "")))
             atr_pct = round((atr_val / price * 100), 2) if atr_val and price and price != 0 else None
 
+            def _safe_pct(val):
+                p = _parse_pct(val)
+                return 0.0 if pd.isna(p) else float(p)
+
+            def _q(key, *fallbacks):
+                v = s.get(key)
+                if v is not None and str(v).strip() and str(v).strip() != "-":
+                    return v
+                for k in fallbacks:
+                    v = s.get(k)
+                    if v is not None and str(v).strip() and str(v).strip() != "-":
+                        return v
+                return ""
+
             rows.append({
                 "sector": ticker,
                 "ticker": ticker,
                 "gap": round(gap, 2),
                 "chg": round(change if not pd.isna(change) else 0, 2),
                 "ochg": round(change if not pd.isna(change) else 0, 2),
-                "week": round(_parse_pct(s.get("Perf Week", "")) or 0, 1),
-                "month": round(_parse_pct(s.get("Perf Month", "")) or 0, 1),
-                "qtr": round(_parse_pct(s.get("Perf Quarter", "")) or 0, 1),
-                "hyear": round(_parse_pct(s.get("Perf Half Y", "")) or 0, 1),
-                "year": round(_parse_pct(s.get("Perf Y", "")) or 0, 1),
+                "week": round(_safe_pct(_q("Perf Week", "Week")), 1),
+                "month": round(_safe_pct(_q("Perf Month", "Month")), 1),
+                "qtr": round(_safe_pct(_q("Perf Quarter", "Perf Quarter", "Quarter")), 1),
+                "hyear": round(_safe_pct(_q("Perf Half Y", "Perf Half Y", "Half Y")), 1),
+                "year": round(_safe_pct(_q("Perf Year", "Perf Y", "Perf YTD", "Return% 1Y", "1Y")), 1),
                 "last": round(price, 2),
                 "ema10": round(price, 2),
                 "sma20": round(_parse_num(s.get("SMA20", "")) or price, 2),

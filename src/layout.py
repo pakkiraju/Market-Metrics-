@@ -57,7 +57,7 @@ WIDGETS = [
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers + 20% Weekly + 4% Daily + Leading Industries enabled by default
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "club97", "movers", "weekly", "daily", "leading") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "club97", "movers", "weekly", "daily", "leading", "stage") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -598,7 +598,9 @@ def build_sector_table(sector_data: list[dict]) -> html.Table:
         name = SECTOR_NAMES.get(r["ticker"], r["ticker"])
 
         def _chg_cell(val, suffix="%"):
-            v = val if val is not None else 0
+            v = val
+            if v is None or (isinstance(v, float) and v != v):  # v != v catches NaN
+                v = 0
             color = chg_color(v)
             return {"text": f"{v}{suffix}", "style": {"color": color}}
 
