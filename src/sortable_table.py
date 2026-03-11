@@ -34,6 +34,7 @@ def _parse_sort_num(val) -> float:
 # Sort key extractors: (row) -> comparable value
 SCREENER_SORT_KEYS = {
     "ticker": lambda r: ((r.get("ticker") or "").upper(),),
+    "news": lambda r: ((r.get("news") or "").lower(),),
     "price": lambda r: (_parse_sort_num(r.get("price")),),
     "avg_vol": lambda r: (_parse_sort_num(r.get("avg_vol")),),
     "rel_vol": lambda r: (_parse_sort_num(r.get("rel_vol")),),

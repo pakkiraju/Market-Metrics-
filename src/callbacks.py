@@ -20,6 +20,7 @@ from src.calculations import (
     compute_20pct_weekly,
     compute_4pct_daily,
     compute_earnings_yesterday_today,
+    compute_stocks_in_play,
     compute_leading_industries,
     compute_stage_analysis,
 )
@@ -44,6 +45,7 @@ from src.layout import (
     build_20pct_weekly_table,
     build_4pct_daily_table,
     build_earnings_table,
+    build_stocks_in_play_table,
     build_leading_industries_table,
     build_stage_chart,
     build_stage_summary,
@@ -396,9 +398,10 @@ def register_callbacks(app):
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
         ],
+        State("stockbee-sort-store", "data"),
         prevent_initial_call=False,
     )
-    def refresh_stockbee(n_intervals, n_clicks):
+    def refresh_stockbee(n_intervals, n_clicks, sort_state):
         try:
             from src.stockbee import fetch_stockbee_momentum50
             from src.data_fetcher import fetch_tickers_bulk_csv
@@ -422,7 +425,9 @@ def register_callbacks(app):
             else:
                 by_ticker = {r["ticker"]: r for r in data}
                 data = [by_ticker.get(t.upper(), {"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"}) for t in ticker_list]
-            return build_stockbee_momentum50_table(data, date_label=latest_date, widget_id="stockbee", sort_col=None, sort_asc=True), {"data": data, "date_label": latest_date}
+            col = (sort_state or {}).get("col") if sort_state else None
+            asc = (sort_state or {}).get("asc", True) if sort_state else True
+            return build_stockbee_momentum50_table(data, date_label=latest_date, widget_id="stockbee", sort_col=col, sort_asc=asc), {"data": data, "date_label": latest_date}
         except Exception as e:
             logger.exception("Stockbee Momentum50 failed: %s", e)
             return _err_div(e), []
@@ -559,6 +564,8 @@ def register_callbacks(app):
             Output("daily-data-store", "data"),
             Output("earnings-content", "children"),
             Output("earnings-data-store", "data"),
+            Output("in_play-content", "children"),
+            Output("in_play-data-store", "data"),
         ],
         [
             Input("interval-refresh", "n_intervals"),
@@ -578,14 +585,17 @@ def register_callbacks(app):
             daily_table = build_4pct_daily_table(daily_data, "daily", "chg", False)
             earnings_data = compute_earnings_yesterday_today([])
             earnings_table = build_earnings_table(earnings_data, "earnings", "change", False)
+            in_play_data = compute_stocks_in_play([])
+            in_play_table = build_stocks_in_play_table(in_play_data, "in_play", "change", False)
             return [
                 club97_table, club97_data, movers_table, movers_data,
                 weekly_table, weekly_data, daily_table, daily_data,
                 earnings_table, earnings_data,
+                in_play_table, in_play_data,
             ]
         except Exception as e:
             logger.exception("Group D failed: %s", e)
-            return [_err_div(e), [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
+            return [_err_div(e), [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
 
     @app.callback(
         [
@@ -634,6 +644,7 @@ def register_callbacks(app):
         "weekly": (build_20pct_weekly_table, "weekly-content", {}),
         "daily": (build_4pct_daily_table, "daily-content", {}),
         "earnings": (build_earnings_table, "earnings-content", {}),
+        "in_play": (build_stocks_in_play_table, "in_play-content", {}),
         "leading": (build_leading_industries_table, "leading-content", {}),
         "stockbee": (build_stockbee_momentum50_table, "stockbee-content", {}),
     }

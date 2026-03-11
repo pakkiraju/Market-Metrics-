@@ -247,6 +247,13 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
         avg_vol_col = _find_csv_col(keys, "average", "vol") or _find_csv_col(keys, "avg", "vol")
         rel_vol_col = _find_csv_col(keys, "relative", "vol") or _find_csv_col(keys, "rel", "vol")
         atr_col = _find_csv_col(keys, exact="ATR") or _find_csv_col(keys, "atr") or _find_csv_col(keys, "average", "true", "range")
+        # Prefer News Title/Headline (actual news text). "News" alone is often a count (1,2,3). Exclude "No." (row number).
+        _exclude_news = frozenset({"no", "no.", "#", "rank"})
+        news_col = _find_csv_col(keys, "news", "title") or _find_csv_col(keys, "headline")
+        if not news_col:
+            c = _find_csv_col(keys, exact="News") or _find_csv_col(keys, "news")
+            if c and str(c).strip().lower() not in _exclude_news:
+                news_col = c
 
         def _val(row: dict, col: str | None, *fallbacks: str):
             if col and row.get(col) not in (None, "", "-"):
@@ -275,7 +282,8 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
             atr_val = _parse_num(_val(row, atr_col, "ATR", "atr", "Average True Range")) if atr_col else None
             price_num = _parse_num(price) if price else None
             atr_pct = round((atr_val / price_num * 100), 2) if atr_val and price_num and price_num != 0 else None
-            rows.append({
+            news_val = _val(row, news_col) if news_col else ""
+            row_dict = {
                 "ticker": t,
                 "price": price,
                 "change": change,
@@ -283,7 +291,13 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
                 "avg_vol": avg_vol,
                 "rel_vol": rel_vol,
                 "atr_pct": atr_pct,
-            })
+            }
+            # Only add news if it looks like actual text (not rank/count like "1", "2", "3")
+            if news_val:
+                s = str(news_val).strip()
+                if s and not (s.isdigit() and len(s) <= 4):
+                    row_dict["news"] = s[:80] + ("..." if len(s) > 80 else "")
+            rows.append(row_dict)
         if rows and not any(r.get("price") or r.get("change") or r.get("volume") for r in rows[:3]):
             logger.info("FinViz export CSV keys (first row): %s", list(data[0].keys()) if data else [])
         if rows:

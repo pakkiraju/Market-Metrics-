@@ -55,6 +55,7 @@ WIDGETS = [
     ("weekly",         "StockBee - 20% Weekly Movers",          False),
     ("daily",          "StockBee - 4% Daily Gainers",           False),
     ("earnings",       "Earnings Yesterday + Today",    False),
+    ("in_play",        "Stocks In Play",             False),
     ("leading",        "Leading Industries",         False),
     ("stockbee",       "Stockbee Momentum50",        False),
     ("breadth",        "StockBee Market Breadth Monitor", False),
@@ -68,7 +69,7 @@ WIDGETS = [
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers + 20% Weekly + 4% Daily + Leading Industries enabled by default
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "leading", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "in_play", "leading", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -453,6 +454,56 @@ def build_earnings_table(data: list[dict], widget_id: str = None, sort_col: str 
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
     return _build_screener_table(data, widget_id, sort_col, sort_asc)
+
+
+def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Stocks In Play: Ticker, News (if available), Price, Avg Vol, Rel Vol, Change, Vol. Sorted by change desc."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    from src.sortable_table import sort_data, SCREENER_SORT_KEYS
+
+    if widget_id and sort_col:
+        data = sort_data(data, sort_col, sort_asc, SCREENER_SORT_KEYS)
+    has_news = any(r.get("news") for r in data)
+    if has_news:
+        headers = [
+            ("Ticker", "ticker"), ("News", "news"), ("Price", "price"), ("Avg Vol", "avg_vol"),
+            ("Rel Vol", "rel_vol"), ("Change", "change"), ("Vol", "volume"),
+        ]
+        col_widths = ["70px", "140px", "55px", "65px", "55px", "55px", "65px"]
+    else:
+        headers = [
+            ("Ticker", "ticker"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
+            ("Change", "change"), ("Vol", "volume"),
+        ]
+        col_widths = ["70px", "55px", "65px", "55px", "55px", "65px"]
+    rows = []
+    for r in data:
+        chg_val = r.get("change")
+        try:
+            chg_num = float(str(chg_val).replace("%", "")) if chg_val not in (None, "") else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        row_cells = [
+            {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
+             "style": TABLE_CELL_STYLE},
+        ]
+        if has_news:
+            row_cells.append(str(r.get("news", "")))
+        row_cells.extend([
+            str(r.get("price", "")),
+            avg_str,
+            str(r.get("rel_vol", "")),
+            {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
+             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
+        ])
+        rows.append(row_cells)
+    return _table(headers, rows, col_widths=col_widths,
+                  widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
 
 
 def _parse_vol(val):
@@ -1544,10 +1595,17 @@ def build_layout() -> html.Div:
                         extra_header=html.Span([
                             _finviz_link("FinViz", "earnings_yesterday_today", {"marginLeft": "8px"}),
                         ])),
+                _widget("in_play", "Stocks In Play",
+                        _sortable_table_wrap("in_play"),
+                        variant="teal",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("in_play", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "stocks_in_play", {"marginLeft": "8px"}),
+                        ])),
                 _widget("stage", "Stage Analysis",
                         _loading_wrap("stage-content", [loading]),
                         initial_hidden=not DEFAULT_VISIBILITY.get("stage", True)),
-            ], id="row-bottom", style=THIRD_ROW_STYLE),
+            ], id="row-bottom", style=QUARTER_ROW_STYLE),
         ], style=CONTENT_AREA_STYLE),
 
     ], style=DASHBOARD_STYLE)

@@ -27,6 +27,7 @@ _DISK_PERSISTENT_KEYS = frozenset({
     "20pct_weekly",
     "4pct_daily",
     "earnings_yesterday_today",
+    "stocks_in_play",
     "leading_industries",
     "leading_industry_map",
     "stage_analysis",

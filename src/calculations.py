@@ -574,6 +574,17 @@ def compute_earnings_yesterday_today(tickers: list[str]) -> list[dict]:
     return fetch_earnings_yesterday_today(ttl=MEDIUM)
 
 
+def compute_stocks_in_play(tickers: list[str]) -> list[dict]:
+    """Stocks In Play: news yesterday|today, avg vol 1K+, price $1+, rel vol 2+. Sorted by change desc.
+    Uses v=141 Performance view for Avg Vol and Rel Vol columns."""
+    cached = cache.get("stocks_in_play")
+    if cached:
+        s = cached[0] if cached else {}
+        if not s.get("avg_vol") and not s.get("rel_vol"):
+            cache.invalidate("stocks_in_play")
+    return fetch_screener_from_url("stocks_in_play", "stocks_in_play", ttl=MEDIUM)
+
+
 def compute_4pct_daily(tickers: list[str]) -> list[dict]:
     """4% daily gainers from FinViz ta_perf_4to-d URL (all US stocks, not just composite indices)."""
     rows = fetch_4pct_daily_from_url(ttl=MEDIUM)
