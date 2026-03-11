@@ -12,6 +12,8 @@ from src.data_fetcher import (
     fetch_group_indicators,
     fetch_group_indicators_from_url,
     fetch_sector_data as fetch_sector_data_raw,
+    fetch_20pct_weekly_from_urls,
+    fetch_4pct_daily_from_url,
 )
 from src.constants import SECTOR_ETFS, KEY_METRIC_ROWS
 
@@ -317,7 +319,7 @@ def compute_all_key_metrics() -> dict:
 def compute_sector_data() -> list[dict]:
     """Fetch sector ETF data from FinViz."""
     rows = fetch_sector_data_raw(cache_key="sector_data")
-    rows.sort(key=lambda r: r["atr_ext"], reverse=True)
+    rows.sort(key=lambda r: (r.get("atr_pct") or 0, r.get("chg", 0)), reverse=True)
     return rows
 
 
@@ -426,6 +428,7 @@ def compute_97_club(tickers: list[str]) -> list[dict]:
         vol = r.get("volume")
         if rel_v is None and vol and avg_v and avg_v != 0:
             rel_v = vol / avg_v
+        atr_pct = r.get("atr_pct")
         rows.append({
             "ticker": r["ticker"],
             "price": r.get("close") or "",
@@ -433,6 +436,7 @@ def compute_97_club(tickers: list[str]) -> list[dict]:
             "volume": vol or "",
             "avg_vol": avg_v if avg_v is not None else "",
             "rel_vol": round(rel_v, 2) if rel_v is not None else "",
+            "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
         })
     if rows:
         cache.put("97_club", rows, ttl=FAST)
@@ -462,6 +466,7 @@ def compute_9m_movers(tickers: list[str]) -> list[dict]:
         vol = r.get("volume")
         if rel_v is None and vol and avg_v and avg_v != 0:
             rel_v = vol / avg_v
+        atr_pct = r.get("atr_pct")
         rows.append({
             "ticker": r["ticker"],
             "price": r.get("close") or "",
@@ -469,6 +474,7 @@ def compute_9m_movers(tickers: list[str]) -> list[dict]:
             "volume": vol or "",
             "avg_vol": avg_v if avg_v is not None else "",
             "rel_vol": round(rel_v, 2) if rel_v is not None else "",
+            "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
         })
     if rows:
         cache.put("9m_movers", rows, ttl=FAST)
@@ -480,37 +486,8 @@ def compute_9m_movers(tickers: list[str]) -> list[dict]:
 # -----------------------------------------------------------------------
 
 def compute_20pct_weekly(tickers: list[str]) -> list[dict]:
-    cached = cache.get("20pct_weekly")
-    if cached is not None:
-        return cached
-
-    indicators = compute_group_indicators([], cache_key="ind_Composite")
-    if indicators.empty:
-        return []
-
-    mask = indicators["week_chg"].abs() >= 20
-    movers = indicators[mask].copy()
-
-    rows = []
-    for _, r in movers.iterrows():
-        stage = classify_stage(r.to_dict())
-        atr_v = _to_float(r.get("atr"))
-        sma20_v = _to_float(r.get("sma20"))
-        close_v = _to_float(r.get("close"))
-        atr_ext = 0.0
-        if atr_v and sma20_v and close_v and atr_v != 0:
-            atr_ext = round((close_v - sma20_v) / atr_v, 2)
-        rows.append({
-            "ticker": r["ticker"],
-            "week": round(_to_float(r.get("week_chg")) or 0.0, 1),
-            "stage": stage,
-            "atr_pct": round(_to_float(r.get("atr_pct")) or 0.0, 2),
-            "atr_ext": atr_ext,
-        })
-
-    rows.sort(key=lambda x: abs(x["week"]), reverse=True)
-    cache.put("20pct_weekly", rows, ttl=FAST)
-    return rows
+    """20% weekly movers from FinViz ta_perf_1w20o (up) and ta_perf_1w20u (down) URLs."""
+    return fetch_20pct_weekly_from_urls(ttl=FAST)
 
 
 # -----------------------------------------------------------------------
@@ -518,33 +495,17 @@ def compute_20pct_weekly(tickers: list[str]) -> list[dict]:
 # -----------------------------------------------------------------------
 
 def compute_4pct_daily(tickers: list[str]) -> list[dict]:
-    cached = cache.get("4pct_daily")
-    if cached is not None:
-        return cached
-
-    indicators = compute_group_indicators([], cache_key="ind_Composite")
-    if indicators.empty:
-        return []
-
-    mask = indicators["day_chg"] >= 4
-    gainers = indicators[mask].copy()
-
-    rows = []
-    for _, r in gainers.iterrows():
-        stage = classify_stage(r.to_dict())
-        vol = _to_float(r.get("volume")) or 0.0
-        avg_vol = _to_float(r.get("avg_volume"))
-        rel_vol = round(vol / avg_vol, 2) if avg_vol and avg_vol != 0 else 0.0
-        rows.append({
-            "ticker": r["ticker"],
-            "chg": round(_to_float(r.get("day_chg")) or 0.0, 2),
-            "stage": stage,
-            "atr_pct": round(_to_float(r.get("atr_pct")) or 0.0, 2),
-            "min_rel_vol": rel_vol,
-        })
-
-    rows.sort(key=lambda x: x["chg"], reverse=True)
-    cache.put("4pct_daily", rows, ttl=FAST)
+    """4% daily gainers from FinViz ta_perf_4to-d URL (all US stocks, not just composite indices)."""
+    rows = fetch_4pct_daily_from_url(ttl=FAST)
+    for r in rows:
+        r["chg"] = r.get("change", "")
+    def _chg_val(r):
+        v = r.get("chg") or r.get("change") or ""
+        try:
+            return float(str(v).replace("%", "").replace(",", "")) if v else 0
+        except (ValueError, TypeError):
+            return 0
+    rows.sort(key=_chg_val, reverse=True)
     return rows
 
 

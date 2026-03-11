@@ -15,6 +15,44 @@ from src import cache
 from src.cache import FAST, MEDIUM
 
 
+def _get_atr_pct_from_row(row: dict) -> float | None:
+    """Extract ATR % from FinViz Technical row. Tries multiple column names."""
+    for key in ("ATR", "ATR (14)", "ATR(14)", "atr", "Average True Range"):
+        if key in row:
+            atr = _parse_num(row[key])
+            price = _parse_num(row.get("Price", row.get("price", "")))
+            return round((atr / price * 100), 2) if atr and price and price != 0 else None
+    for k, v in row.items():
+        if "atr" in str(k).lower() and "average" not in str(k).lower():
+            atr = _parse_num(v)
+            price = _parse_num(row.get("Price", row.get("price", "")))
+            return round((atr / price * 100), 2) if atr and price and price != 0 else None
+    return None
+
+
+def _fetch_atr_map(filters: list[str], cache_key: str, ft: str = "3") -> dict[str, float | None]:
+    """Fetch Technical view for same filters, return ticker -> atr_pct."""
+    try:
+        from src.finviz_elite import is_elite_configured, fetch_elite_screener
+        if not is_elite_configured():
+            return {}
+        tech_key = f"{cache_key}_tech"
+        cached = cache.get(tech_key)
+        if cached is not None:
+            return cached
+        data = fetch_elite_screener(filters=filters, table="Technical", order="-change", ft=ft)
+        atr_map = {}
+        for row in data:
+            t = str(row.get("Ticker", row.get("ticker", ""))).strip().upper()
+            if t:
+                atr_map[t] = _get_atr_pct_from_row(row)
+        if atr_map:
+            cache.put(tech_key, atr_map, ttl=MEDIUM)
+        return atr_map
+    except Exception:
+        return {}
+
+
 def _parse_num(s):
     """Parse numeric string with K/M/B suffixes."""
     import re
@@ -55,13 +93,15 @@ def episodic_pivot_screener() -> list[dict]:
     if cached is not None:
         return cached
     try:
+        ep_filters = ["geo_usa", "ta_gap_u10", "sh_relvol_o2", "sh_price_o1", "sh_avgvol_o1000"]
         df = _fetch_screener(
-            filters=["geo_usa", "ta_gap_u10", "sh_relvol_o2", "sh_price_o1", "sh_avgvol_o1000"],
+            filters=ep_filters,
             table="Performance",
             cache_key="qulla_ep_usa",
             order="-change",
             ttl=FAST,
         )
+        atr_map = _fetch_atr_map(ep_filters, "qulla_ep_usa", ft="3")
         results = []
         if not df.empty:
             ticker_col = "Ticker" if "Ticker" in df.columns else "ticker"
@@ -76,6 +116,7 @@ def episodic_pivot_screener() -> list[dict]:
                     "rel_vol": r.get("Relative Volume", r.get("rel_volume", "")),
                     "change": r.get("Change", r.get("change", "")),
                     "volume": r.get("Volume", r.get("volume", "")),
+                    "atr_pct": atr_map.get(t),
                     "tag": "EP",
                 })
         if results:
@@ -112,6 +153,7 @@ def parabolic_short_screener() -> list[dict]:
                 ttl=MEDIUM,
                 ft=ft,
             )
+            atr_map = _fetch_atr_map(filters, cache_key, ft=ft)
             if not df.empty:
                 ticker_col = "Ticker" if "Ticker" in df.columns else "ticker"
                 for _, r in df.iterrows():
@@ -126,6 +168,7 @@ def parabolic_short_screener() -> list[dict]:
                         "rel_vol": r.get("Relative Volume", r.get("rel_volume", "")),
                         "change": r.get("Change", r.get("change", "")),
                         "volume": r.get("Volume", r.get("volume", "")),
+                        "atr_pct": atr_map.get(t),
                         "tag": "PS",
                     })
         if rows:
@@ -147,13 +190,15 @@ def breakouts_screener() -> list[dict]:
     if cached is not None:
         return cached
     try:
+        brk_filters = [BREAKOUTS_FILTERS]
         df = _fetch_screener(
-            filters=[BREAKOUTS_FILTERS],  # Single filter string (contains tad_)
+            filters=brk_filters,
             table="Performance",
             cache_key="qulla_breakouts",
             order="-change",
             ttl=MEDIUM,
         )
+        atr_map = _fetch_atr_map(brk_filters, "qulla_breakouts", ft="3")
         rows = []
         if not df.empty:
             ticker_col = "Ticker" if "Ticker" in df.columns else "ticker"
@@ -168,6 +213,7 @@ def breakouts_screener() -> list[dict]:
                     "rel_vol": r.get("Relative Volume", r.get("rel_volume", "")),
                     "change": r.get("Change", r.get("change", "")),
                     "volume": r.get("Volume", r.get("volume", "")),
+                    "atr_pct": atr_map.get(t),
                     "tag": "BO",
                 })
         if rows:
@@ -239,7 +285,15 @@ def minervini_screener(indicators=None) -> list[dict]:
     try:
         df = _fetch_minervini_from_url()
         if df is not None and not df.empty:
+            from src.finviz_elite import _fetch_elite_csv, is_elite_configured
             ticker_col = "Ticker" if "Ticker" in df.columns else "ticker"
+            tech_df = _fetch_elite_csv(MINERVINI_FILTERS, "Technical", "-change") if is_elite_configured() else None
+            atr_map = {}
+            if tech_df:
+                for row in tech_df:
+                    tt = str(row.get("Ticker", row.get("ticker", ""))).strip().upper()
+                    if tt:
+                        atr_map[tt] = _get_atr_pct_from_row(row)
             rows = []
             for _, r in df.iterrows():
                 t = str(r.get(ticker_col, "")).strip().upper()
@@ -257,6 +311,7 @@ def minervini_screener(indicators=None) -> list[dict]:
                     "rel_vol": rel_vol,
                     "change": change,
                     "volume": vol,
+                    "atr_pct": atr_map.get(t),
                 })
             if rows:
                 cache.put("minervini_table", rows, ttl=MEDIUM)
@@ -298,6 +353,7 @@ def minervini_screener(indicators=None) -> list[dict]:
             if float(r.get("rs_rank_month_chg") or 0) < 70:
                 continue
 
+            atr_pct = r.get("atr_pct")
             rows.append({
                 "ticker": r["ticker"],
                 "price": r.get("close"),
@@ -305,6 +361,7 @@ def minervini_screener(indicators=None) -> list[dict]:
                 "rel_vol": r.get("rel_volume"),
                 "change": r.get("day_chg"),
                 "volume": r.get("volume"),
+                "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
             })
 
         if rows:
@@ -332,15 +389,16 @@ def _parse_pct(val) -> float | None:
         return None
 
 
-def _fetch_oneil_from_url() -> tuple[pd.DataFrame | None, dict[str, dict]]:
-    """Fetch O'Neil via Elite export.ashx. Returns (Financial df, ticker->{avg_vol,rel_vol} from Performance)."""
+def _fetch_oneil_from_url() -> tuple[pd.DataFrame | None, dict[str, dict], dict[str, float | None]]:
+    """Fetch O'Neil via Elite export.ashx. Returns (Financial df, ticker->{avg_vol,rel_vol}, ticker->atr_pct)."""
     from src.finviz_elite import _fetch_elite_csv, is_elite_configured
 
     if not is_elite_configured():
-        return None, {}
+        return None, {}, {}
     # ft=2 = fundamental filter type for fa_* filters
     financial_data = _fetch_elite_csv(ONEIL_FILTERS, "Financial", "-change", ft="2")
     perf_data = _fetch_elite_csv(ONEIL_FILTERS, "Performance", "-change", ft="2")
+    tech_data = _fetch_elite_csv(ONEIL_FILTERS, "Technical", "-change", ft="2")
     df = pd.DataFrame(financial_data) if financial_data else None
     # Build ticker -> {avg_vol, rel_vol} from Performance (has Avg Vol, Rel Vol)
     vol_map = {}
@@ -356,7 +414,13 @@ def _fetch_oneil_from_url() -> tuple[pd.DataFrame | None, dict[str, dict]]:
                     "avg_vol": r.get(avg_col, r.get("Average Volume", r.get("avg_volume", ""))),
                     "rel_vol": r.get(rel_col, r.get("Relative Volume", r.get("rel_volume", ""))),
                 }
-    return df, vol_map
+    atr_map = {}
+    if tech_data:
+        for r in tech_data:
+            t = str(r.get("Ticker", r.get("ticker", ""))).strip().upper()
+            if t:
+                atr_map[t] = _get_atr_pct_from_row(r)
+    return df, vol_map, atr_map
 
 
 def oneil_screener(indicators=None) -> list[dict]:
@@ -369,7 +433,7 @@ def oneil_screener(indicators=None) -> list[dict]:
     if cached is not None:
         return cached
     try:
-        df, vol_map = _fetch_oneil_from_url()
+        df, vol_map, atr_map = _fetch_oneil_from_url()
         if df is None or df.empty:
             return []
 
@@ -412,6 +476,7 @@ def oneil_screener(indicators=None) -> list[dict]:
                 "rel_vol": vol_info.get("rel_vol", ""),
                 "change": r.get("Change", r.get("change", "")),
                 "volume": r.get("Volume", r.get("volume", "")),
+                "atr_pct": atr_map.get(t),
                 "roe": roe_val,
                 "net_margin": margin_val,
             })

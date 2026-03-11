@@ -24,6 +24,8 @@ _DISK_PERSISTENT_KEYS = frozenset({
     "sector_data",
     "97_club",
     "9m_movers",
+    "20pct_weekly",
+    "4pct_daily",
 })
 
 # Key prefixes that persist to disk (e.g. watchlist_quotes_AAPL,MSFT)

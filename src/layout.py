@@ -55,9 +55,9 @@ WIDGETS = [
 ]
 
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
-# Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers enabled by default
+# Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers + 20% Weekly + 4% Daily enabled by default
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "club97", "movers") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "club97", "movers", "weekly", "daily") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -371,8 +371,8 @@ def build_ticker_grid(tickers: list[dict]) -> html.Div:
 
 
 def _build_screener_table(data: list[dict]) -> html.Table:
-    """Shared table for screener data: Ticker, Price, Avg Vol, Rel Vol, Change, Vol."""
-    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol"]
+    """Shared table for screener data: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR %."""
+    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", "ATR %"]
     rows = []
     for r in data:
         chg_val = r.get("change")
@@ -381,6 +381,8 @@ def _build_screener_table(data: list[dict]) -> html.Table:
         except (ValueError, TypeError):
             chg_num = 0
         vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        atr_pct = r.get("atr_pct")
+        atr_str = f"{atr_pct:.2f}%" if atr_pct is not None else ""
         rows.append([
             {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
              "style": TABLE_CELL_STYLE},
@@ -390,8 +392,9 @@ def _build_screener_table(data: list[dict]) -> html.Table:
             {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
              "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
             vol_str,
+            atr_str,
         ])
-    return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px"])
+    return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px"])
 
 
 def build_minervini_table(data: list[dict]) -> html.Table:
@@ -455,12 +458,12 @@ def _tag_badge(tag: str) -> html.Span:
 
 
 def build_qullamaggie_table(data: list[dict]) -> html.Table:
-    """Qullamaggie: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, Tag."""
+    """Qullamaggie: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR %, Tag."""
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", "Tag"]
+    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", "ATR %", "Tag"]
     rows = []
     for r in data:
         chg_val = r.get("change")
@@ -484,18 +487,19 @@ def build_qullamaggie_table(data: list[dict]) -> html.Table:
             {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
              "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
             vol_str,
+            f"{r.get('atr_pct', 0):.2f}%" if r.get("atr_pct") is not None else "",
             {"text": tag_content, "style": TABLE_CELL_STYLE},
         ])
-    return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px"])
+    return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px", "55px"])
 
 
 def build_watchlist_table(data: list[dict]) -> html.Table:
-    """Watchlist: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, Remove."""
+    """Watchlist: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR %, Remove."""
     if not data:
         return html.Div("No tickers in watchlist. Add some above.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", ""]
+    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", "ATR %", ""]
     rows = []
     for r in data:
         chg_val = r.get("change")
@@ -529,22 +533,23 @@ def build_watchlist_table(data: list[dict]) -> html.Table:
             {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
              "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
             vol_str,
+            f"{r.get('atr_pct', 0):.2f}%" if r.get("atr_pct") is not None else "",
             {"text": remove_btn, "style": {**TABLE_CELL_STYLE, "width": "24px", "padding": "2px"}},
         ])
     return _table(
         headers,
         rows,
-        col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "28px"],
+        col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px", "28px"],
     )
 
 
 def build_oneil_table(data: list[dict]) -> html.Table:
-    """O'Neil / CANSLIM screener: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ROE, Net Margin."""
+    """O'Neil / CANSLIM screener: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR %, ROE, Net Margin."""
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", "ROE", "Net Margin"]
+    headers = ["Ticker", "Price", "Avg Vol", "Rel Vol", "Change", "Vol", "ATR %", "ROE", "Net Margin"]
     rows = []
     for r in data:
         chg_val = r.get("change")
@@ -566,13 +571,14 @@ def build_oneil_table(data: list[dict]) -> html.Table:
             {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
              "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
             vol_str,
+            f"{r.get('atr_pct', 0):.2f}%" if r.get("atr_pct") is not None else "",
             roe_str,
             margin_str,
         ])
     return _table(
         headers,
         rows,
-        col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px", "65px"],
+        col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px", "55px", "65px"],
     )
 
 
@@ -584,7 +590,7 @@ def build_sector_table(sector_data: list[dict]) -> html.Table:
     headers = [
         "Sector", "Ticker", "Gap", "Chg", "O Chg", "Week", "Month",
         "Qtr", "H.Year", "Year", "Last", "EMA10", "SMA20", "SMA50",
-        "SMA200", "52W Hi", "52W Lo", "ATR %", "ATR Ext",
+        "SMA200", "52W Hi", "52W Lo", "ATR %",
     ]
     rows = []
     for r in sector_data:
@@ -595,6 +601,9 @@ def build_sector_table(sector_data: list[dict]) -> html.Table:
             v = val if val is not None else 0
             color = chg_color(v)
             return {"text": f"{v}{suffix}", "style": {"color": color}}
+
+        atr_pct = r.get("atr_pct")
+        atr_str = f"{atr_pct:.2f}%" if atr_pct is not None else ""
 
         row = [
             {"text": name, "style": {
@@ -619,8 +628,7 @@ def build_sector_table(sector_data: list[dict]) -> html.Table:
             str(r.get("sma200", "")),
             str(r.get("high_52w", "")),
             str(r.get("low_52w", "")),
-            f"{r.get('atr_pct', 0)}%",
-            str(r.get("atr_ext", "")),
+            atr_str,
         ]
         rows.append(row)
 
@@ -654,39 +662,66 @@ def build_9m_movers_table(data: list[dict]) -> html.Table:
 
 
 def build_20pct_weekly_table(data: list[dict]) -> html.Table:
-    headers = ["Ticker", "Week", "Stage", "ATR %", "ATR Ext"]
+    """20% Weekly Movers: Ticker, Week %, Price, Avg Vol, Rel Vol, Chg, Vol, ATR %."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    headers = ["Ticker", "Week", "Price", "Avg Vol", "Rel Vol", "Chg", "Vol", "ATR %"]
     rows = []
     for r in data:
+        chg_val = r.get("change")
+        try:
+            chg_num = float(str(chg_val).replace("%", "")) if chg_val not in (None, "") else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
         rows.append([
             {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
              "style": TABLE_CELL_STYLE},
             {"text": f"{r.get('week', 0)}%",
              "style": {**TABLE_CELL_STYLE, "color": chg_color(r.get("week", 0)),
                         "fontWeight": 600}},
-            {"text": html.Span(r.get("stage", ""), style=stage_badge_style(r.get("stage", "1"))),
-             "style": TABLE_CELL_STYLE},
-            f"{r.get('atr_pct', 0)}%",
-            str(r.get("atr_ext", "")),
+            str(r.get("price", "")),
+            avg_str,
+            str(r.get("rel_vol", "")),
+            {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
+             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
+            f"{r.get('atr_pct'):.2f}%" if r.get("atr_pct") is not None else "",
         ])
-    return _table(headers, rows)
+    return _table(headers, rows, col_widths=["70px", "55px", "55px", "65px", "55px", "55px", "65px", "55px"])
 
 
 def build_4pct_daily_table(data: list[dict]) -> html.Table:
-    headers = ["Ticker", "Chg", "Stage", "ATR %", "Rel Vol"]
+    """4% Daily Gainers: Ticker, Chg, Price, Avg Vol, Rel Vol, Vol, ATR %."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    headers = ["Ticker", "Chg", "Price", "Avg Vol", "Rel Vol", "Vol", "ATR %"]
     rows = []
     for r in data:
+        chg_val = r.get("chg") or r.get("change")
+        try:
+            chg_num = float(str(chg_val).replace("%", "")) if chg_val not in (None, "") else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        atr_pct = r.get("atr_pct")
+        atr_str = f"{atr_pct:.2f}%" if atr_pct is not None else ""
         rows.append([
             {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
              "style": TABLE_CELL_STYLE},
-            {"text": f"{r.get('chg', 0)}%",
-             "style": {**TABLE_CELL_STYLE, "color": COLORS["green_light"],
-                        "fontWeight": 600}},
-            {"text": html.Span(r.get("stage", ""), style=stage_badge_style(r.get("stage", "1"))),
-             "style": TABLE_CELL_STYLE},
-            f"{r.get('atr_pct', 0)}%",
-            str(r.get("min_rel_vol", "")),
+            {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
+             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+            str(r.get("price", "")),
+            avg_str,
+            str(r.get("rel_vol", r.get("min_rel_vol", ""))),
+            vol_str,
+            atr_str,
         ])
-    return _table(headers, rows)
+    return _table(headers, rows, col_widths=["70px", "55px", "55px", "65px", "55px", "65px", "55px"])
 
 
 # -----------------------------------------------------------------------

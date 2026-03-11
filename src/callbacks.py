@@ -16,6 +16,8 @@ from src.calculations import (
     compute_sector_data,
     compute_97_club,
     compute_9m_movers,
+    compute_20pct_weekly,
+    compute_4pct_daily,
     compute_leading_industries,
     compute_stage_analysis,
 )
@@ -361,7 +363,11 @@ def register_callbacks(app):
             club97_table = build_97_club_table(club97_data)
             movers_data = compute_9m_movers([])
             movers_table = build_9m_movers_table(movers_data)
-            return [club97_table, movers_table, _disabled_msg, _disabled_msg]
+            weekly_data = compute_20pct_weekly([])
+            weekly_table = build_20pct_weekly_table(weekly_data)
+            daily_data = compute_4pct_daily([])
+            daily_table = build_4pct_daily_table(daily_data)
+            return [club97_table, movers_table, weekly_table, daily_table]
         except Exception as e:
             logger.exception("Group D failed: %s", e)
             return [_err_div(e), _disabled_msg, _disabled_msg, _disabled_msg]

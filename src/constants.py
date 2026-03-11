@@ -176,9 +176,9 @@ FINVIZ_SCREENER_URLS = {
     "DJIA": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa%2Cidx_dji",
     "RUS2000": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa%2Cidx_rut",
     "$1B+": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to%2Cgeo_usa%2Csh_avgvol_o1000%2Csh_price_o1",
-    "4pct_daily": "https://elite.finviz.com/export.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-price&ar=10",
-    "20pct_weekly_up": "https://elite.finviz.com/export.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1wup&ft=3&o=-change",
-    "20pct_weekly_down": "https://elite.finviz.com/export.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1wdown&ft=3&o=-change",
+    "4pct_daily": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change",
+    "20pct_weekly_up": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1w20o&o=-change",
+    "20pct_weekly_down": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1w20u&o=-change",
     # 9M Movers: $1B+ cap, 9M+ volume, 1.25+ rel vol (screener for link)
     "9m_movers": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,geo_usa,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to",
     # 97 Club: $1B+ universe (screener for link)
@@ -191,10 +191,16 @@ FINVIZ_SCREENER_URLS = {
     "qullamaggie": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa%2Cta_gap_u10%2Csh_relvol_o2%2Csh_price_o1%2Csh_avgvol_o1000",
 }
 
-# Export URLs for data fetching (export.ashx returns CSV). v=111 (Overview) has Price, Change, Volume, Average Volume, Relative Volume.
+# Export URLs for data fetching (export.ashx returns CSV). v=111 Overview, v=141 Performance (Perf Week), v=171 Technical (ATR).
 FINVIZ_EXPORT_URLS = {
     "9m_movers": "https://elite.finviz.com/export.ashx?v=111&f=cap_1to,geo_usa,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to",
     "club97": "https://elite.finviz.com/export.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1",
+    "20pct_weekly_up": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1w20o&o=-change",
+    "20pct_weekly_down": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1w20u&o=-change",
+    "20pct_weekly_up_tech": "https://elite.finviz.com/export.ashx?v=171&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1w20o&o=-change",
+    "20pct_weekly_down_tech": "https://elite.finviz.com/export.ashx?v=171&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1w20u&o=-change",
+    "4pct_daily": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change",
+    "4pct_daily_tech": "https://elite.finviz.com/export.ashx?v=171&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change",
 }
 
 # ---------- Sector SPDR tickers ----------

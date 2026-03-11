@@ -211,6 +211,7 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = FAST) -> li
         vol_col = _find_csv_col(keys, exact="Volume") or _find_csv_col(keys, "volume")
         avg_vol_col = _find_csv_col(keys, "average", "vol") or _find_csv_col(keys, "avg", "vol")
         rel_vol_col = _find_csv_col(keys, "relative", "vol") or _find_csv_col(keys, "rel", "vol")
+        atr_col = _find_csv_col(keys, exact="ATR") or _find_csv_col(keys, "atr") or _find_csv_col(keys, "average", "true", "range")
 
         def _val(row: dict, col: str | None, *fallbacks: str):
             if col and row.get(col) not in (None, "", "-"):
@@ -220,10 +221,12 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = FAST) -> li
             return _get_csv_val(row, *fallbacks) if fallbacks else ""
 
         rows = []
+        seen = set()
         for row in data:
             t = str(row.get(ticker_col, "") or "").strip().upper()
-            if not t:
+            if not t or t in seen:
                 continue
+            seen.add(t)
             price = _val(row, price_col, "Price", "price", "Last", "Close")
             change = _val(row, change_col, "Change", "change")
             vol = _val(row, vol_col, "Volume", "volume")
@@ -234,6 +237,9 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = FAST) -> li
                 v_num, a_num = _parse_num(vol), _parse_num(avg_vol)
                 if v_num and a_num and a_num != 0:
                     rel_vol = f"{v_num / a_num:.2f}"
+            atr_val = _parse_num(_val(row, atr_col, "ATR", "atr", "Average True Range")) if atr_col else None
+            price_num = _parse_num(price) if price else None
+            atr_pct = round((atr_val / price_num * 100), 2) if atr_val and price_num and price_num != 0 else None
             rows.append({
                 "ticker": t,
                 "price": price,
@@ -241,6 +247,7 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = FAST) -> li
                 "volume": vol,
                 "avg_vol": avg_vol,
                 "rel_vol": rel_vol,
+                "atr_pct": atr_pct,
             })
         if rows and not any(r.get("price") or r.get("change") or r.get("volume") for r in rows[:3]):
             logger.info("FinViz export CSV keys (first row): %s", list(data[0].keys()) if data else [])
@@ -250,6 +257,168 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = FAST) -> li
     except Exception as e:
         logger.warning("fetch_screener_from_url failed: %s", e)
         return []
+
+
+def fetch_20pct_weekly_from_urls(ttl: int = FAST) -> list[dict]:
+    """Fetch 20% weekly movers from both +20 and -20 FinViz URLs. Merges Performance + Technical for ATR."""
+    cached = cache.get("20pct_weekly")
+    if cached is not None:
+        sample = cached[0] if cached else {}
+        if "price" not in sample:
+            cache.invalidate("20pct_weekly")
+        else:
+            return cached
+
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS
+
+        if not is_elite_configured():
+            return []
+
+        rows = []
+        seen = set()
+
+        def _val(row: dict, col: str | None, *fallbacks: str):
+            if col and row.get(col) not in (None, "", "-"):
+                v = row.get(col)
+                if v is not None and str(v).strip():
+                    return v
+            return _get_csv_val(row, *fallbacks) if fallbacks else ""
+
+        for url_key in ("20pct_weekly_up", "20pct_weekly_down"):
+            url = FINVIZ_EXPORT_URLS.get(url_key)
+            if not url:
+                continue
+            time.sleep(_FINVIZ_DELAY_SEC)  # Delay before each fetch to avoid rate limit
+            data = fetch_export_from_url(url)
+            if not data:
+                # Retry once after longer delay (rate limit may clear)
+                time.sleep(5)
+                data = fetch_export_from_url(url)
+            if not data:
+                logger.warning("20pct_weekly %s returned no data", url_key)
+                continue
+
+            keys = list(data[0].keys())
+            ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+            week_col = _find_csv_col(keys, "perf", "week") or _find_csv_col(keys, "week") or "Perf Week"
+            price_col = _find_csv_col(keys, exact="Price") or _find_csv_col(keys, "price")
+            change_col = _find_csv_col(keys, exact="Change") or _find_csv_col(keys, "change")
+            vol_col = _find_csv_col(keys, exact="Volume") or _find_csv_col(keys, "volume")
+            avg_vol_col = _find_csv_col(keys, "average", "vol") or _find_csv_col(keys, "avg", "vol")
+            rel_vol_col = _find_csv_col(keys, "relative", "vol") or _find_csv_col(keys, "rel", "vol")
+            atr_col = _find_csv_col(keys, exact="ATR") or _find_csv_col(keys, "atr")
+
+            for row in data:
+                t = str(row.get(ticker_col, "") or "").strip().upper()
+                if not t or t in seen:
+                    continue
+                seen.add(t)
+
+                week_val = row.get(week_col, row.get("Perf Week", row.get("Performance (Week)", "")))
+                week = _parse_pct(week_val)
+                week = round(float(week), 1) if not pd.isna(week) else 0.0
+
+                price = _val(row, price_col, "Price", "price", "Last", "Close")
+                change = _val(row, change_col, "Change", "change")
+                vol = _val(row, vol_col, "Volume", "volume")
+                avg_vol = _val(row, avg_vol_col, "Avg Volume", "Average Volume", "avg_volume", "Avg Vol")
+                rel_vol = _val(row, rel_vol_col, "Rel Volume", "Relative Volume", "rel_volume", "Rel Vol")
+                if not rel_vol and vol and avg_vol:
+                    v_num, a_num = _parse_num(vol), _parse_num(avg_vol)
+                    if v_num and a_num and a_num != 0:
+                        rel_vol = f"{v_num / a_num:.2f}"
+                atr_val = _parse_num(_val(row, atr_col, "ATR", "atr")) if atr_col else None
+                price_num = _parse_num(price) if price else None
+                atr_pct = round((atr_val / price_num * 100), 2) if atr_val and price_num and price_num != 0 else None
+                rows.append({
+                    "ticker": t,
+                    "week": week,
+                    "price": price,
+                    "avg_vol": avg_vol,
+                    "rel_vol": rel_vol,
+                    "change": change,
+                    "volume": vol,
+                    "atr_pct": atr_pct,
+                })
+
+        # Fetch Technical view for ATR (Performance view lacks ATR)
+        atr_map = {}
+        for url_key in ("20pct_weekly_up_tech", "20pct_weekly_down_tech"):
+            url = FINVIZ_EXPORT_URLS.get(url_key)
+            if not url:
+                continue
+            time.sleep(_FINVIZ_DELAY_SEC)
+            tech_data = fetch_export_from_url(url)
+            if not tech_data:
+                continue
+            keys = list(tech_data[0].keys())
+            ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+            atr_col = _find_csv_col(keys, exact="ATR") or _find_csv_col(keys, "atr")
+            price_col = _find_csv_col(keys, exact="Price") or _find_csv_col(keys, "price")
+            for row in tech_data:
+                t = str(row.get(ticker_col, "") or "").strip().upper()
+                if not t or t in atr_map:
+                    continue
+                atr_val = _parse_num(row.get(atr_col, row.get("ATR", ""))) if atr_col else None
+                price = _parse_num(row.get(price_col, row.get("Price", ""))) if price_col else None
+                atr_map[t] = round((atr_val / price * 100), 2) if atr_val and price and price != 0 else None
+
+        for r in rows:
+            r["atr_pct"] = atr_map.get(r["ticker"], r.get("atr_pct"))
+
+        rows.sort(key=lambda x: abs(x["week"]), reverse=True)
+        if rows:
+            cache.put("20pct_weekly", rows, ttl=ttl)
+        return rows
+    except Exception as e:
+        logger.warning("fetch_20pct_weekly_from_urls failed: %s", e)
+        return []
+
+
+def fetch_4pct_daily_from_url(ttl: int = FAST) -> list[dict]:
+    """Fetch 4% daily gainers from FinViz URL. Merges Performance (price, vol) + Technical (ATR) for full data."""
+    cached = cache.get("4pct_daily")
+    if cached is not None:
+        sample = cached[0] if cached else {}
+        if "price" not in sample:
+            cache.invalidate("4pct_daily")
+        elif not sample.get("avg_vol") and not sample.get("rel_vol"):
+            cache.invalidate("4pct_daily")
+        else:
+            return cached
+
+    rows = fetch_screener_from_url("4pct_daily", "4pct_daily", ttl=ttl)
+    if not rows:
+        return []
+
+    # Fetch Technical view for ATR (Performance view lacks ATR)
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS
+
+        if is_elite_configured():
+            time.sleep(_FINVIZ_DELAY_SEC)
+            url = FINVIZ_EXPORT_URLS.get("4pct_daily_tech")
+            if url:
+                tech_data = fetch_export_from_url(url)
+                if tech_data:
+                    keys = list(tech_data[0].keys())
+                    ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+                    atr_col = _find_csv_col(keys, exact="ATR") or _find_csv_col(keys, "atr")
+                    price_col = _find_csv_col(keys, exact="Price") or _find_csv_col(keys, "price")
+                    by_ticker = {r["ticker"]: r for r in rows}
+                    for row in tech_data:
+                        t = str(row.get(ticker_col, "") or "").strip().upper()
+                        if not t or t not in by_ticker:
+                            continue
+                        atr_val = _parse_num(row.get(atr_col, row.get("ATR", ""))) if atr_col else None
+                        price = _parse_num(row.get(price_col, row.get("Price", ""))) if price_col else None
+                        by_ticker[t]["atr_pct"] = round((atr_val / price * 100), 2) if atr_val and price and price != 0 else None
+    except Exception as e:
+        logger.warning("fetch_4pct_daily ATR merge failed: %s", e)
+    return rows
 
 
 def fetch_metric_count(url: str, cache_key: str) -> int:
@@ -597,6 +766,9 @@ def fetch_sector_data(cache_key: str = "sector_data") -> list[dict]:
             gap = 0.0
             if prev and prev != 0:
                 gap = (open_p - prev) / prev * 100
+            atr_val = _parse_num(s.get("ATR (14)", s.get("ATR", "")))
+            atr_pct = round((atr_val / price * 100), 2) if atr_val and price and price != 0 else None
+
             rows.append({
                 "sector": ticker,
                 "ticker": ticker,
@@ -615,9 +787,7 @@ def fetch_sector_data(cache_key: str = "sector_data") -> list[dict]:
                 "sma200": round(_parse_num(s.get("SMA200", "")) or price, 2),
                 "high_52w": round(_parse_num(s.get("52W High", "")) or price, 2),
                 "low_52w": round(_parse_num(s.get("52W Low", "")) or price, 2),
-                "atr_pct": 0.0,
-                "atr_ext": 0.0,
-                "atr_rs": 0,
+                "atr_pct": atr_pct,
             })
         except Exception as e:
             logger.warning("FinViz Elite quote %s failed: %s", ticker, e)
@@ -680,6 +850,9 @@ def fetch_watchlist_quotes(tickers: list[str]) -> list[dict]:
             volume = s.get("Volume", s.get("volume", ""))
             avg_vol = s.get("Avg Volume", s.get("Average Volume", s.get("avg_volume", "")))
             rel_vol = s.get("Rel Volume", s.get("Relative Volume", s.get("rel_volume", "")))
+            atr_val = _parse_num(s.get("ATR (14)", s.get("ATR", "")))
+            price_num = _parse_num(price) if price else None
+            atr_pct = round((atr_val / price_num * 100), 2) if atr_val and price_num and price_num != 0 else None
             rows.append({
                 "ticker": t,
                 "price": price,
@@ -687,6 +860,7 @@ def fetch_watchlist_quotes(tickers: list[str]) -> list[dict]:
                 "volume": volume,
                 "avg_vol": avg_vol,
                 "rel_vol": rel_vol,
+                "atr_pct": atr_pct,
             })
             time.sleep(_FINVIZ_DELAY_SEC)
         except Exception:
