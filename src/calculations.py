@@ -406,44 +406,76 @@ def _to_float(val) -> float | None:
         return None
 
 
+def _within_pct(close: float, ma: float, pct: float = 0.25) -> bool:
+    """True if close is within pct (e.g. 25%) of ma: 0.75*ma <= close <= 1.25*ma."""
+    if ma is None or ma <= 0:
+        return False
+    lo, hi = (1 - pct) * ma, (1 + pct) * ma
+    return lo <= close <= hi
+
+
 def classify_stage(ind: dict) -> str:
-    """Classify a stock into Weinstein-style stages (1, 2A, 2B, 2C, 3, 4)."""
+    """Classify into stages 1A/1B/2A/2B/2C/3A/3B/4A/4B/4C using price, EMA10, SMA20, SMA50."""
     close = _to_float(ind.get("close"))
-    sma50_val = _to_float(ind.get("sma50"))
-    sma200_val = _to_float(ind.get("sma200"))
-    sma20_val = _to_float(ind.get("sma20"))
+    ema10 = _to_float(ind.get("ema10"))
+    sma20 = _to_float(ind.get("sma20"))
+    sma50 = _to_float(ind.get("sma50"))
 
-    if close is None or sma50_val is None or sma200_val is None:
-        return "1"
+    if close is None or sma50 is None or sma50 <= 0:
+        return "1A"
+    if ema10 is None:
+        ema10 = sma20 if sma20 is not None else sma50
+    if sma20 is None:
+        sma20 = ema10 if ema10 is not None else sma50
+    if ema10 is None or sma20 is None:
+        return "1A"
 
-    if close < sma50_val and sma50_val < sma200_val:
-        return "4"
+    ext = close / sma50  # extension from SMA50
 
-    if close < sma50_val and sma50_val >= sma200_val:
-        return "3"
+    # Above all MAs (ext = close/sma50; 5%/6%/7% above = 1.05/1.06/1.07)
+    if close > ema10 and close > sma20 and close > sma50:
+        if ext >= 1.07:
+            return "2C"   # 7%+ above SMA50
+        if ext >= 1.06:
+            return "2B"   # 6–7% above
+        if ext >= 1.05:
+            return "2A"   # 5–6% above
+        return "1B"       # above MAs but within 5% of SMA50
 
-    if close > sma50_val and sma50_val > sma200_val:
-        if sma20_val is not None and close < sma20_val:
-            return "2C"
-        week_chg = _to_float(ind.get("week_chg")) or 0.0
-        month_chg = _to_float(ind.get("month_chg")) or 0.0
-        if week_chg > 0 and month_chg > 0:
-            return "2A"
-        return "2B"
+    # Below all MAs (ext = close/sma50; 5%/6%/7% below = 0.95/0.94/0.93)
+    if close < ema10 and close < sma20 and close < sma50:
+        if ext <= 0.93:
+            return "4C"   # 7%+ below SMA50
+        if ext <= 0.94:
+            return "4B"   # 6–7% below
+        if ext <= 0.95:
+            return "4A"   # 5–6% below
+        return "3B"       # 0.95 < ext < 1 (within 5% of SMA50, just below)
 
-    return "1"
+    # Above SMA50 but below EMA10/SMA20 (distribution)
+    if close > sma50 and close < ema10:
+        if _within_pct(close, ema10, 0.25) and _within_pct(close, sma20, 0.25):
+            return "3A"
+        return "3A"  # fallback for distribution above sma50
+
+    # Below SMA50, within 25% of EMA10 and SMA20 (basing)
+    if close < sma50 and _within_pct(close, ema10, 0.25) and _within_pct(close, sma20, 0.25):
+        return "1A"
+
+    return "1A"
 
 
 def compute_stage_analysis(tickers: list[str],
                            cache_key: str = "stage_analysis") -> dict:
-    """Return stage counts and per-ticker stages."""
+    """Return stage counts and per-ticker stages. Fetches from export.ashx (geo_usa, avgvol 1000+, price $1+), does stage math."""
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
-    indicators = compute_group_indicators([], cache_key="ind_Composite")
+    from src.data_fetcher import fetch_stage_indicators
+    indicators = fetch_stage_indicators(cache_key="ind_stage")
     if indicators.empty:
-        return {"counts": {s: 0 for s in ["1", "2A", "2B", "2C", "3", "4"]},
+        return {"counts": {s: 0 for s in ["1A", "1B", "2A", "2B", "2C", "3A", "3B", "4A", "4B", "4C"]},
                 "tickers": []}
 
     stages = []
@@ -453,7 +485,7 @@ def compute_stage_analysis(tickers: list[str],
 
     stage_series = pd.Series([s["stage"] for s in stages])
     counts = {}
-    for s in ["1", "2A", "2B", "2C", "3", "4"]:
+    for s in ["1A", "1B", "2A", "2B", "2C", "3A", "3B", "4A", "4B", "4C"]:
         counts[s] = int((stage_series == s).sum())
 
     result = {"counts": counts, "tickers": stages}
@@ -706,7 +738,7 @@ def compute_thematics(tickers: list[str]) -> list[dict]:
         return cached
 
     indicators = fetch_thematics_data(cache_key="thematics_data", ttl=MEDIUM)
-    if indicators.empty:
+    if not isinstance(indicators, pd.DataFrame) or indicators.empty:
         cache.invalidate("thematics_data")
         cache.invalidate("thematics")  # Don't persist empty; retry on next refresh
         return []
@@ -763,7 +795,7 @@ def compute_thematics_rrg_data(
         return cached
 
     indicators = fetch_thematics_data(cache_key="thematics_data", ttl=MEDIUM)
-    if indicators.empty:
+    if not isinstance(indicators, pd.DataFrame) or indicators.empty:
         return []
 
     vti = fetch_benchmark_performance(benchmark=benchmark)

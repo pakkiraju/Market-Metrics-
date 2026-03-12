@@ -529,8 +529,10 @@ def fetch_thematics_data(cache_key: str = "thematics_data", ttl: int = MEDIUM) -
     """Fetch thematics universe (geo_usa, sh_avgvol_o1000, sh_price_o1).
     Single call with c=1,3,4,41,42,43,45,64 for Ticker,Sector,Industry,PerfWeek,PerfMonth,PerfQtr,PerfYear,Change."""
     cached = cache.get(cache_key)
-    if cached is not None:
+    if cached is not None and isinstance(cached, pd.DataFrame):
         return cached
+    if cached is not None:
+        cache.invalidate(cache_key)  # Bad cache (e.g. string from disk)
 
     try:
         from src.finviz_elite import fetch_export_from_url, is_elite_configured
@@ -742,6 +744,30 @@ def fetch_group_indicators_from_url(cache_key: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def fetch_stage_indicators(cache_key: str = "ind_stage") -> pd.DataFrame:
+    """Fetch stage analysis data from single export URL (geo_usa, avgvol 1000+, price $1+). Returns DataFrame with close, ema10, sma20, sma50, week_chg, month_chg."""
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS
+        if not is_elite_configured():
+            return pd.DataFrame()
+        url = FINVIZ_EXPORT_URLS.get("ind_stage")
+        if not url:
+            return pd.DataFrame()
+        data = fetch_export_from_url(url, caller="stage")
+        rows = _parse_group_indicators_rows(data, None)
+        if rows:
+            result = pd.DataFrame(rows)
+            cache.put(cache_key, result, ttl=MEDIUM)
+            return result
+    except Exception as e:
+        logger.warning("fetch_stage_indicators failed: %s", e)
+    return pd.DataFrame()
+
+
 # Map cache_key to export URL key(s) for single-request fetch. None = use legacy _fetch_screener_multi.
 _GROUP_INDICATOR_URL_KEYS = {
     "ind_$1B+": ["ind_1b"],
@@ -791,11 +817,11 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
                 return None
             return p / denom
 
-        sma20_pct = _parse_num(_v(row, "SMA20", "20-Day SMA", "20-Day Simple Moving Average", "sma20"))
-        sma50_pct = _parse_num(_v(row, "SMA50", "50-Day SMA", "50-Day Simple Moving Average", "sma50"))
-        sma200_pct = _parse_num(_v(row, "SMA200", "200-Day SMA", "200-Day Simple Moving Average", "sma200"))
+        sma20_pct = _parse_num(_v(row, "SMA20", "20-Day SMA", "20-Day SMA (Relative)", "20-Day Simple Moving Average", "sma20"))
+        sma50_pct = _parse_num(_v(row, "SMA50", "50-Day SMA", "50-Day SMA (Relative)", "50-Day Simple Moving Average", "sma50"))
+        sma200_pct = _parse_num(_v(row, "SMA200", "200-Day SMA", "200-Day SMA (Relative)", "200-Day Simple Moving Average", "sma200"))
         sma10_pct = _parse_num(_v(row, "SMA10", "10-Day SMA", "sma10"))
-        ema10_pct = _parse_num(_v(row, "EMA10", "10-Day EMA", "ema10"))
+        ema10_pct = _parse_num(_v(row, "EMA10", "10-Day EMA", "10-Day Exponential Moving Average", "ema10"))
         sma20 = _pct_to_sma(sma20_pct, price)
         sma50 = _pct_to_sma(sma50_pct, price)
         sma200 = _pct_to_sma(sma200_pct, price)

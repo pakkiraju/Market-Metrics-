@@ -1204,13 +1204,16 @@ def build_rrg_chart(rrg_data: list[dict]) -> go.Figure:
 
 
 def build_stage_summary(counts: dict) -> html.Div:
+    stage1_total = counts.get("1A", 0) + counts.get("1B", 0)
     stage2_total = counts.get("2A", 0) + counts.get("2B", 0) + counts.get("2C", 0)
-    bullish = stage2_total > (counts.get("3", 0) + counts.get("4", 0))
+    stage3_total = counts.get("3A", 0) + counts.get("3B", 0)
+    stage4_total = counts.get("4A", 0) + counts.get("4B", 0) + counts.get("4C", 0)
+    bullish = stage2_total > (stage3_total + stage4_total)
 
     items = [
         html.Span([
             html.Span("Stage 1: ", style={"color": COLORS["text_muted"]}),
-            html.Span(str(counts.get("1", 0)), style={"fontWeight": 700}),
+            html.Span(str(stage1_total), style={"fontWeight": 700}),
         ]),
         html.Span([
             html.Span("Stage 2: ", style={"color": COLORS["text_muted"]}),
@@ -1219,12 +1222,12 @@ def build_stage_summary(counts: dict) -> html.Div:
         ]),
         html.Span([
             html.Span("Stage 3: ", style={"color": COLORS["text_muted"]}),
-            html.Span(str(counts.get("3", 0)),
+            html.Span(str(stage3_total),
                        style={"fontWeight": 700, "color": COLORS["red"]}),
         ]),
         html.Span([
             html.Span("Stage 4: ", style={"color": COLORS["text_muted"]}),
-            html.Span(str(counts.get("4", 0)),
+            html.Span(str(stage4_total),
                        style={"fontWeight": 700, "color": COLORS["red_strong"]}),
         ]),
         html.Span(

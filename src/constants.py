@@ -71,24 +71,32 @@ def chg_color(val):
 
 
 # ---------- Stage analysis ----------
-STAGE_LABELS = ["1", "2A", "2B", "2C", "3", "4"]
+STAGE_LABELS = ["1A", "1B", "2A", "2B", "2C", "3A", "3B", "4A", "4B", "4C"]
 
 STAGE_COLORS = {
-    "1":  (COLORS["surface2"], COLORS["text_muted"]),
+    "1A": (COLORS["surface2"], COLORS["text_muted"]),
+    "1B": (COLORS["surface2"], COLORS["text_muted"]),
     "2A": (COLORS["green_cell"], COLORS["green_light"]),
     "2B": (COLORS["yellow_cell"], "#fde68a"),
     "2C": (COLORS["orange_cell"], "#fdba74"),
-    "3":  (COLORS["red_cell"], COLORS["red_light"]),
-    "4":  (COLORS["red_cell_strong"], COLORS["red_light"]),
+    "3A": (COLORS["red_cell"], COLORS["red_light"]),
+    "3B": (COLORS["red_cell"], COLORS["red_light"]),
+    "4A": (COLORS["red_cell_strong"], COLORS["red_light"]),
+    "4B": (COLORS["red_cell_strong"], COLORS["red_light"]),
+    "4C": (COLORS["red_cell_strong"], COLORS["red_light"]),
 }
 
 STAGE_BAR_COLORS = {
-    "1": "#4a5568",
+    "1A": "#4a5568",
+    "1B": "#64748b",
     "2A": "#22c55e",
     "2B": "#eab308",
     "2C": "#f97316",
-    "3": "#ef4444",
-    "4": "#7f1d1d",
+    "3A": "#ef4444",
+    "3B": "#ea580c",
+    "4A": "#ef4444",
+    "4B": "#dc2626",
+    "4C": "#7f1d1d",
 }
 
 # ---------- Key-metrics row labels ----------
@@ -243,6 +251,8 @@ FINVIZ_EXPORT_URLS = {
     "ind_sp500": "https://elite.finviz.com/export.ashx?v=141&f=idx_sp500&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
     "ind_dji": "https://elite.finviz.com/export.ashx?v=141&f=idx_dji&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
     "ind_rut": "https://elite.finviz.com/export.ashx?v=141&f=idx_rut&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
+    # Stage analysis: export.ashx, USA universe. v=171 Technical has 20/50/200-Day SMA (Relative), EMA10.
+    "ind_stage": "https://elite.finviz.com/export.ashx?v=171&f=geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,41,42,47,50,51,52,55,56,61,62,63,64,65",
 }
 
 # ---------- Sector SPDR tickers ----------

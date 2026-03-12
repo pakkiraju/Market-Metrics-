@@ -318,7 +318,7 @@ TABLE_CELL_STYLE = {
 # ---------- Stage badge ----------
 def stage_badge_style(stage):
     from src.constants import STAGE_COLORS
-    bg, fg = STAGE_COLORS.get(stage, STAGE_COLORS["1"])
+    bg, fg = STAGE_COLORS.get(stage, STAGE_COLORS["1A"])
     return {
         "display": "inline-block",
         "padding": "0 3px",
