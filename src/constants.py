@@ -247,7 +247,8 @@ FINVIZ_EXPORT_URLS = {
     # O'Neil/CANSLIM: c=1,32,40,47,61,62,63,64,65 = Ticker,ROE,ProfitMargin,ATR,AvgVol,RelVol,Price,Change,Volume. ft=2 for fundamental filters.
     "oneil": "https://elite.finviz.com/export.ashx?v=161&f=fa_epsyoy_o25,fa_epsyoy1_o25,fa_epsyoyttm_pos,fa_netmargin_pos,fa_roe_pos,geo_usa&o=-change&ft=2&c=1,32,40,47,61,62,63,64,65",
     # Group indicators: v=141 Performance view has Perf Week/Month (v=111 Overview ignores c=). c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65
-    "ind_1b": "https://elite.finviz.com/export.ashx?v=152&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-change&c=1,4,42,43,44,45,47,60,66",
+    # ind_1b: $1B+ universe for Key Metrics + Leading Industries. v=141 has Perf Week/Month (week_chg, month_chg) for green coloring.
+    "ind_1b": "https://elite.finviz.com/export.ashx?v=141&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
     "ind_9m": "https://elite.finviz.com/export.ashx?v=141&f=cap_1to,geo_usa,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
     "ind_usa": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,sh_price_o1,sh_avgvol_o1000&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
     # Thematics RRG: v=141 for reliable Perf Year/Qtr columns (v=152 may have different layout)
