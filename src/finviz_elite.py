@@ -243,73 +243,120 @@ def fetch_elite_by_url(url: str) -> list[dict]:
     return all_data
 
 
-def fetch_csv_from_url(url: str) -> list[dict]:
+def fetch_csv_from_url(url: str, caller: str = "") -> list[dict]:
     """Fetch CSV directly from a FinViz export.ashx URL. Adds auth= if API key set.
-    Returns list of dicts (one per row). Fast - single request, no delays."""
+    Supports API key or cookie auth. caller= widget/cache_key for log context."""
     auth_params = get_auth_params()
+    headers = get_auth_headers()
+    if not auth_params and not headers:
+        return []
     if auth_params:
         sep = "&" if "?" in url else "?"
         url = f"{url}{sep}auth={auth_params['auth']}"
-    req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    try:
-        resp = requests.get(url, headers=req_headers, timeout=30, verify=False)
-        resp.raise_for_status()
-    except Exception as e:
-        logger.warning("fetch_csv_from_url failed: %s", e)
+    req_headers = {**headers, "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    resp = None
+    for attempt in range(4):
+        try:
+            resp = requests.get(url, headers=req_headers, timeout=30, verify=False)
+            if resp.status_code == 429:
+                wait_sec = (2 ** attempt) * 15
+                logger.warning("[%s] FinViz 429 rate limit, waiting %ds before retry %d", caller or "FinViz", wait_sec, attempt + 1)
+                time.sleep(wait_sec)
+                continue
+            resp.raise_for_status()
+            break
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 429:
+                wait_sec = (2 ** attempt) * 15
+                logger.warning("[%s] FinViz 429 rate limit, waiting %ds before retry %d", caller or "FinViz", wait_sec, attempt + 1)
+                time.sleep(wait_sec)
+                continue
+            logger.warning("[%s] fetch_csv_from_url failed: %s", caller or "FinViz", e)
+            return []
+        except Exception as e:
+            logger.warning("[%s] fetch_csv_from_url failed: %s", caller or "FinViz", e)
+            return []
+    else:
+        logger.warning("[%s] fetch_csv_from_url failed after 4 retries (429)", caller or "FinViz")
         return []
-    if resp.text.strip().startswith("<"):
-        logger.debug("URL returned HTML (login page?)")
+    text = resp.text.strip().lstrip("\ufeff")
+    if text.startswith("<"):
+        logger.debug("[%s] URL returned HTML (login page?)", caller or "FinViz")
         return []
     import csv
     import io
     try:
-        reader = csv.DictReader(io.StringIO(resp.text))
+        reader = csv.DictReader(io.StringIO(text))
         rows = list(reader)
         if rows and "ticker" in rows[0] and "Ticker" not in rows[0]:
             for r in rows:
                 r["Ticker"] = r.get("ticker", "")
         return rows
     except Exception as e:
-        logger.warning("CSV parse failed: %s", e)
+        logger.warning("[%s] CSV parse failed: %s", caller or "FinViz", e)
         return []
 
 
-def fetch_export_from_url(url: str) -> list[dict]:
-    """Fetch all rows from export.ashx URL with pagination (20 per page). Same as fetch_csv_from_url but gets all pages."""
+def fetch_export_from_url(url: str, caller: str = "") -> list[dict]:
+    """Fetch full CSV from export.ashx URL. Single request - export returns all rows.
+    Supports API key (auth=) or cookie auth. caller= widget/cache_key for log context."""
     auth_params = get_auth_params()
-    if not auth_params:
+    headers = get_auth_headers()
+    if not auth_params and not headers:
         return []
-    sep = "&" if "?" in url else "?"
-    base_url = f"{url}{sep}auth={auth_params['auth']}"
-    req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    all_rows = []
-    page = 0
-    while True:
-        page_url = f"{base_url}&r={1 + page * 20}" if page > 0 else base_url
+
+    base_url = url
+    if auth_params:
+        sep = "&" if "?" in url else "?"
+        base_url = f"{url}{sep}auth={auth_params['auth']}"
+    req_headers = {**headers, "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    resp = None
+    for attempt in range(4):
         try:
-            resp = requests.get(page_url, headers=req_headers, timeout=30, verify=False)
+            resp = requests.get(base_url, headers=req_headers, timeout=60, verify=False)
+            if resp.status_code == 429:
+                wait_sec = (2 ** attempt) * 15
+                logger.warning("[%s] FinViz 429 rate limit, waiting %ds before retry %d", caller or "FinViz", wait_sec, attempt + 1)
+                time.sleep(wait_sec)
+                continue
             resp.raise_for_status()
+            break
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 429:
+                wait_sec = (2 ** attempt) * 15
+                logger.warning("[%s] FinViz 429 rate limit, waiting %ds before retry %d", caller or "FinViz", wait_sec, attempt + 1)
+                time.sleep(wait_sec)
+                continue
+            logger.warning("[%s] fetch_export_from_url failed: %s", caller or "FinViz", e)
+            return []
         except Exception as e:
-            logger.warning("fetch_export_from_url failed: %s", e)
-            break
-        if resp.text.strip().startswith("<"):
-            break
-        import csv
-        import io
-        try:
-            reader = csv.DictReader(io.StringIO(resp.text))
-            rows = list(reader)
-            if rows and "ticker" in rows[0] and "Ticker" not in rows[0]:
-                for r in rows:
-                    r["Ticker"] = r.get("ticker", "")
-            all_rows.extend(rows)
-        except Exception:
-            break
-        if len(rows) < 20:
-            break
-        page += 1
-        time.sleep(0.5)
-    return all_rows
+            logger.warning("[%s] fetch_export_from_url failed: %s", caller or "FinViz", e)
+            return []
+    else:
+        logger.warning("[%s] fetch_export_from_url failed after 4 retries (429)", caller or "FinViz")
+        return []
+
+    if resp is None or not resp.ok:
+        return []
+    text = resp.text.strip().lstrip("\ufeff")
+    if text.startswith("<"):
+        logger.warning("[%s] export.ashx returned HTML (login page?) - check auth. URL: %s", caller or "FinViz", base_url[:120])
+        return []
+    if "login" in resp.url.lower() or "sign in" in text[:2000].lower():
+        logger.warning("[%s] export.ashx redirected to login - check FINVIZ_API_KEY or FINVIZ_EMAIL+PASSWORD", caller or "FinViz")
+        return []
+    import csv
+    import io
+    try:
+        reader = csv.DictReader(io.StringIO(text))
+        rows = list(reader)
+        if rows and "ticker" in rows[0] and "Ticker" not in rows[0]:
+            for r in rows:
+                r["Ticker"] = r.get("ticker", "")
+        return rows
+    except Exception as e:
+        logger.warning("[%s] export.ashx CSV parse failed: %s. Preview: %s", caller or "FinViz", e, text[:150])
+        return []
 
 
 def _fetch_elite_csv(filters: list[str] | str, table: str, order: str, ft: str = "3") -> list[dict]:

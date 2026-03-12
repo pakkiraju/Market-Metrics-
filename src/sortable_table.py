@@ -34,7 +34,7 @@ def _parse_sort_num(val) -> float:
 # Sort key extractors: (row) -> comparable value
 SCREENER_SORT_KEYS = {
     "ticker": lambda r: ((r.get("ticker") or "").upper(),),
-    "news": lambda r: ((r.get("news") or "").lower(),),
+    "news": lambda r: ((r.get("news") or r.get("news_url") or "").lower(),),
     "price": lambda r: (_parse_sort_num(r.get("price")),),
     "avg_vol": lambda r: (_parse_sort_num(r.get("avg_vol")),),
     "rel_vol": lambda r: (_parse_sort_num(r.get("rel_vol")),),
@@ -73,6 +73,12 @@ SECTOR_SORT_KEYS = {
 LEADING_SORT_KEYS = {
     "industry": lambda r: ((r.get("industry") or "").lower(),),
     "top_both": lambda r: (1 if r.get("top_both") else 0, (r.get("industry") or "").lower()),
+}
+
+# Thematics sort keys (same structure as leading industries)
+THEMATICS_SORT_KEYS = {
+    "theme": lambda r: ((r.get("theme") or "").lower(),),
+    "top_both": lambda r: (1 if r.get("top_both") else 0, (r.get("theme") or "").lower()),
 }
 
 

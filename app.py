@@ -41,6 +41,9 @@ app.index_string = f"""<!DOCTYPE html>
 <html>
 <head>
     {{%metas%}}
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>{{%title%}}</title>
     {{%favicon%}}
     {{%css%}}
@@ -142,6 +145,16 @@ app.index_string = f"""<!DOCTYPE html>
 
 app.layout = build_layout()
 register_callbacks(app)
+
+
+@app.server.after_request
+def _disable_browser_cache(response):
+    """Prevent browser from caching any responses."""
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
 
 if __name__ == "__main__":
     import os

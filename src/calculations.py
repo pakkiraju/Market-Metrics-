@@ -18,6 +18,7 @@ from src.data_fetcher import (
     fetch_earnings_yesterday_today,
     fetch_screener_from_url,
     fetch_benchmark_performance,
+    fetch_thematics_data,
 )
 from src.constants import SECTOR_ETFS, SECTOR_SPDRS_RRG, RRG_BENCHMARK, SECTOR_NAMES, KEY_METRIC_ROWS
 
@@ -467,26 +468,40 @@ def compute_stage_analysis(tickers: list[str],
 def compute_97_club(tickers: list[str]) -> list[dict]:
     """$1B+ stocks in top 3% relative strength across Day, Week, Month. Data from FinViz API (Overview+Performance+Technical)."""
     cached = cache.get("97_club")
-    if cached is not None:
-        return cached
+    if cached is not None and len(cached) > 0:
+        if any(r.get("atr_pct") is not None for r in cached[:5]):
+            return cached
+        cache.invalidate("97_club")
 
     indicators = fetch_group_indicators([], cache_key="ind_$1B+")
     if indicators.empty:
         return []
 
-    # Relative strength: top 3% = rank >= 97
+    # Work on copy to avoid mutating cached DataFrame
+    indicators = indicators.copy()
+
+    # Relative strength: top 3% = percentile rank >= 0.97 (same scale as leading industries/thematics)
     for col in ["day_chg", "week_chg", "month_chg"]:
         if col in indicators.columns:
-            indicators[f"rs_rank_{col}"] = indicators[col].rank(pct=True, method="average") * 100
+            indicators[f"rs_rank_{col}"] = indicators[col].rank(pct=True, method="average")
 
     mask = True
     for col in ["day_chg", "week_chg", "month_chg"]:
         rcol = f"rs_rank_{col}"
         if rcol in indicators.columns:
-            mask = mask & (indicators[rcol] >= 97)
+            mask = mask & (indicators[rcol] >= 0.97)
 
     valid = indicators[mask].copy()
     valid = valid.sort_values("day_chg", ascending=False).head(35)
+
+    # Enrich ATR% if missing (ind_1b v=141 may omit ATR with many columns)
+    if valid["atr_pct"].isna().all() and len(valid) > 0:
+        from src.data_fetcher import fetch_tickers_bulk_csv
+        tickers = valid["ticker"].tolist()
+        bulk = fetch_tickers_bulk_csv(tickers, cache_key=f"97_club_atr_{','.join(sorted(tickers))}")
+        atr_map = {r["ticker"]: r.get("atr_pct") for r in bulk if r.get("atr_pct") is not None}
+        if atr_map:
+            valid["atr_pct"] = valid["ticker"].map(atr_map)
 
     rows = []
     for _, r in valid.iterrows():
@@ -526,13 +541,24 @@ def compute_9m_movers(tickers: list[str]) -> list[dict]:
     """9M+ volume, 1.25+ rel vol. Data from FinViz API (Overview+Performance+Technical) with Avg Vol, Rel Vol."""
     cached = cache.get("9m_movers")
     if cached is not None:
-        return cached
+        if any(r.get("atr_pct") is not None for r in cached[:5]):
+            return cached
+        cache.invalidate("9m_movers")
 
     indicators = fetch_group_indicators([], cache_key="ind_9m_movers")
     if indicators.empty:
         return []
 
     valid = indicators.sort_values("day_chg", ascending=False).head(40)
+
+    # Enrich ATR% if missing (ind_9m v=141 may omit ATR with many columns)
+    if valid["atr_pct"].isna().all() and len(valid) > 0:
+        from src.data_fetcher import fetch_tickers_bulk_csv
+        tickers = valid["ticker"].tolist()
+        bulk = fetch_tickers_bulk_csv(tickers, cache_key=f"9m_atr_{','.join(sorted(tickers))}")
+        atr_map = {r["ticker"]: r.get("atr_pct") for r in bulk if r.get("atr_pct") is not None}
+        if atr_map:
+            valid["atr_pct"] = valid["ticker"].map(atr_map)
 
     rows = []
     for _, r in valid.iterrows():
@@ -576,12 +602,7 @@ def compute_earnings_yesterday_today(tickers: list[str]) -> list[dict]:
 
 def compute_stocks_in_play(tickers: list[str]) -> list[dict]:
     """Stocks In Play: news yesterday|today, avg vol 1K+, price $1+, rel vol 2+. Sorted by change desc.
-    Uses v=141 Performance view for Avg Vol and Rel Vol columns."""
-    cached = cache.get("stocks_in_play")
-    if cached:
-        s = cached[0] if cached else {}
-        if not s.get("avg_vol") and not s.get("rel_vol"):
-            cache.invalidate("stocks_in_play")
+    Uses v=141 with c=1,137,47,61,62,63,64,65 for Ticker,News/Link,ATR,AvgVol,RelVol,Price,Change,Volume."""
     return fetch_screener_from_url("stocks_in_play", "stocks_in_play", ttl=MEDIUM)
 
 
@@ -612,22 +633,23 @@ def compute_leading_industries(tickers: list[str],
     if cached is not None:
         return cached
 
-    # Use ind_$1B+ (same universe as 97 Club)
+    # Use ind_$1B+ (same universe as 97 Club). ind_1b export includes Industry/Sector, so no need for club97 URL.
     indicators = compute_group_indicators([], cache_key="ind_$1B+")
     if indicators.empty:
         cache.put("leading_industries", [], ttl=FAST)  # cache empty to avoid refetching every interval
         return []
 
-    # Industry/Sector from Overview export (FinViz merge may omit these columns)
-    overview_map = fetch_industry_map_from_overview()
+    # Industry from ind_1b (has Industry, Sector). Only fetch club97 if indicators lacks industry.
     if industry_map:
         indicators["industry"] = indicators["ticker"].map(industry_map)
-    elif overview_map:
-        indicators["industry"] = indicators["ticker"].map(overview_map)
-    elif "industry" in indicators.columns:
-        pass
+    elif "industry" in indicators.columns and indicators["industry"].fillna("").astype(str).str.strip().str.len().gt(0).any():
+        pass  # Use industry from ind_1b — avoids redundant club97 URL (same filters as ind_1b)
     else:
-        indicators["industry"] = indicators.get("sector", pd.Series(dtype=str))
+        overview_map = fetch_industry_map_from_overview()
+        if overview_map:
+            indicators["industry"] = indicators["ticker"].map(overview_map)
+        else:
+            indicators["industry"] = indicators.get("sector", pd.Series(dtype=str))
     # Fill empty with sector, then "Uncategorized"
     indicators["industry"] = indicators["industry"].fillna("").astype(str).str.strip()
     sector_fallback = indicators.get("sector", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
@@ -669,4 +691,129 @@ def compute_leading_industries(tickers: list[str],
 
     if rows:
         cache.put("leading_industries", rows, ttl=MEDIUM)
+    return rows
+
+
+# -----------------------------------------------------------------------
+# Section 14: Thematics Tracker
+# -----------------------------------------------------------------------
+
+def compute_thematics(tickers: list[str]) -> list[dict]:
+    """Top 20% themes by weekly+monthly relative strength. USA, avg vol 1K+, price $1+.
+    Green = top 20% on BOTH weekly and monthly. Shows top 4 stocks per theme by day change."""
+    cached = cache.get("thematics")
+    if cached is not None:
+        return cached
+
+    indicators = fetch_thematics_data(cache_key="thematics_data", ttl=MEDIUM)
+    if indicators.empty:
+        cache.invalidate("thematics_data")
+        cache.invalidate("thematics")  # Don't persist empty; retry on next refresh
+        return []
+
+    indicators["theme"] = indicators["theme"].fillna("").astype(str).str.strip()
+    indicators = indicators[indicators["theme"] != ""]
+    indicators["theme"] = indicators["theme"].where(indicators["theme"] != "", "Uncategorized")
+
+    grouped = indicators.groupby("theme").agg(
+        week_avg=("week_chg", "mean"),
+        month_avg=("month_chg", "mean"),
+    ).reset_index()
+
+    grouped["week_rank"] = grouped["week_avg"].rank(pct=True)
+    grouped["month_rank"] = grouped["month_avg"].rank(pct=True)
+
+    top_20_week = set(grouped[grouped["week_rank"] >= 0.80]["theme"].dropna())
+    top_20_month = set(grouped[grouped["month_rank"] >= 0.80]["theme"].dropna())
+    top_themes = top_20_week | top_20_month
+    if not top_themes:
+        top_themes = set(grouped["theme"].dropna())
+
+    grouped = grouped[grouped["theme"].isin(top_themes)]
+    grouped = grouped.sort_values("week_avg", ascending=False)
+
+    rows = []
+    for _, g in grouped.iterrows():
+        theme_name = g["theme"]
+        both = theme_name in top_20_week and theme_name in top_20_month
+        theme_tickers = indicators[indicators["theme"] == theme_name]
+        top4 = theme_tickers.nlargest(4, "day_chg", keep="first")["ticker"].tolist()
+        while len(top4) < 4:
+            top4.append("—")
+        rows.append({
+            "theme": theme_name,
+            "top_both": both,
+            "t1": top4[0], "t2": top4[1], "t3": top4[2], "t4": top4[3],
+        })
+
+    if rows:
+        cache.put("thematics", rows, ttl=MEDIUM)
+    else:
+        cache.invalidate("thematics")  # Don't persist empty; retry on next refresh
+    return rows
+
+
+def compute_thematics_rrg_data(
+    benchmark: str = RRG_BENCHMARK,
+    cache_key: str = "thematics_rrg_data",
+) -> list[dict]:
+    """RRG for themes vs VTI. Theme performance = avg of stocks in theme (year, qtr)."""
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    indicators = fetch_thematics_data(cache_key="thematics_data", ttl=MEDIUM)
+    if indicators.empty:
+        return []
+
+    vti = fetch_benchmark_performance(benchmark=benchmark)
+    if not vti:
+        return []
+
+    vti_qtr = vti.get("qtr") or 0.0
+    vti_year = vti.get("year") or 0.0
+
+    grouped = indicators.groupby("theme").agg(
+        year_avg=("year_chg", "mean"),
+        qtr_avg=("qtr_chg", "mean"),
+    ).reset_index()
+
+    # Filter to themes with enough stocks (3+); limit to top 30 by count for readable RRG
+    theme_counts = indicators.groupby("theme").size()
+    grouped = grouped[grouped["theme"].map(theme_counts) >= 3]
+    grouped = grouped.assign(_cnt=grouped["theme"].map(theme_counts)).sort_values("_cnt", ascending=False).head(30).drop(columns=["_cnt"])
+
+    rows = []
+    for _, g in grouped.iterrows():
+        year_val = g["year_avg"] if not pd.isna(g["year_avg"]) else 0.0
+        qtr_val = g["qtr_avg"] if not pd.isna(g["qtr_avg"]) else 0.0
+        short_label = (g["theme"][:12] + "..") if len(g["theme"]) > 12 else g["theme"]
+        rows.append({
+            "ticker": short_label,
+            "name": g["theme"],
+            "rs_ratio_raw": year_val - vti_year,
+            "rs_momentum_raw": qtr_val - vti_qtr,
+        })
+
+    if not rows:
+        return []
+
+    ratio_vals = np.array([x["rs_ratio_raw"] for x in rows])
+    mom_vals = np.array([x["rs_momentum_raw"] for x in rows])
+    r_mean, r_std = ratio_vals.mean(), max(ratio_vals.std(), 1e-6)
+    m_mean, m_std = mom_vals.mean(), max(mom_vals.std(), 1e-6)
+
+    def _norm_r(v):
+        return float(100 + (v - r_mean) / r_std * 10)
+
+    def _norm_m(v):
+        return float(100 + (v - m_mean) / m_std * 10)
+
+    for i, row in enumerate(rows):
+        row["rs_ratio"] = _norm_r(ratio_vals[i])
+        row["rs_momentum"] = _norm_m(mom_vals[i])
+        del row["rs_ratio_raw"]
+        del row["rs_momentum_raw"]
+
+    cache.put(cache_key, rows, ttl=MEDIUM)
     return rows

@@ -22,6 +22,8 @@ from src.calculations import (
     compute_earnings_yesterday_today,
     compute_stocks_in_play,
     compute_leading_industries,
+    compute_thematics,
+    compute_thematics_rrg_data,
     compute_stage_analysis,
 )
 from src.screeners import (
@@ -47,6 +49,7 @@ from src.layout import (
     build_earnings_table,
     build_stocks_in_play_table,
     build_leading_industries_table,
+    build_thematics_table,
     build_stage_chart,
     build_stage_summary,
     build_ticker_grid,
@@ -553,6 +556,44 @@ def register_callbacks(app):
         return fig
 
     @app.callback(
+        Output("thematics-rrg-graph", "figure"),
+        Input("thematics-rrg-graph", "hoverData"),
+        State("thematics-rrg-figure-store", "data"),
+        prevent_initial_call=True,
+    )
+    def thematics_rrg_hover_dim(hover_data, store_data):
+        import copy
+        if not store_data:
+            return no_update
+        points = hover_data.get("points") if hover_data else None
+        if not points:
+            return copy.deepcopy(store_data)
+        hovered_idx = points[0].get("curveNumber")
+        from src.layout import _hex_to_rgba
+        fig = copy.deepcopy(store_data)
+        traces = fig.get("data", [])
+        if not traces:
+            return no_update
+        dim_alpha = 0.18
+        for i, tr in enumerate(traces):
+            color = tr.get("line", {}).get("color", tr.get("marker", {}).get("color", "#888"))
+            full = color
+            dimmed = _hex_to_rgba(color, dim_alpha) if isinstance(color, str) and color.startswith("#") else f"rgba(136,136,136,{dim_alpha})"
+            if hovered_idx is not None and i != hovered_idx:
+                if "line" in tr:
+                    tr.setdefault("line", {})["color"] = dimmed
+                if "marker" in tr:
+                    tr.setdefault("marker", {})["opacity"] = dim_alpha
+                    tr["marker"]["color"] = dimmed
+            else:
+                if "line" in tr:
+                    tr.setdefault("line", {})["color"] = full
+                if "marker" in tr:
+                    tr.setdefault("marker", {})["opacity"] = 1.0
+                    tr["marker"]["color"] = full
+        return fig
+
+    @app.callback(
         [
             Output("club97-content", "children"),
             Output("club97-data-store", "data"),
@@ -601,6 +642,8 @@ def register_callbacks(app):
         [
             Output("leading-content", "children"),
             Output("leading-data-store", "data"),
+            Output("thematics-content", "children"),
+            Output("thematics-data-store", "data"),
             Output("stage-content", "children"),
         ],
         [
@@ -613,6 +656,8 @@ def register_callbacks(app):
         try:
             leading_data = compute_leading_industries([], {})
             leading_table = build_leading_industries_table(leading_data, "leading", "top_both", False)
+            thematics_data = compute_thematics([])
+            thematics_table = build_thematics_table(thematics_data, "thematics", "top_both", False)
             stage_result = compute_stage_analysis([])
             counts = stage_result.get("counts", {})
             stage_chart = build_stage_chart(counts)
@@ -625,10 +670,36 @@ def register_callbacks(app):
                     style={"height": "100%", "width": "100%"},
                 ),
             ], style=CHART_WRAP_STYLE)
-            return [leading_table, leading_data, stage_content]
+            return [leading_table, leading_data, thematics_table, thematics_data, stage_content]
         except Exception as e:
-            logger.exception("Group E (Leading/Stage) failed: %s", e)
-            return [_err_div(e), [], _disabled_msg]
+            logger.exception("Group E (Leading/Thematics/Stage) failed: %s", e)
+            return [_err_div(e), [], _disabled_msg, [], _disabled_msg]
+
+    @app.callback(
+        [
+            Output("thematics-rrg-figure-store", "data"),
+            Output("thematics-rrg-content", "children"),
+        ],
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_thematics_rrg(n_intervals, n_clicks):
+        try:
+            rrg_data = compute_thematics_rrg_data()
+            fig = build_rrg_chart(rrg_data)
+            graph = dcc.Graph(
+                id="thematics-rrg-graph",
+                figure=fig,
+                config={"displayModeBar": False},
+                style={"height": "100%", "width": "100%"},
+            )
+            return fig.to_dict(), graph
+        except Exception as e:
+            logger.exception("Thematics RRG failed: %s", e)
+            return None, _err_div(e)
 
     # ------------------------------------------------------------------
     # Sortable table: header click -> re-sort and re-render
@@ -646,6 +717,7 @@ def register_callbacks(app):
         "earnings": (build_earnings_table, "earnings-content", {}),
         "in_play": (build_stocks_in_play_table, "in_play-content", {}),
         "leading": (build_leading_industries_table, "leading-content", {}),
+        "thematics": (build_thematics_table, "thematics-content", {}),
         "stockbee": (build_stockbee_momentum50_table, "stockbee-content", {}),
     }
 

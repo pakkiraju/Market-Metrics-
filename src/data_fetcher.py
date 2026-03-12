@@ -157,8 +157,11 @@ def _fetch_screener_multi(filter_sets: list[list[str]], table: str,
     return pd.DataFrame(dfs)
 
 
-def _get_csv_val(row: dict, *candidates: str):
-    """Get value from row using first matching key (case-insensitive). Handles FinViz export column variations."""
+def _get_csv_val(row, *candidates: str):
+    """Get value from row using first matching key (case-insensitive). Handles FinViz export column variations.
+    Accepts dict (csv.DictReader) or pandas Series (DataFrame.iterrows())."""
+    if hasattr(row, "to_dict"):
+        row = row.to_dict()
     row_lower = {str(k).strip().lower(): (k, v) for k, v in row.items()}
     for c in candidates:
         cl = str(c).strip().lower()
@@ -198,17 +201,17 @@ def fetch_industry_map_from_overview(cache_key: str = "leading_industry_map", tt
         url = FINVIZ_EXPORT_URLS.get("club97")
         if not url:
             return {}
-        data = fetch_export_from_url(url)
+        data = fetch_export_from_url(url, caller="club97")
         if not data:
             return {}
 
         industry_map = {}
         for row in data:
-            t = str(row.get("Ticker", row.get("ticker", "")) or "").strip().upper()
+            t = str(_get_csv_val(row, "Ticker", "ticker") or "").strip().upper()
             if not t:
                 continue
-            ind = str(row.get("Industry", row.get("industry", "")) or "").strip()
-            sec = str(row.get("Sector", row.get("sector", "")) or "").strip()
+            ind = str(_get_csv_val(row, "Industry", "industry") or "").strip()
+            sec = str(_get_csv_val(row, "Sector", "sector") or "").strip()
             industry_map[t] = ind or sec or ""
         if industry_map:
             cache.put(cache_key, industry_map, ttl=ttl)
@@ -234,7 +237,7 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
         url = FINVIZ_EXPORT_URLS.get(url_key)
         if not url:
             return []
-        data = fetch_export_from_url(url)
+        data = fetch_export_from_url(url, caller=url_key)
         if not data:
             return []
 
@@ -254,6 +257,7 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
             c = _find_csv_col(keys, exact="News") or _find_csv_col(keys, "news")
             if c and str(c).strip().lower() not in _exclude_news:
                 news_col = c
+        news_link_col = _find_csv_col(keys, "link") or _find_csv_col(keys, "url") or _find_csv_col(keys, "news", "link")
 
         def _val(row: dict, col: str | None, *fallbacks: str):
             if col and row.get(col) not in (None, "", "-"):
@@ -283,6 +287,8 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
             price_num = _parse_num(price) if price else None
             atr_pct = round((atr_val / price_num * 100), 2) if atr_val and price_num and price_num != 0 else None
             news_val = _val(row, news_col) if news_col else ""
+            news_link_val = _val(row, news_link_col) if news_link_col else ""
+            news_url = str(news_link_val).strip() if news_link_val else (str(news_val).strip() if news_val and str(news_val).strip().lower().startswith(("http://", "https://")) else "")
             row_dict = {
                 "ticker": t,
                 "price": price,
@@ -292,8 +298,9 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
                 "rel_vol": rel_vol,
                 "atr_pct": atr_pct,
             }
-            # Only add news if it looks like actual text (not rank/count like "1", "2", "3")
-            if news_val:
+            if news_url:
+                row_dict["news_url"] = news_url
+            elif news_val:
                 s = str(news_val).strip()
                 if s and not (s.isdigit() and len(s) <= 4):
                     row_dict["news"] = s[:80] + ("..." if len(s) > 80 else "")
@@ -305,6 +312,108 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
         return rows
     except Exception as e:
         logger.warning("fetch_screener_from_url failed: %s", e)
+        return []
+
+
+def fetch_oneil_from_url(cache_key: str = "oneil_table", ttl: int = MEDIUM) -> list[dict]:
+    """Fetch O'Neil/CANSLIM: single export URL with c= for all columns. Filters ROE + Net Margin >= 25%.
+    v=161 Fundamental view omits Avg Vol/Rel Vol; enriches via fetch_tickers_bulk_csv (v=141)."""
+    cached = cache.get(cache_key)
+    if cached is not None:
+        sample = cached[0] if cached else {}
+        if sample.get("avg_vol") or sample.get("rel_vol"):
+            return cached
+        cache.invalidate(cache_key)
+
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS
+
+        if not is_elite_configured():
+            return []
+        url = FINVIZ_EXPORT_URLS.get("oneil")
+        if not url:
+            return []
+        data = fetch_export_from_url(url, caller="oneil")
+        if not data:
+            return []
+
+        keys = list(data[0].keys())
+        ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+        price_col = _find_csv_col(keys, exact="Price") or _find_csv_col(keys, "price")
+        change_col = _find_csv_col(keys, exact="Change") or _find_csv_col(keys, "change")
+        vol_col = _find_csv_col(keys, exact="Volume") or _find_csv_col(keys, "volume")
+        avg_vol_col = _find_csv_col(keys, "average", "vol") or _find_csv_col(keys, "avg", "vol")
+        rel_vol_col = _find_csv_col(keys, "relative", "vol") or _find_csv_col(keys, "rel", "vol")
+        atr_col = _find_csv_col(keys, exact="ATR") or _find_csv_col(keys, "atr")
+        roe_col = _find_csv_col(keys, "roe") or _find_csv_col(keys, "return", "equity")
+        margin_col = _find_csv_col(keys, "net", "margin") or _find_csv_col(keys, "profit", "margin") or _find_csv_col(keys, "profit m")
+
+        def _parse_pct(val):
+            if val is None or val == "" or str(val).strip() in ("-", "—"):
+                return None
+            s = str(val).strip().replace("%", "").replace(",", "")
+            try:
+                return float(s)
+            except ValueError:
+                return None
+
+        def _val(row, col, *fallbacks):
+            if col and row.get(col) not in (None, "", "-"):
+                v = row.get(col)
+                if v is not None and str(v).strip():
+                    return v
+            return _get_csv_val(row, *fallbacks) if fallbacks else ""
+
+        rows = []
+        for row in data:
+            t = str(row.get(ticker_col, "") or "").strip().upper()
+            if not t:
+                continue
+            roe_val = _parse_pct(_val(row, roe_col, "ROE", "roe", "Return on Equity"))
+            margin_val = _parse_pct(_val(row, margin_col, "Net Profit Margin", "Profit Margin", "profit margin"))
+            if (roe_val if roe_val is not None else 0) + (margin_val if margin_val is not None else 0) < 25:
+                continue
+            price = _val(row, price_col, "Price", "price")
+            change = _val(row, change_col, "Change", "change")
+            vol = _val(row, vol_col, "Volume", "volume")
+            avg_vol = _val(row, avg_vol_col, "Avg Volume", "Average Volume", "avg_volume", "Avg Vol", "Avg. Volume")
+            rel_vol = _val(row, rel_vol_col, "Rel Volume", "Relative Volume", "rel_volume", "Rel Vol", "Rel. Volume")
+            if not rel_vol and vol and avg_vol:
+                v_num, a_num = _parse_num(vol), _parse_num(avg_vol)
+                if v_num and a_num and a_num != 0:
+                    rel_vol = f"{v_num / a_num:.2f}"
+            atr_val = _parse_num(_val(row, atr_col, "ATR", "atr")) if atr_col else None
+            price_num = _parse_num(price) if price else None
+            atr_pct = round((atr_val / price_num * 100), 2) if atr_val and price_num and price_num != 0 else None
+            rows.append({
+                "ticker": t,
+                "price": price,
+                "avg_vol": avg_vol,
+                "rel_vol": rel_vol,
+                "change": change,
+                "volume": vol,
+                "atr_pct": atr_pct,
+                "roe": roe_val,
+                "net_margin": margin_val,
+            })
+        # v=161 Fundamental view omits Avg Vol/Rel Vol; enrich via bulk fetch (v=141)
+        if rows and not any(r.get("avg_vol") or r.get("rel_vol") for r in rows[:3]):
+            tickers = [r["ticker"] for r in rows]
+            bulk = fetch_tickers_bulk_csv(tickers, cache_key=f"oneil_vol_{','.join(sorted(tickers))}")
+            bulk_map = {r["ticker"]: r for r in bulk}
+            for r in rows:
+                b = bulk_map.get(r["ticker"])
+                if b:
+                    if not r.get("avg_vol") and b.get("avg_vol"):
+                        r["avg_vol"] = b["avg_vol"]
+                    if not r.get("rel_vol") and b.get("rel_vol"):
+                        r["rel_vol"] = b["rel_vol"]
+        if rows:
+            cache.put(cache_key, rows, ttl=ttl)
+        return rows
+    except Exception as e:
+        logger.warning("fetch_oneil_from_url failed: %s", e)
         return []
 
 
@@ -340,11 +449,11 @@ def fetch_20pct_weekly_from_urls(ttl: int = MEDIUM) -> list[dict]:
             if not url:
                 continue
             time.sleep(_FINVIZ_DELAY_SEC)  # Delay before each fetch to avoid rate limit
-            data = fetch_export_from_url(url)
+            data = fetch_export_from_url(url, caller=f"20pct_weekly/{url_key}")
             if not data:
                 # Retry once after longer delay (rate limit may clear)
                 time.sleep(5)
-                data = fetch_export_from_url(url)
+                data = fetch_export_from_url(url, caller=f"20pct_weekly/{url_key}")
             if not data:
                 logger.warning("20pct_weekly %s returned no data", url_key)
                 continue
@@ -365,7 +474,7 @@ def fetch_20pct_weekly_from_urls(ttl: int = MEDIUM) -> list[dict]:
                     continue
                 seen.add(t)
 
-                week_val = row.get(week_col, row.get("Perf Week", row.get("Performance (Week)", "")))
+                week_val = _get_csv_val(row, "Performance (Week)", "Perf Week", "perf week")
                 week = _parse_pct(week_val)
                 week = round(float(week), 1) if not pd.isna(week) else 0.0
 
@@ -392,31 +501,6 @@ def fetch_20pct_weekly_from_urls(ttl: int = MEDIUM) -> list[dict]:
                     "atr_pct": atr_pct,
                 })
 
-        # Fetch Technical view for ATR (Performance view lacks ATR)
-        atr_map = {}
-        for url_key in ("20pct_weekly_up_tech", "20pct_weekly_down_tech"):
-            url = FINVIZ_EXPORT_URLS.get(url_key)
-            if not url:
-                continue
-            time.sleep(_FINVIZ_DELAY_SEC)
-            tech_data = fetch_export_from_url(url)
-            if not tech_data:
-                continue
-            keys = list(tech_data[0].keys())
-            ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
-            atr_col = _find_csv_col(keys, exact="ATR") or _find_csv_col(keys, "atr")
-            price_col = _find_csv_col(keys, exact="Price") or _find_csv_col(keys, "price")
-            for row in tech_data:
-                t = str(row.get(ticker_col, "") or "").strip().upper()
-                if not t or t in atr_map:
-                    continue
-                atr_val = _parse_num(row.get(atr_col, row.get("ATR", ""))) if atr_col else None
-                price = _parse_num(row.get(price_col, row.get("Price", ""))) if price_col else None
-                atr_map[t] = round((atr_val / price * 100), 2) if atr_val and price and price != 0 else None
-
-        for r in rows:
-            r["atr_pct"] = atr_map.get(r["ticker"], r.get("atr_pct"))
-
         rows.sort(key=lambda x: abs(x["week"]), reverse=True)
         if rows:
             cache.put("20pct_weekly", rows, ttl=ttl)
@@ -438,36 +522,74 @@ def fetch_4pct_daily_from_url(ttl: int = MEDIUM) -> list[dict]:
         else:
             return cached
 
-    rows = fetch_screener_from_url("4pct_daily", "4pct_daily", ttl=ttl)
-    if not rows:
-        return []
+    return fetch_screener_from_url("4pct_daily", "4pct_daily", ttl=ttl)
 
-    # Fetch Technical view for ATR (Performance view lacks ATR)
+
+def fetch_thematics_data(cache_key: str = "thematics_data", ttl: int = MEDIUM) -> pd.DataFrame:
+    """Fetch thematics universe (geo_usa, sh_avgvol_o1000, sh_price_o1).
+    Single call with c=1,3,4,41,42,43,45,64 for Ticker,Sector,Industry,PerfWeek,PerfMonth,PerfQtr,PerfYear,Change."""
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         from src.finviz_elite import fetch_export_from_url, is_elite_configured
         from src.constants import FINVIZ_EXPORT_URLS
 
-        if is_elite_configured():
-            time.sleep(_FINVIZ_DELAY_SEC)
-            url = FINVIZ_EXPORT_URLS.get("4pct_daily_tech")
-            if url:
-                tech_data = fetch_export_from_url(url)
-                if tech_data:
-                    keys = list(tech_data[0].keys())
-                    ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
-                    atr_col = _find_csv_col(keys, exact="ATR") or _find_csv_col(keys, "atr")
-                    price_col = _find_csv_col(keys, exact="Price") or _find_csv_col(keys, "price")
-                    by_ticker = {r["ticker"]: r for r in rows}
-                    for row in tech_data:
-                        t = str(row.get(ticker_col, "") or "").strip().upper()
-                        if not t or t not in by_ticker:
-                            continue
-                        atr_val = _parse_num(row.get(atr_col, row.get("ATR", ""))) if atr_col else None
-                        price = _parse_num(row.get(price_col, row.get("Price", ""))) if price_col else None
-                        by_ticker[t]["atr_pct"] = round((atr_val / price * 100), 2) if atr_val and price and price != 0 else None
+        if not is_elite_configured():
+            logger.warning("fetch_thematics_data: FinViz Elite not configured (set FINVIZ_API_KEY in .env)")
+            return pd.DataFrame()
+
+        url = FINVIZ_EXPORT_URLS.get("thematics")
+        if not url:
+            return pd.DataFrame()
+        data = fetch_export_from_url(url, caller="thematics")
+        if not data:
+            logger.warning("fetch_thematics_data: FinViz export returned empty (auth may have failed or rate limited)")
+            return pd.DataFrame()
+
+        keys = list(data[0].keys())
+        ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+        sec_col = _find_csv_col(keys, exact="Sector") or _find_csv_col(keys, "sector")
+
+        def _pct(row: dict, *key_names: str) -> float:
+            v = _get_csv_val(row, *key_names)
+            p = _parse_pct(v)
+            return p if not pd.isna(p) else float("nan")
+
+        rows = []
+        seen = set()
+        for row in data:
+            t = str(row.get(ticker_col, "") or "").strip().upper()
+            if not t or t in seen:
+                continue
+            seen.add(t)
+            sec = str(_get_csv_val(row, "Sector", "sector") or "").strip()
+            theme = sec if sec and sec not in ("-", "") and not sec.isdigit() else "Uncategorized"
+
+            change = _parse_pct(_get_csv_val(row, "Change", "change"))
+            if pd.isna(change):
+                change = 0.0
+
+            rows.append({
+                "ticker": t,
+                "theme": theme,
+                "day_chg": float(change),
+                "week_chg": _pct(row, "Performance (Week)", "Perf Week", "perf week"),
+                "month_chg": _pct(row, "Performance (Month)", "Perf Month", "perf month"),
+                "qtr_chg": _pct(row, "Performance (Quarter)", "Perf Quart", "Perf Quarter", "Perf Q", "perf quart"),
+                "year_chg": _pct(row, "Performance (Year)", "Perf Year", "Perf Y", "Perf YTD", "perf year"),
+            })
+
+        result = pd.DataFrame(rows)
+        if not result.empty:
+            cache.put(cache_key, result, ttl=ttl)
+        else:
+            logger.warning("fetch_thematics_data: no rows parsed from %d raw rows", len(data))
+        return result
     except Exception as e:
-        logger.warning("fetch_4pct_daily ATR merge failed: %s", e)
-    return rows
+        logger.warning("fetch_thematics_data failed: %s", e)
+        return pd.DataFrame()
 
 
 def fetch_earnings_yesterday_today(ttl: int = MEDIUM) -> list[dict]:
@@ -490,7 +612,7 @@ def fetch_metric_count(url: str, cache_key: str) -> int:
         if not is_elite_configured():
             return 0
         time.sleep(_FINVIZ_DELAY_SEC)
-        data = fetch_csv_from_url(url)
+        data = fetch_csv_from_url(url, caller=cache_key)
         count = len(data) if data else 0
         if cache_key:
             cache.put(cache_key, count, ttl=MEDIUM)
@@ -522,27 +644,27 @@ def fetch_group_indicators_from_url(cache_key: str) -> pd.DataFrame:
         if not fetch_url:
             return pd.DataFrame()
 
-        data = fetch_csv_from_url(fetch_url)
+        data = fetch_csv_from_url(fetch_url, caller=cache_key)
         if not data:
             return pd.DataFrame()
 
+        def _v(row, *alts):
+            return _get_csv_val(row, *alts)
+
         rows = []
         for row in data:
-            t = str(row.get("Ticker", row.get("ticker", ""))).strip().upper()
+            t = str(_v(row, "Ticker", "ticker") or "").strip().upper()
             if not t:
                 continue
-            price = _parse_num(row.get("Price") or row.get("price") or row.get("Last") or row.get("Close") or "")
+            price = _parse_num(_v(row, "Price", "price", "Last", "Close"))
             if price is None or price <= 0:
                 continue
-            change = _parse_pct(row.get("Change", row.get("change", "")))
+            change = _parse_pct(_v(row, "Change", "change"))
             if pd.isna(change):
                 change = 0.0
 
-            def _pct(key: str, *alts: str) -> float:
-                v = row.get(key)
-                for alt in alts:
-                    if v is None or (isinstance(v, float) and pd.isna(v)):
-                        v = row.get(alt)
+            def _pct(*alts):
+                v = _v(row, *alts)
                 p = _parse_pct(v)
                 return p if not pd.isna(p) else float("nan")
 
@@ -554,25 +676,25 @@ def fetch_group_indicators_from_url(cache_key: str) -> pd.DataFrame:
                     return None
                 return p / denom
 
-            sma20_pct = _parse_num(row.get("SMA20", row.get("20-Day Simple Moving Average", "")))
-            sma50_pct = _parse_num(row.get("SMA50", row.get("50-Day Simple Moving Average", "")))
-            sma200_pct = _parse_num(row.get("SMA200", row.get("200-Day Simple Moving Average", "")))
+            sma20_pct = _parse_num(_v(row, "SMA20", "20-Day SMA", "20-Day Simple Moving Average"))
+            sma50_pct = _parse_num(_v(row, "SMA50", "50-Day SMA", "50-Day Simple Moving Average"))
+            sma200_pct = _parse_num(_v(row, "SMA200", "200-Day SMA", "200-Day Simple Moving Average"))
             sma20 = _pct_to_sma(sma20_pct, price)
             sma50 = _pct_to_sma(sma50_pct, price)
             sma200 = _pct_to_sma(sma200_pct, price)
 
-            week_chg = _pct("Performance (Week)", "Perf Week", "Perf Week")
-            month_chg = _pct("Performance (Month)", "Perf Month", "Perf Month")
+            week_chg = _pct("Performance (Week)", "Perf Week")
+            month_chg = _pct("Performance (Month)", "Perf Month")
             qtr_chg = _pct("Performance (Quarter)", "Perf Quart", "Perf Quarter", "Perf Q")
-            half_chg = _pct("Performance (Half Year)", "Perf Half", "Perf Half Y", "Perf Half")
+            half_chg = _pct("Performance (Half Year)", "Perf Half", "Perf Half Y")
             year_chg = _pct("Performance (Year)", "Perf Year", "Perf Y", "Perf YTD")
 
-            vol = _parse_num(row.get("Volume", row.get("volume", "")))
-            avg_vol = _parse_num(row.get("Avg Volume", row.get("Average Volume", row.get("avg_volume", ""))))
-            rel_vol = _parse_num(row.get("Rel Volume", row.get("Relative Volume", row.get("rel_volume", ""))))
+            vol = _parse_num(_v(row, "Volume", "volume"))
+            avg_vol = _parse_num(_v(row, "Avg Volume", "Average Volume", "avg_volume"))
+            rel_vol = _parse_num(_v(row, "Rel Volume", "Relative Volume", "rel_volume"))
             if rel_vol is None and vol and avg_vol and avg_vol != 0:
                 rel_vol = vol / avg_vol
-            mcap_str = row.get("Market Cap", row.get("market_cap", ""))
+            mcap_str = _v(row, "Market Cap", "market_cap")
             market_cap = _parse_num(mcap_str)
             if market_cap and market_cap > 0 and market_cap < 1e7 and "B" not in str(mcap_str or "").upper() and "M" not in str(mcap_str or "").upper():
                 market_cap = market_cap * 1e6
@@ -599,16 +721,16 @@ def fetch_group_indicators_from_url(cache_key: str) -> pd.DataFrame:
                 "high_20": None,
                 "low_20": None,
                 "price_to_20_range": 50.0,
-                "high_52w": _parse_num(row.get("52W High", row.get("52-Week High", ""))),
-                "low_52w": _parse_num(row.get("52W Low", row.get("52-Week Low", ""))),
+                "high_52w": _parse_num(_v(row, "52W High", "52-Week High")),
+                "low_52w": _parse_num(_v(row, "52W Low", "52-Week Low")),
                 "volume": vol,
                 "avg_volume": avg_vol if avg_vol is not None else vol,
                 "rel_volume": rel_vol,
                 "market_cap": market_cap,
                 "new_20_high": False,
                 "new_20_low": False,
-                "industry": str(row.get("Industry", row.get("industry", "")) or ""),
-                "sector": str(row.get("Sector", row.get("sector", "")) or ""),
+                "industry": str(_v(row, "Industry", "industry") or ""),
+                "sector": str(_v(row, "Sector", "sector") or ""),
             })
 
         result = pd.DataFrame(rows)
@@ -618,6 +740,120 @@ def fetch_group_indicators_from_url(cache_key: str) -> pd.DataFrame:
     except Exception as e:
         logger.warning("fetch_group_indicators_from_url failed: %s", e)
         return pd.DataFrame()
+
+
+# Map cache_key to export URL key(s) for single-request fetch. None = use legacy _fetch_screener_multi.
+_GROUP_INDICATOR_URL_KEYS = {
+    "ind_$1B+": ["ind_1b"],
+    "ind_9m_movers": ["ind_9m"],
+    "ind_leading": ["ind_1b"],
+    "ind_USA": ["ind_usa"],
+    "ind_QQQE": ["ind_ndx"],
+    "ind_RSP": ["ind_sp500"],
+    "ind_DJIA": ["ind_dji"],
+    "ind_RUS2000": ["ind_rut"],
+    "ind_Composite": ["ind_sp500", "ind_ndx", "ind_dji"],
+}
+
+
+def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> list[dict]:
+    """Parse export data into group indicator row format. Single DataFrame with all columns."""
+    if not data:
+        return []
+    keys = list(data[0].keys())
+    ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+
+    def _v(row, *alts):
+        return _get_csv_val(row, *alts)
+
+    rows = []
+    for row in data:
+        t = str(row.get(ticker_col, "") or "").strip().upper()
+        if not t or (ticker_set and t not in ticker_set):
+            continue
+        price = _parse_num(_v(row, "Price", "price", "Last", "Close"))
+        if price is None or price <= 0:
+            continue
+        change = _parse_pct(_v(row, "Change", "change"))
+        if pd.isna(change):
+            change = 0.0
+
+        def _pct(*alts):
+            v = _v(row, *alts)
+            p = _parse_pct(v)
+            return p if not pd.isna(p) else float("nan")
+
+        def _pct_to_sma(pct, p):
+            if pct is None or p is None or p <= 0:
+                return None
+            denom = 1 + pct / 100
+            if abs(denom) < 0.01:
+                return None
+            return p / denom
+
+        sma20_pct = _parse_num(_v(row, "SMA20", "20-Day SMA", "20-Day Simple Moving Average", "sma20"))
+        sma50_pct = _parse_num(_v(row, "SMA50", "50-Day SMA", "50-Day Simple Moving Average", "sma50"))
+        sma200_pct = _parse_num(_v(row, "SMA200", "200-Day SMA", "200-Day Simple Moving Average", "sma200"))
+        sma10_pct = _parse_num(_v(row, "SMA10", "10-Day SMA", "sma10"))
+        ema10_pct = _parse_num(_v(row, "EMA10", "10-Day EMA", "ema10"))
+        sma20 = _pct_to_sma(sma20_pct, price)
+        sma50 = _pct_to_sma(sma50_pct, price)
+        sma200 = _pct_to_sma(sma200_pct, price)
+        sma10 = _pct_to_sma(sma10_pct, price) if sma10_pct is not None else sma20
+        ema10 = _pct_to_sma(ema10_pct, price) if ema10_pct is not None else sma20
+        vol = _parse_num(_v(row, "Volume", "volume"))
+        avg_vol = _parse_num(_v(row, "Avg Volume", "Average Volume", "avg_volume"))
+        rel_vol = _parse_num(_v(row, "Rel Volume", "Relative Volume", "rel_volume"))
+        if rel_vol is None and vol and avg_vol and avg_vol != 0:
+            rel_vol = vol / avg_vol
+        mcap_str = _v(row, "Market Cap", "market_cap")
+        market_cap = _parse_num(mcap_str) if mcap_str else None
+        if market_cap is not None and market_cap > 0 and market_cap < 1e7 and "B" not in str(mcap_str or "").upper() and "M" not in str(mcap_str or "").upper():
+            market_cap = market_cap * 1e6
+        high52 = _parse_num(_v(row, "52W High", "52-Week High"))
+        low52 = _parse_num(_v(row, "52W Low", "52-Week Low"))
+        atr_val = _parse_num(_v(row, "ATR", "ATR (14)", "Average True Range", "atr", "ATR(14)"))
+        week_chg = _pct("Performance (Week)", "Perf Week")
+        month_chg = _pct("Performance (Month)", "Perf Month")
+        qtr_chg = _pct("Performance (Quarter)", "Perf Quart", "Perf Quarter", "Perf Q")
+        half_chg = _pct("Performance (Half Year)", "Perf Half", "Perf Half Y")
+        year_chg = _pct("Performance (Year)", "Perf Year", "Perf Y", "Perf YTD")
+        industry = str(_v(row, "Industry", "industry") or "").strip()
+        sector = str(_v(row, "Sector", "sector") or "").strip()
+        rows.append({
+            "ticker": t,
+            "close": float(price),
+            "prev_close": float(price / (1 + change / 100)) if change != -100 else price,
+            "open": price,
+            "day_chg": float(change),
+            "open_chg": float(change),
+            "week_chg": week_chg,
+            "month_chg": month_chg,
+            "qtr_chg": qtr_chg,
+            "half_chg": half_chg,
+            "year_chg": year_chg,
+            "sma10": sma10,
+            "sma20": sma20,
+            "sma50": sma50,
+            "sma200": sma200,
+            "ema10": ema10,
+            "atr": atr_val,
+            "atr_pct": round((atr_val / price * 100), 2) if atr_val and price else None,
+            "high_20": None,
+            "low_20": None,
+            "price_to_20_range": 50.0,
+            "high_52w": high52,
+            "low_52w": low52,
+            "volume": vol,
+            "avg_volume": avg_vol if avg_vol is not None else vol,
+            "rel_volume": rel_vol,
+            "market_cap": market_cap,
+            "new_20_high": False,
+            "new_20_low": False,
+            "industry": industry or sector,
+            "sector": sector,
+        })
+    return rows
 
 
 def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> pd.DataFrame:
@@ -630,10 +866,33 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
         if cached is not None:
             return cached
 
-    # FinViz: idx_sp500 = S&P 500, idx_ndx = NASDAQ 100, idx_dji = DJIA, idx_rut = Russell 2000.
-    # geo_usa = all US-listed; sh_price_o1 = price over $1; sh_avgvol_o1000 = 1M; cap_1to = $1B+ mcap.
-    # sh_curvol_9000tox = 9M+ volume; sh_relvol_1.25to = 1.25+ rel vol.
-    # Leading Industries: $1B+, USA, RSI>60, then top 20% by weekly+monthly RS; top 4 by day.
+    url_keys = _GROUP_INDICATOR_URL_KEYS.get(cache_key) if cache_key else None
+    ticker_set = set(t.upper() for t in tickers) if tickers else None
+
+    if url_keys:
+        try:
+            from src.finviz_elite import fetch_export_from_url, is_elite_configured
+            from src.constants import FINVIZ_EXPORT_URLS
+            if is_elite_configured():
+                all_rows = []
+                seen = set()
+                for url_key in url_keys:
+                    url = FINVIZ_EXPORT_URLS.get(url_key)
+                    if not url:
+                        continue
+                    data = fetch_export_from_url(url, caller=f"group_indicators/{url_key}")
+                    for r in _parse_group_indicators_rows(data, ticker_set):
+                        if r["ticker"] not in seen:
+                            seen.add(r["ticker"])
+                            all_rows.append(r)
+                if all_rows:
+                    result = pd.DataFrame(all_rows)
+                    cache.put(cache_key, result, ttl=MEDIUM)
+                    return result
+        except Exception as e:
+            logger.warning("fetch_group_indicators (single-URL) failed: %s", e)
+
+    # Fallback: legacy 3-view fetch
     filter_sets_by_group = {
         "ind_QQQE": [["idx_ndx"]],
         "ind_RSP": [["idx_sp500"]],
@@ -678,25 +937,25 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
 
     rows = []
     for _, row in merged.iterrows():
-        t = str(row.get(ticker_col, "")).strip().upper()
+        t = str(row.get(ticker_col, "") or "").strip().upper()
         if not t:
             continue
         if ticker_set and t not in ticker_set:
             continue
 
-        price = _parse_num(row.get("Price", row.get("price", "")))
+        def _v(*alts):
+            return _get_csv_val(row, *alts)
+
+        price = _parse_num(_v("Price", "price", "Last", "Close"))
         if price is None or price <= 0:
             continue
 
-        change = _parse_pct(row.get("Change", row.get("change", "")))
+        change = _parse_pct(_v("Change", "change"))
         if pd.isna(change):
             change = 0.0
 
-        def _pct(key: str, *alts: str) -> float:
-            v = row.get(key)
-            for alt in alts:
-                if v is None or (isinstance(v, float) and pd.isna(v)):
-                    v = row.get(alt)
+        def _pct(*alts):
+            v = _v(*alts)
             p = _parse_pct(v)
             return p if not pd.isna(p) else float("nan")
 
@@ -710,40 +969,40 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
                 return None
             return p / denom
 
-        sma10_pct = _parse_num(row.get("SMA10", row.get("10-Day SMA", row.get("10-Day Simple Moving Average", row.get("sma10", "")))))
-        sma20_pct = _parse_num(row.get("SMA20", row.get("20-Day Simple Moving Average", row.get("sma20", ""))))
-        sma50_pct = _parse_num(row.get("SMA50", row.get("50-Day Simple Moving Average", row.get("sma50", ""))))
-        sma200_pct = _parse_num(row.get("SMA200", row.get("200-Day Simple Moving Average", row.get("sma200", ""))))
-        ema10_pct = _parse_num(row.get("EMA10", row.get("10-Day EMA", row.get("10-Day Exponential Moving Average", row.get("ema10", "")))))
+        sma10_pct = _parse_num(_v("SMA10", "10-Day SMA", "10-Day Simple Moving Average", "sma10"))
+        sma20_pct = _parse_num(_v("SMA20", "20-Day SMA", "20-Day Simple Moving Average", "sma20"))
+        sma50_pct = _parse_num(_v("SMA50", "50-Day SMA", "50-Day Simple Moving Average", "sma50"))
+        sma200_pct = _parse_num(_v("SMA200", "200-Day SMA", "200-Day Simple Moving Average", "sma200"))
+        ema10_pct = _parse_num(_v("EMA10", "10-Day EMA", "10-Day Exponential Moving Average", "ema10"))
         sma20 = _pct_to_sma(sma20_pct, price)
         sma50 = _pct_to_sma(sma50_pct, price)
         sma200 = _pct_to_sma(sma200_pct, price)
         sma10 = _pct_to_sma(sma10_pct, price) if sma10_pct is not None else sma20
         ema10 = _pct_to_sma(ema10_pct, price) if ema10_pct is not None else sma20
-        vol_str = row.get("Volume", row.get("volume", ""))
+        vol_str = _v("Volume", "volume")
         vol = _parse_num(vol_str) if vol_str else None
-        avg_vol_str = row.get("Avg Volume", row.get("Average Volume", row.get("avg_volume", "")))
+        avg_vol_str = _v("Avg Volume", "Average Volume", "avg_volume")
         avg_vol = _parse_num(avg_vol_str) if avg_vol_str else None
-        rel_vol_str = row.get("Rel Volume", row.get("Relative Volume", row.get("rel_volume", "")))
+        rel_vol_str = _v("Rel Volume", "Relative Volume", "rel_volume")
         rel_vol = _parse_num(rel_vol_str) if rel_vol_str else None
         if rel_vol is None and vol and avg_vol and avg_vol != 0:
             rel_vol = vol / avg_vol
-        mcap_str = row.get("Market Cap", row.get("market_cap", ""))
+        mcap_str = _v("Market Cap", "market_cap")
         market_cap = _parse_num(mcap_str) if mcap_str else None
         if market_cap is not None and market_cap > 0 and market_cap < 1e7 and "B" not in str(mcap_str or "").upper() and "M" not in str(mcap_str or "").upper():
             market_cap = market_cap * 1e6
-        high52 = _parse_num(row.get("52W High", row.get("52-Week High", row.get("52W High", ""))))
-        low52 = _parse_num(row.get("52W Low", row.get("52-Week Low", row.get("52W Low", ""))))
-        atr_val = _parse_num(row.get("ATR", row.get("Average True Range", row.get("atr", ""))))
+        high52 = _parse_num(_v("52W High", "52-Week High"))
+        low52 = _parse_num(_v("52W Low", "52-Week Low"))
+        atr_val = _parse_num(_v("ATR", "Average True Range", "atr"))
 
-        week_chg = _pct("Performance (Week)", "Perf Week", "Perf Week")
-        month_chg = _pct("Performance (Month)", "Perf Month", "Perf Month")
+        week_chg = _pct("Performance (Week)", "Perf Week")
+        month_chg = _pct("Performance (Month)", "Perf Month")
         qtr_chg = _pct("Performance (Quarter)", "Perf Quart", "Perf Quarter", "Perf Q")
-        half_chg = _pct("Performance (Half Year)", "Perf Half", "Perf Half Y", "Perf Half")
+        half_chg = _pct("Performance (Half Year)", "Perf Half", "Perf Half Y")
         year_chg = _pct("Performance (Year)", "Perf Year", "Perf Y", "Perf YTD")
 
-        industry = str(row.get("Industry") or row.get("industry") or "").strip()
-        sector = str(row.get("Sector") or row.get("sector") or "").strip()
+        industry = str(_v("Industry", "industry") or "").strip()
+        sector = str(_v("Sector", "sector") or "").strip()
 
         rows.append({
             "ticker": t,
@@ -968,8 +1227,9 @@ def fetch_tickers_bulk_csv(tickers: list[str], cache_key: str | None = None, ttl
         if not is_elite_configured():
             return []
         ticker_str = ",".join(tickers)
-        url = f"https://elite.finviz.com/export.ashx?v=141&f=geo_usa&t={ticker_str}"
-        data = fetch_export_from_url(url)
+        # c=1,47,61,62,63,64,65 = Ticker,ATR,AvgVol,RelVol,Price,Change,Volume
+        url = f"https://elite.finviz.com/export.ashx?v=141&f=geo_usa&t={ticker_str}&c=1,47,61,62,63,64,65"
+        data = fetch_export_from_url(url, caller=cache_key or "watchlist")
         if not data:
             return []
 
@@ -1042,13 +1302,12 @@ def fetch_watchlist_quotes(tickers: list[str]) -> list[dict]:
             s = fetch_elite_stock(t)
             if not s:
                 continue
-            price = s.get("Price", s.get("price", ""))
-            change = s.get("Change", s.get("change", ""))
-            # Finviz quote.ashx uses "Volume", "Avg Volume", "Rel Volume"
-            volume = s.get("Volume", s.get("volume", ""))
-            avg_vol = s.get("Avg Volume", s.get("Average Volume", s.get("avg_volume", "")))
-            rel_vol = s.get("Rel Volume", s.get("Relative Volume", s.get("rel_volume", "")))
-            atr_val = _parse_num(s.get("ATR (14)", s.get("ATR", "")))
+            price = _get_csv_val(s, "Price", "price", "Last", "Close")
+            change = _get_csv_val(s, "Change", "change")
+            volume = _get_csv_val(s, "Volume", "volume")
+            avg_vol = _get_csv_val(s, "Avg Volume", "Average Volume", "avg_volume")
+            rel_vol = _get_csv_val(s, "Rel Volume", "Relative Volume", "rel_volume")
+            atr_val = _parse_num(_get_csv_val(s, "ATR (14)", "ATR", "atr", "Average True Range"))
             price_num = _parse_num(price) if price else None
             atr_pct = round((atr_val / price_num * 100), 2) if atr_val and price_num and price_num != 0 else None
             rows.append({
@@ -1086,10 +1345,10 @@ def fetch_current_quotes(tickers: list[str], cache_key: str | None = None) -> pd
             s = fetch_elite_stock(t)
             if not s:
                 continue
-            price = _parse_num(s.get("Price", ""))
+            price = _parse_num(_get_csv_val(s, "Price", "price", "Last", "Close"))
             if price is None:
                 continue
-            change = _parse_pct(s.get("Change", ""))
+            change = _parse_pct(_get_csv_val(s, "Change", "change"))
             prev = price / (1 + change / 100) if not pd.isna(change) and change != -100 else price
             rows.append({
                 "ticker": t,
@@ -1097,7 +1356,7 @@ def fetch_current_quotes(tickers: list[str], cache_key: str | None = None) -> pd
                 "open": price,
                 "high": price,
                 "low": price,
-                "volume": _parse_num(s.get("Volume", "")),
+                "volume": _parse_num(_get_csv_val(s, "Volume", "volume")),
                 "prev_close": prev,
             })
         except Exception:

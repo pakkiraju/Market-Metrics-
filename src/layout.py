@@ -57,6 +57,8 @@ WIDGETS = [
     ("earnings",       "Earnings Yesterday + Today",    False),
     ("in_play",        "Stocks In Play",             False),
     ("leading",        "Leading Industries",         False),
+    ("thematics",      "Thematics Tracker",          False),
+    ("thematics-rrg",  "Thematics RRG (vs VTI)",     False),
     ("stockbee",       "Stockbee Momentum50",        False),
     ("breadth",        "StockBee Market Breadth Monitor", False),
     ("breadth-primary", "StockBee - Primary Breadth — Up/Down 4%+ Today", False),
@@ -69,7 +71,7 @@ WIDGETS = [
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers + 20% Weekly + 4% Daily + Leading Industries enabled by default
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "in_play", "leading", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "in_play", "leading", "thematics", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -457,7 +459,7 @@ def build_earnings_table(data: list[dict], widget_id: str = None, sort_col: str 
 
 
 def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
-    """Stocks In Play: Ticker, News (if available), Price, Avg Vol, Rel Vol, Change, Vol. Sorted by change desc."""
+    """Stocks In Play: Ticker, News/Link, Price, Avg Vol, Rel Vol, Change, Vol, ATR %. Sorted by change desc."""
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
@@ -466,19 +468,19 @@ def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col
 
     if widget_id and sort_col:
         data = sort_data(data, sort_col, sort_asc, SCREENER_SORT_KEYS)
-    has_news = any(r.get("news") for r in data)
+    has_news = any(r.get("news") or r.get("news_url") for r in data)
     if has_news:
         headers = [
-            ("Ticker", "ticker"), ("News", "news"), ("Price", "price"), ("Avg Vol", "avg_vol"),
-            ("Rel Vol", "rel_vol"), ("Change", "change"), ("Vol", "volume"),
+            ("Ticker", "ticker"), ("Link", "news"), ("Price", "price"), ("Avg Vol", "avg_vol"),
+            ("Rel Vol", "rel_vol"), ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"),
         ]
-        col_widths = ["70px", "140px", "55px", "65px", "55px", "55px", "65px"]
+        col_widths = ["70px", "50px", "55px", "65px", "55px", "55px", "65px", "55px"]
     else:
         headers = [
             ("Ticker", "ticker"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
-            ("Change", "change"), ("Vol", "volume"),
+            ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"),
         ]
-        col_widths = ["70px", "55px", "65px", "55px", "55px", "65px"]
+        col_widths = ["70px", "55px", "65px", "55px", "55px", "65px", "55px"]
     rows = []
     for r in data:
         chg_val = r.get("change")
@@ -487,12 +489,22 @@ def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col
         except (ValueError, TypeError):
             chg_num = 0
         vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        atr_pct = r.get("atr_pct")
+        atr_str = f"{atr_pct:.2f}%" if atr_pct is not None else ""
         row_cells = [
             {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
              "style": TABLE_CELL_STYLE},
         ]
         if has_news:
-            row_cells.append(str(r.get("news", "")))
+            news_url = r.get("news_url")
+            if news_url:
+                row_cells.append({
+                    "text": html.A("LINK", href=news_url, target="_blank", rel="noopener noreferrer",
+                                  style={"color": COLORS["accent"], "textDecoration": "underline", "fontSize": "9px"}),
+                    "style": TABLE_CELL_STYLE,
+                })
+            else:
+                row_cells.append(str(r.get("news", "")))
         row_cells.extend([
             str(r.get("price", "")),
             avg_str,
@@ -500,6 +512,7 @@ def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col
             {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
              "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
             vol_str,
+            atr_str,
         ])
         rows.append(row_cells)
     return _table(headers, rows, col_widths=col_widths,
@@ -881,12 +894,34 @@ def build_leading_industries_table(data: list[dict], widget_id: str = None, sort
     if widget_id and sort_col:
         data = sort_data(data, sort_col, sort_asc, LEADING_SORT_KEYS)
     headers = [("Industry", None), ("1st", None), ("2nd", None), ("3rd", None), ("4th", None)]
+    return _build_theme_industry_table(data, headers, "industry", widget_id, sort_col, sort_asc)
+
+
+def build_thematics_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Thematics Tracker: Theme, top 4 stocks. Same layout as leading industries."""
+    if not data:
+        return html.Div([
+            "No thematics data. ",
+            html.Span("Set FINVIZ_API_KEY in .env for FinViz Elite.", style={"color": COLORS["text_muted"]}),
+            " Other FinViz widgets working? Try Refresh.",
+        ], style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    from src.sortable_table import sort_data, THEMATICS_SORT_KEYS
+
+    if widget_id and sort_col:
+        data = sort_data(data, sort_col, sort_asc, THEMATICS_SORT_KEYS)
+    headers = [("Theme", None), ("1st", None), ("2nd", None), ("3rd", None), ("4th", None)]
+    return _build_theme_industry_table(data, headers, "theme", widget_id, sort_col, sort_asc)
+
+
+def _build_theme_industry_table(data: list[dict], headers: list, name_key: str, widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     rows = []
     for r in data:
         ind_color = COLORS["green_light"] if r.get("top_both") else COLORS["text_muted"]
         row_bg = "rgba(34,197,94,0.08)" if r.get("top_both") else "transparent"
         row = [
-            {"text": r["industry"], "style": {
+            {"text": r.get(name_key, ""), "style": {
                 **TABLE_CELL_STYLE, "textAlign": "left",
                 "fontWeight": 500, "color": ind_color, "fontSize": "8px",
                 "backgroundColor": row_bg,
@@ -1500,7 +1535,11 @@ def build_layout() -> html.Div:
                         variant="green",
                         initial_hidden=not DEFAULT_VISIBILITY.get("qulla", True),
                         extra_header=html.Span([
-                            _finviz_link("FinViz", "qullamaggie", {"marginLeft": "8px"}),
+                            _finviz_link("EP", "qullamaggie", {"marginLeft": "8px"}),
+                            html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
+                            _finviz_link("PS Small", "qulla_ps_small"),
+                            html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
+                            _finviz_link("PS Large", "qulla_ps_large"),
                         ])),
                 _widget("minervini", "Minervini",
                         _sortable_table_wrap("minervini"),
@@ -1606,6 +1645,31 @@ def build_layout() -> html.Div:
                         _loading_wrap("stage-content", [loading]),
                         initial_hidden=not DEFAULT_VISIBILITY.get("stage", True)),
             ], id="row-bottom", style=QUARTER_ROW_STYLE),
+
+            # ---- THEMATICS ROW ----
+            html.Div([
+                _widget("thematics", "Thematics Tracker — Top 20%",
+                        html.Div([
+                            dcc.Store(id="thematics-data-store"),
+                            dcc.Store(id="thematics-sort-store", data={"col": "top_both", "asc": False}),
+                            _loading_wrap("thematics-content", [loading]),
+                        ]),
+                        variant="teal",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("thematics", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "thematics", {"marginLeft": "8px"}),
+                        ])),
+                _widget("thematics-rrg", "Thematics RRG (vs " + RRG_BENCHMARK + ")",
+                        html.Div([
+                            dcc.Store(id="thematics-rrg-figure-store"),
+                            dcc.Loading(
+                                html.Div(id="thematics-rrg-content", children=[loading], style=CHART_WRAP_STYLE),
+                                type="circle", color=COLORS["accent"], style={"minHeight": "40px"},
+                            ),
+                        ], style={"minHeight": f"{SCROLLABLE_BODY_HEIGHT}px"}),
+                        variant="teal",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("thematics-rrg", True)),
+            ], id="row-thematics", style=HALF_ROW_STYLE),
         ], style=CONTENT_AREA_STYLE),
 
     ], style=DASHBOARD_STYLE)
