@@ -15,6 +15,7 @@ from src.data_fetcher import (
     fetch_20pct_weekly_from_urls,
     fetch_4pct_daily_from_url,
     fetch_earnings_yesterday_today,
+    fetch_pre_market_scanner,
     fetch_screener_from_url,
     fetch_benchmark_performance,
     fetch_thematics_data,
@@ -653,6 +654,11 @@ def compute_stocks_in_play(tickers: list[str]) -> list[dict]:
     """Stocks In Play: news yesterday|today, avg vol 1K+, price $1+, rel vol 2+. Sorted by change desc.
     Uses v=141 with c=1,137,47,61,62,63,64,65 for Ticker,News/Link,ATR,AvgVol,RelVol,Price,Change,Volume."""
     return fetch_screener_from_url("stocks_in_play", "stocks_in_play", ttl=MEDIUM)
+
+
+def compute_pre_market_scanner(tickers: list[str]) -> list[dict]:
+    """Pre-market Scanner: USA, avg vol 1K+, price $1+, rel vol 1+, up 3%. Returns all columns from export."""
+    return fetch_pre_market_scanner(ttl=MEDIUM)
 
 
 def compute_4pct_daily(tickers: list[str]) -> list[dict]:

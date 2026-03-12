@@ -32,7 +32,7 @@ logging.basicConfig(
 
 app = Dash(
     __name__,
-    title="Market Metrics Dashboard",
+    title="Pradly Portal",
     update_title="Loading...",
     suppress_callback_exceptions=True,
 )

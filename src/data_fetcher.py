@@ -320,6 +320,54 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
         return []
 
 
+def _normalize_pre_market_rows(data: list[dict]) -> list[dict]:
+    """Normalize pre-market rows: preserve all columns, ensure ticker key and Change column."""
+    rows = []
+    seen = set()
+    for row in data:
+        ticker_val = row.get("Ticker") or row.get("ticker") or ""
+        t = str(ticker_val).strip().upper()
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        out = dict(row)
+        out["ticker"] = t
+        if "Ticker" not in out:
+            out["Ticker"] = t
+        rows.append(out)
+    return rows
+
+
+def fetch_pre_market_scanner(ttl: int = MEDIUM) -> list[dict]:
+    """Pre-market Scanner: USA, avg vol 1K+, price $1+, rel vol 1+, up 3% AND down 3%.
+    Returns raw rows with ALL columns from FinViz export (no normalization)."""
+    cached = cache.get("pre_market_scanner")
+    if cached is not None:
+        return cached
+
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS
+
+        if not is_elite_configured():
+            return []
+        url_up = FINVIZ_EXPORT_URLS.get("pre_market_scanner")
+        url_down = FINVIZ_EXPORT_URLS.get("pre_market_scanner_down")
+        if not url_up:
+            return []
+        data_up = fetch_export_from_url(url_up, caller="pre_market_scanner") or []
+        data_down = fetch_export_from_url(url_down, caller="pre_market_scanner_down") or [] if url_down else []
+        rows_up = _normalize_pre_market_rows(data_up)
+        rows_down = _normalize_pre_market_rows(data_down)
+        rows = rows_up + rows_down
+        if rows:
+            cache.put("pre_market_scanner", rows, ttl=ttl)
+        return rows
+    except Exception as e:
+        logger.warning("fetch_pre_market_scanner failed: %s", e)
+        return []
+
+
 def fetch_oneil_from_url(cache_key: str = "oneil_table", ttl: int = MEDIUM) -> list[dict]:
     """Fetch O'Neil/CANSLIM: single export URL with c= for all columns. Filters ROE + Net Margin >= 25%.
     v=161 Fundamental view omits Avg Vol/Rel Vol; enriches via fetch_tickers_bulk_csv (v=141)."""

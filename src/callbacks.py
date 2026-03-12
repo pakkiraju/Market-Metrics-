@@ -21,6 +21,7 @@ from src.calculations import (
     compute_4pct_daily,
     compute_earnings_yesterday_today,
     compute_stocks_in_play,
+    compute_pre_market_scanner,
     compute_leading_industries,
     compute_thematics,
     compute_thematics_sector_data,
@@ -49,6 +50,7 @@ from src.layout import (
     build_4pct_daily_table,
     build_earnings_table,
     build_stocks_in_play_table,
+    build_pre_market_scanner_table,
     build_leading_industries_table,
     build_thematics_table,
     build_thematics_sector_table,
@@ -143,6 +145,22 @@ def register_callbacks(app):
         if current_style and current_style.get("display") != "none":
             return SETTINGS_OVERLAY_STYLE_HIDDEN
         return SETTINGS_OVERLAY_STYLE_VISIBLE
+
+    # ------------------------------------------------------------------
+    # 1b. Settings drawer: show tab-specific widget toggles
+    # ------------------------------------------------------------------
+    @app.callback(
+        [
+            Output("settings-market-metrics", "style"),
+            Output("settings-intraday", "style"),
+        ],
+        Input("main-tabs", "value"),
+        prevent_initial_call=False,
+    )
+    def settings_tab_content(active_tab):
+        if active_tab == "intraday":
+            return {"display": "none"}, {"display": "block"}
+        return {"display": "block"}, {"display": "none"}
 
     # ------------------------------------------------------------------
     # 2. Widget visibility: ALL widgets toggleable
@@ -607,6 +625,10 @@ def register_callbacks(app):
             Output("earnings-data-store", "data"),
             Output("in_play-content", "children"),
             Output("in_play-data-store", "data"),
+            Output("intraday-earnings-content", "children"),
+            Output("intraday-earnings-data-store", "data"),
+            Output("pre_market-content", "children"),
+            Output("pre_market-data-store", "data"),
         ],
         [
             Input("interval-refresh", "n_intervals"),
@@ -628,16 +650,21 @@ def register_callbacks(app):
             earnings_table = build_earnings_table(earnings_data, "earnings", "change", False)
             in_play_data = compute_stocks_in_play([])
             in_play_table = build_stocks_in_play_table(in_play_data, "in_play", "change", False)
+            pre_market_data = compute_pre_market_scanner([])
+            gap_col = next((c for c in (pre_market_data[0].keys() if pre_market_data else []) if "gap" in c.lower() and "url" not in c.lower()), "Gap")
+            pre_market_table = build_pre_market_scanner_table(pre_market_data, "pre_market", gap_col, False)
             return [
                 club97_table, club97_data, {"col": "change", "asc": False},
                 movers_table, movers_data,
                 weekly_table, weekly_data, daily_table, daily_data,
                 earnings_table, earnings_data,
                 in_play_table, in_play_data,
+                earnings_table, earnings_data,  # intraday duplicate
+                pre_market_table, pre_market_data,
             ]
         except Exception as e:
             logger.exception("Group D failed: %s", e)
-            return [_err_div(e), [], no_update, _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
+            return [_err_div(e), [], no_update, _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
 
     @app.callback(
         [
@@ -721,6 +748,8 @@ def register_callbacks(app):
         "daily": (build_4pct_daily_table, "daily-content", {}),
         "earnings": (build_earnings_table, "earnings-content", {}),
         "in_play": (build_stocks_in_play_table, "in_play-content", {}),
+        "intraday-earnings": (build_earnings_table, "intraday-earnings-content", {}),
+        "pre_market": (build_pre_market_scanner_table, "pre_market-content", {}),
         "leading": (build_leading_industries_table, "leading-content", {}),
         "thematics": (build_thematics_table, "thematics-content", {}),
         "thematics-sector": (build_thematics_sector_table, "thematics-sector-content", {}),
