@@ -260,8 +260,12 @@ def compute_key_metrics_for_group(indicators: pd.DataFrame) -> list[dict]:
 
 def compute_key_metrics_single_group(name: str) -> list[dict]:
     """Compute key metrics for one index group. Data from FinViz screeners directly."""
+    import time
+
     from src.constants import build_metric_screener_url
     from src.data_fetcher import fetch_group_indicators, fetch_metric_count
+
+    _KEY_METRICS_URL_DELAY = 2.0  # seconds between each URL to avoid FinViz rate limit
 
     groups = {
         "NQ100": ("ind_NQ100", []),
@@ -274,6 +278,7 @@ def compute_key_metrics_single_group(name: str) -> list[dict]:
     if not ck:
         return []
 
+    time.sleep(_KEY_METRICS_URL_DELAY)
     ind = fetch_group_indicators(tickers, cache_key=ck)
     rows = compute_key_metrics_for_group(ind)
     n = len(ind) if not ind.empty else 0
@@ -292,9 +297,11 @@ def compute_key_metrics_single_group(name: str) -> list[dict]:
         below_url = build_metric_screener_url(name, metric_label, "below", for_export=True)
         if not above_url:
             continue
-        above = fetch_metric_count(above_url, f"km_{name}_{metric_label}_above")
+        time.sleep(_KEY_METRICS_URL_DELAY)
+        above = fetch_metric_count(above_url, f"km_{name}_{metric_label}_above", skip_delay=True)
         if below_url:
-            below = fetch_metric_count(below_url, f"km_{name}_{metric_label}_below")
+            time.sleep(_KEY_METRICS_URL_DELAY)
+            below = fetch_metric_count(below_url, f"km_{name}_{metric_label}_below", skip_delay=True)
         else:
             below = None
         pct = round(above / n * 100, 1) if n > 0 else 0

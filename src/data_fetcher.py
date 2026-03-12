@@ -578,8 +578,9 @@ def fetch_earnings_yesterday_today(ttl: int = MEDIUM) -> list[dict]:
     return fetch_screener_from_url("earnings_yesterday_today_perf", "earnings_yesterday_today", ttl=ttl)
 
 
-def fetch_metric_count(url: str, cache_key: str) -> int:
-    """Fetch screener URL, return row count. Cached 1hr. 2s delay before each fetch to avoid rate limit."""
+def fetch_metric_count(url: str, cache_key: str, skip_delay: bool = False) -> int:
+    """Fetch screener URL, return row count. Cached 1hr. 2s delay before each fetch to avoid rate limit.
+    skip_delay=True when caller handles delay (e.g. Key Metrics batches with 2s between URLs)."""
     cached = cache.get(cache_key)
     if cached is not None:
         return int(cached)
@@ -587,7 +588,8 @@ def fetch_metric_count(url: str, cache_key: str) -> int:
         from src.finviz_elite import fetch_csv_from_url, is_elite_configured
         if not is_elite_configured():
             return 0
-        time.sleep(_FINVIZ_DELAY_SEC)
+        if not skip_delay:
+            time.sleep(_FINVIZ_DELAY_SEC)
         data = fetch_csv_from_url(url, caller=cache_key)
         count = len(data) if data else 0
         if cache_key:
