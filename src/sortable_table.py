@@ -81,6 +81,16 @@ THEMATICS_SORT_KEYS = {
     "top_both": lambda r: (1 if r.get("top_both") else 0, (r.get("theme") or "").lower()),
 }
 
+# Thematics by Sector (Theme, Week, Month, Qtr, H.Year, YTD)
+THEMATICS_SECTOR_SORT_KEYS = {
+    "theme": lambda r: ((r.get("theme") or "").lower(),),
+    "week": lambda r: (r.get("week") or 0,),
+    "month": lambda r: (r.get("month") or 0,),
+    "qtr": lambda r: (r.get("qtr") or 0,),
+    "hyear": lambda r: (r.get("hyear") or 0,),
+    "year": lambda r: (r.get("year") or 0,),
+}
+
 
 def sortable_header(label: str, widget_id: str, col_key: str, sort_col: str | None, sort_asc: bool) -> html.Th:
     """Build a clickable table header for sorting."""

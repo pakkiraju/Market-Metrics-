@@ -627,7 +627,8 @@ _GROUP_INDICATOR_URL_KEYS = {
     "ind_$1B+": ["ind_1b"],
     "ind_9m_movers": ["ind_9m"],
     "ind_leading": ["ind_1b"],
-    "ind_USA": ["ind_usa"],
+    # ind_USA: use legacy Overview+Performance+Technical merge (has Industry/Sector + Perf Quarter/YTD)
+    "ind_USA": None,
     "ind_thematics_rrg": ["ind_thematics_rrg"],
     "ind_NQ100": ["ind_ndx"],
     "ind_RSP": ["ind_sp500"],
@@ -700,7 +701,7 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
         month_chg = _pct("Performance (Month)", "Perf Month", "Perf. Month", "Perf Month %", "1M", "Perf 1M")
         qtr_chg = _pct("Performance (Quarter)", "Perf Quart", "Perf Quarter", "Perf Q", "Perf. Quarter", "3M", "Perf 3M")
         half_chg = _pct("Performance (Half Year)", "Perf Half", "Perf Half Y", "Perf. Half", "Perf 6M", "6M")
-        year_chg = _pct("Performance (Year)", "Perf Year", "Perf Y", "Perf YTD", "Perf. Year", "Perf 1Y", "1Y")
+        year_chg = _pct("Performance (YTD)", "Performance (Year)", "Perf Year", "Perf Y", "Perf YTD", "Perf. Year", "Perf 1Y", "1Y")
         industry = str(_v(row, "Industry", "industry") or "").strip()
         sector = str(_v(row, "Sector", "sector") or "").strip()
         rows.append({
@@ -909,7 +910,7 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
         month_chg = _pct("Performance (Month)", "Perf Month", "Perf. Month", "Perf Month %", "1M", "Perf 1M")
         qtr_chg = _pct("Performance (Quarter)", "Perf Quart", "Perf Quarter", "Perf Q", "Perf. Quarter", "3M", "Perf 3M")
         half_chg = _pct("Performance (Half Year)", "Perf Half", "Perf Half Y", "Perf. Half", "Perf 6M", "6M")
-        year_chg = _pct("Performance (Year)", "Perf Year", "Perf Y", "Perf YTD", "Perf. Year", "Perf 1Y", "1Y")
+        year_chg = _pct("Performance (YTD)", "Performance (Year)", "Perf Year", "Perf Y", "Perf YTD", "Perf. Year", "Perf 1Y", "1Y")
 
         industry = str(_v("Industry", "industry") or "").strip()
         sector = str(_v("Sector", "sector") or "").strip()

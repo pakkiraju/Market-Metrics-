@@ -23,6 +23,7 @@ from src.calculations import (
     compute_stocks_in_play,
     compute_leading_industries,
     compute_thematics,
+    compute_thematics_sector_data,
     compute_thematics_rrg_data,
     compute_stage_analysis,
 )
@@ -50,6 +51,7 @@ from src.layout import (
     build_stocks_in_play_table,
     build_leading_industries_table,
     build_thematics_table,
+    build_thematics_sector_table,
     build_stage_chart,
     build_stage_summary,
     build_ticker_grid,
@@ -642,6 +644,8 @@ def register_callbacks(app):
             Output("leading-data-store", "data"),
             Output("thematics-content", "children"),
             Output("thematics-data-store", "data"),
+            Output("thematics-sector-content", "children"),
+            Output("thematics-sector-data-store", "data"),
             Output("stage-content", "children"),
         ],
         [
@@ -656,6 +660,8 @@ def register_callbacks(app):
             leading_table = build_leading_industries_table(leading_data, "leading", "top_both", False)
             thematics_data = compute_thematics([])
             thematics_table = build_thematics_table(thematics_data, "thematics", "top_both", False)
+            thematics_sector_data = compute_thematics_sector_data()
+            thematics_sector_table = build_thematics_sector_table(thematics_sector_data, "thematics-sector", "year", False)
             stage_result = compute_stage_analysis([])
             counts = stage_result.get("counts", {})
             stage_chart = build_stage_chart(counts)
@@ -668,10 +674,10 @@ def register_callbacks(app):
                     style={"height": "100%", "width": "100%"},
                 ),
             ], style=CHART_WRAP_STYLE)
-            return [leading_table, leading_data, thematics_table, thematics_data, stage_content]
+            return [leading_table, leading_data, thematics_table, thematics_data, thematics_sector_table, thematics_sector_data, stage_content]
         except Exception as e:
             logger.exception("Group E (Leading/Thematics/Stage) failed: %s", e)
-            return [_err_div(e), [], _disabled_msg, [], _disabled_msg]
+            return [_err_div(e), [], _disabled_msg, [], _err_div(e), [], _disabled_msg]
 
     @app.callback(
         [
@@ -716,6 +722,7 @@ def register_callbacks(app):
         "in_play": (build_stocks_in_play_table, "in_play-content", {}),
         "leading": (build_leading_industries_table, "leading-content", {}),
         "thematics": (build_thematics_table, "thematics-content", {}),
+        "thematics-sector": (build_thematics_sector_table, "thematics-sector-content", {}),
         "stockbee": (build_stockbee_momentum50_table, "stockbee-content", {}),
     }
 

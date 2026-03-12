@@ -250,7 +250,8 @@ FINVIZ_EXPORT_URLS = {
     # ind_1b: $1B+ universe for Key Metrics + Leading Industries. v=141 has Perf Week/Month (week_chg, month_chg) for green coloring.
     "ind_1b": "https://elite.finviz.com/export.ashx?v=141&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
     "ind_9m": "https://elite.finviz.com/export.ashx?v=141&f=cap_1to,geo_usa,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
-    "ind_usa": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,sh_price_o1,sh_avgvol_o1000&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
+    # ind_usa: v=141 Performance has Perf Week/Month/Qtr/YTD (Industry/Sector for themes)
+    "ind_usa": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_price_o1,sh_avgvol_o1000&o=-change&c=1,3,4,6,41,42,43,44,45,47,50,51,52,55,56,61,62,63,64,65",
     # Thematics RRG: v=141 for reliable Perf Year/Qtr columns (v=152 may have different layout)
     "ind_thematics_rrg": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_price_o1,sh_avgvol_o1000&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
     # Key Metrics base data: v=152 has all needed columns (Day Chg, Week, Month, Qtr, Year). Price/SMA/EMA/New Highs-Lows use URL fetch (unchanged).

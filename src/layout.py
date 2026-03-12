@@ -58,6 +58,7 @@ WIDGETS = [
     ("in_play",        "Stocks In Play",             False),
     ("leading",        "Leading Industries",         False),
     ("thematics",      "Thematics Tracker",          False),
+    ("thematics-sector", "Thematics by Sector (Top YTD)", False),
     ("thematics-rrg",  "Thematics RRG (vs VTI)",     False),
     ("stockbee",       "Stockbee Momentum50",        False),
     ("breadth",        "StockBee Market Breadth Monitor", False),
@@ -71,7 +72,7 @@ WIDGETS = [
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers + 20% Weekly + 4% Daily + Leading Industries enabled by default
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "in_play", "leading", "thematics", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "in_play", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -771,6 +772,47 @@ def build_sector_table(sector_data: list[dict], widget_id: str = None, sort_col:
             str(r.get("high_52w", "")),
             str(r.get("low_52w", "")),
             atr_str,
+        ]
+        rows.append(row)
+
+    return _table(headers, rows, widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
+
+
+# -----------------------------------------------------------------------
+# Section 8b: Thematics by Sector (Sector SPDR-style, top YTD)
+# -----------------------------------------------------------------------
+
+def build_thematics_sector_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Thematics aggregated by theme: Theme, Week, Month, Qtr, H.Year, YTD. Top YTD. No Chg/O Chg."""
+    from src.sortable_table import sort_data, THEMATICS_SECTOR_SORT_KEYS
+
+    if not data:
+        return html.Div("No thematics data. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+
+    if widget_id and sort_col:
+        data = sort_data(data, sort_col, sort_asc, THEMATICS_SECTOR_SORT_KEYS)
+    headers = [
+        ("Theme", "theme"),
+        ("Week", "week"), ("Month", "month"), ("Qtr", "qtr"), ("H.Year", "hyear"), ("YTD", "year"),
+    ]
+    rows = []
+    for r in data:
+        def _pct_cell(val, suffix="%"):
+            v = val
+            if v is None or (isinstance(v, float) and v != v):
+                v = 0
+            color = chg_color(v)
+            return {"text": f"{v}{suffix}", "style": {"color": color}}
+
+        row = [
+            {"text": r.get("theme", ""), "style": {"textAlign": "left", "fontWeight": 600, "color": COLORS["text"]}},
+            _pct_cell(r.get("week")),
+            _pct_cell(r.get("month")),
+            _pct_cell(r.get("qtr")),
+            _pct_cell(r.get("hyear")),
+            _pct_cell(r.get("year")),
         ]
         rows.append(row)
 
@@ -1664,6 +1706,17 @@ def build_layout() -> html.Div:
                         extra_header=html.Span([
                             _finviz_link("FinViz", "thematics", {"marginLeft": "8px"}),
                         ])),
+                _widget("thematics-sector", "Thematics by Sector — Top YTD",
+                        html.Div([
+                            dcc.Store(id="thematics-sector-data-store"),
+                            dcc.Store(id="thematics-sector-sort-store", data={"col": "year", "asc": False}),
+                            _loading_wrap("thematics-sector-content", [loading]),
+                        ]),
+                        variant="teal",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("thematics-sector", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "thematics", {"marginLeft": "8px"}),
+                        ])),
                 _widget("thematics-rrg", "Thematics RRG (vs " + RRG_BENCHMARK + ")",
                         html.Div([
                             dcc.Store(id="thematics-rrg-figure-store"),
@@ -1674,7 +1727,7 @@ def build_layout() -> html.Div:
                         ], style={"minHeight": f"{SCROLLABLE_BODY_HEIGHT}px"}),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("thematics-rrg", True)),
-            ], id="row-thematics", style=HALF_ROW_STYLE),
+            ], id="row-thematics", style=THIRD_ROW_STYLE),
         ], style=CONTENT_AREA_STYLE),
 
     ], style=DASHBOARD_STYLE)

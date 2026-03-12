@@ -31,6 +31,7 @@ _DISK_PERSISTENT_KEYS = frozenset({
     "leading_industries",
     "thematics",
     "thematics_data",
+    "thematics_sector_data",
     "thematics_rrg_data",
     "leading_industry_map",
     "stage_analysis",

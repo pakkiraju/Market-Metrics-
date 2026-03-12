@@ -795,18 +795,73 @@ def compute_thematics(tickers: list[str]) -> list[dict]:
     return rows
 
 
+def compute_thematics_sector_data(cache_key: str = "thematics_sector_data") -> list[dict]:
+    """Thematics aggregated by theme (industry), Sector SPDR-style: Chg, O Chg, Week, Month, Qtr, H.Year, Year.
+    Uses ind_USA (same as Thematics Tracker) for Industry/Sector. Filtered by top YTD (year) change. Feeds RRG."""
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    indicators = fetch_group_indicators([], cache_key="ind_USA")
+    if indicators.empty:
+        return []
+
+    # Theme = industry (sector fallback)
+    ind = indicators.get("industry", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+    sec = indicators.get("sector", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+    ind_valid = (ind.str.len() > 0) & (ind != "-") & (ind != "")
+    sec_valid = (sec.str.len() > 0) & (sec != "-") & (sec != "")
+    indicators = indicators.copy()
+    indicators["theme"] = ind.where(ind_valid, sec.where(sec_valid, "Uncategorized"))
+
+    grouped = indicators.groupby("theme").agg(
+        chg=("day_chg", "mean"),
+        ochg=("open_chg", "mean"),
+        week=("week_chg", "mean"),
+        month=("month_chg", "mean"),
+        qtr=("qtr_chg", "mean"),
+        hyear=("half_chg", "mean"),
+        year=("year_chg", "mean"),
+    ).reset_index()
+
+    # Filter themes with 3+ stocks; sort by YTD (year) descending; top 30
+    theme_counts = indicators.groupby("theme").size()
+    grouped = grouped[grouped["theme"].map(theme_counts) >= 3]
+    grouped = grouped.sort_values("year", ascending=False, na_position="last").head(30)
+
+    rows = []
+    for _, g in grouped.iterrows():
+        def _r(val):
+            v = g.get(val)
+            return round(float(v), 1) if v is not None and not pd.isna(v) else 0.0
+        rows.append({
+            "theme": g["theme"],
+            "chg": _r("chg"),
+            "ochg": _r("ochg"),
+            "week": _r("week"),
+            "month": _r("month"),
+            "qtr": _r("qtr"),
+            "hyear": _r("hyear"),
+            "year": _r("year"),
+        })
+
+    if rows:
+        cache.put(cache_key, rows, ttl=MEDIUM)
+    return rows
+
+
 def compute_thematics_rrg_data(
     benchmark: str = RRG_BENCHMARK,
     cache_key: str = "thematics_rrg_data",
 ) -> list[dict]:
     """RRG for themes vs VTI. Same math as sector SPDR RRG: RS-Ratio = year vs VTI, RS-Momentum = qtr vs VTI.
-    Uses ind_thematics_rrg (v=141) for reliable Perf Year/Qtr columns; theme = industry (sector fallback)."""
+    Uses thematics_sector_data (same source as Thematics by Sector table) for consistency."""
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
-    indicators = fetch_group_indicators([], cache_key="ind_thematics_rrg")
-    if indicators.empty:
+    sector_rows = compute_thematics_sector_data()
+    if not sector_rows:
         return []
 
     vti = fetch_benchmark_performance(benchmark=benchmark)
@@ -816,33 +871,15 @@ def compute_thematics_rrg_data(
     vti_qtr = vti.get("qtr") or 0.0
     vti_year = vti.get("year") or 0.0
 
-    # Theme = industry (sector fallback), same as thematics table
-    ind = indicators.get("industry", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
-    sec = indicators.get("sector", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
-    ind_valid = (ind.str.len() > 0) & (ind != "-") & (ind != "")
-    sec_valid = (sec.str.len() > 0) & (sec != "-") & (sec != "")
-    indicators = indicators.copy()
-    indicators["theme"] = ind.where(ind_valid, sec.where(sec_valid, "Uncategorized"))
-
-    # Same logic as sector RRG: year outperformance = RS-Ratio, qtr outperformance = RS-Momentum
-    grouped = indicators.groupby("theme").agg(
-        year_avg=("year_chg", "mean"),
-        qtr_avg=("qtr_chg", "mean"),
-    ).reset_index()
-
-    # Filter to themes with enough stocks (3+); limit to top 30 by count for readable RRG
-    theme_counts = indicators.groupby("theme").size()
-    grouped = grouped[grouped["theme"].map(theme_counts) >= 3]
-    grouped = grouped.assign(_cnt=grouped["theme"].map(theme_counts)).sort_values("_cnt", ascending=False).head(30).drop(columns=["_cnt"])
-
     rows = []
-    for _, g in grouped.iterrows():
-        year_val = g["year_avg"] if not pd.isna(g["year_avg"]) else 0.0
-        qtr_val = g["qtr_avg"] if not pd.isna(g["qtr_avg"]) else 0.0
-        short_label = (g["theme"][:12] + "..") if len(g["theme"]) > 12 else g["theme"]
+    for r in sector_rows:
+        year_val = r.get("year") or 0.0
+        qtr_val = r.get("qtr") or 0.0
+        theme = r.get("theme", "")
+        short_label = (theme[:12] + "..") if len(theme) > 12 else theme
         rows.append({
             "ticker": short_label,
-            "name": g["theme"],
+            "name": theme,
             "rs_ratio_raw": year_val - vti_year,
             "rs_momentum_raw": qtr_val - vti_qtr,
         })
