@@ -740,12 +740,22 @@ def compute_leading_industries(tickers: list[str],
 # Section 14: Thematics Tracker
 # -----------------------------------------------------------------------
 
+def _is_stale_thematics_cache(cached: list) -> bool:
+    """True if cached thematics is stale (single Uncategorized theme from bad Industry/Sector data)."""
+    if not cached or len(cached) != 1:
+        return False
+    return cached[0].get("theme") == "Uncategorized"
+
+
 def compute_thematics(tickers: list[str]) -> list[dict]:
     """Top 20% themes by weekly+monthly relative strength. USA, avg vol 1K+, price $1+.
     Green = top 20% on BOTH weekly and monthly. Shows top 4 stocks per theme by day change."""
     cached = cache.get("thematics")
-    if cached is not None:
+    if cached is not None and not _is_stale_thematics_cache(cached):
         return cached
+    if cached is not None:
+        cache.invalidate("thematics")
+        cache.invalidate("thematics_data")
 
     indicators = fetch_thematics_data(cache_key="thematics_data", ttl=MEDIUM)
     if not isinstance(indicators, pd.DataFrame) or indicators.empty:
