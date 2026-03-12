@@ -396,15 +396,15 @@ def register_callbacks(app):
         [
             Output("stockbee-content", "children"),
             Output("stockbee-data-store", "data"),
+            Output("stockbee-sort-store", "data"),
         ],
         [
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
         ],
-        State("stockbee-sort-store", "data"),
         prevent_initial_call=False,
     )
-    def refresh_stockbee(n_intervals, n_clicks, sort_state):
+    def refresh_stockbee(n_intervals, n_clicks):
         try:
             from src.stockbee import fetch_stockbee_momentum50
             from src.data_fetcher import fetch_tickers_bulk_csv
@@ -414,13 +414,13 @@ def register_callbacks(app):
             if not dates or not tickers:
                 return html.Div("No Momentum50 data. Check Stockbee sheet.", style={
                     "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
-                }), {}
+                }), {}, no_update
             latest_date = dates[0]
             ticker_list = tickers.get(latest_date, [])
             if not ticker_list:
                 return html.Div("No tickers for latest date.", style={
                     "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
-                }), {}
+                }), {}, no_update
             cache_key = f"momentum50_quotes_{','.join(sorted(t.strip().upper() for t in ticker_list))}"
             data = fetch_tickers_bulk_csv(ticker_list, cache_key=cache_key)
             if not data:
@@ -428,12 +428,11 @@ def register_callbacks(app):
             else:
                 by_ticker = {r["ticker"]: r for r in data}
                 data = [by_ticker.get(t.upper(), {"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"}) for t in ticker_list]
-            col = (sort_state or {}).get("col") if sort_state else None
-            asc = (sort_state or {}).get("asc", True) if sort_state else True
-            return build_stockbee_momentum50_table(data, date_label=latest_date, widget_id="stockbee", sort_col=col, sort_asc=asc), {"data": data, "date_label": latest_date}
+            # Always show spreadsheet order (no sort) on refresh; user can click headers to sort
+            return build_stockbee_momentum50_table(data, date_label=latest_date, widget_id="stockbee", sort_col=None, sort_asc=True), {"data": data, "date_label": latest_date}, {"col": None, "asc": True}
         except Exception as e:
             logger.exception("Stockbee Momentum50 failed: %s", e)
-            return _err_div(e), []
+            return _err_div(e), [], no_update
 
     @app.callback(
         Output("breadth-content", "children"),
@@ -597,6 +596,7 @@ def register_callbacks(app):
         [
             Output("club97-content", "children"),
             Output("club97-data-store", "data"),
+            Output("club97-sort-store", "data"),
             Output("movers-content", "children"),
             Output("movers-data-store", "data"),
             Output("weekly-content", "children"),
@@ -629,14 +629,15 @@ def register_callbacks(app):
             in_play_data = compute_stocks_in_play([])
             in_play_table = build_stocks_in_play_table(in_play_data, "in_play", "change", False)
             return [
-                club97_table, club97_data, movers_table, movers_data,
+                club97_table, club97_data, {"col": "change", "asc": False},
+                movers_table, movers_data,
                 weekly_table, weekly_data, daily_table, daily_data,
                 earnings_table, earnings_data,
                 in_play_table, in_play_data,
             ]
         except Exception as e:
             logger.exception("Group D failed: %s", e)
-            return [_err_div(e), [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
+            return [_err_div(e), [], no_update, _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
 
     @app.callback(
         [
@@ -736,6 +737,10 @@ def register_callbacks(app):
     )
     def sort_table(n_clicks_list, *stores):
         if not ctx.triggered_id or not isinstance(ctx.triggered_id, dict):
+            return [no_update] * len(SORTABLE_WIDGETS) * 2
+        # Ignore spurious triggers (e.g. pattern-match firing before user click)
+        triggered = ctx.triggered[0] if ctx.triggered else {}
+        if triggered.get("value") is None or (isinstance(triggered.get("value"), (int, float)) and triggered.get("value", 0) < 1):
             return [no_update] * len(SORTABLE_WIDGETS) * 2
         wid = ctx.triggered_id.get("widget")
         col = ctx.triggered_id.get("column")

@@ -1631,7 +1631,11 @@ def build_layout() -> html.Div:
             # ---- MIDDLE 4 ----
             html.Div([
                 _widget("club97", "97 Club",
-                        _sortable_table_wrap("club97"),
+                        html.Div([
+                            dcc.Store(id="club97-data-store"),
+                            dcc.Store(id="club97-sort-store", data={"col": "change", "asc": False}, storage_type="memory"),
+                            _loading_wrap("club97-content"),
+                        ]),
                         variant="green",
                         initial_hidden=not DEFAULT_VISIBILITY.get("club97", True),
                         extra_header=html.Span([
