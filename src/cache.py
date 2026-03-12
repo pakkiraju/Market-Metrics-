@@ -10,7 +10,7 @@ FAST = 300       # 5 min
 MEDIUM = 3600    # 1 hour
 SLOW = 7200      # 2 hours
 
-# Key Metrics: 1 hour (not real-time)
+# Key Metrics: 1 hour TTL
 KEY_METRICS_TTL = 3600
 
 # Keys that persist to disk (survive server restarts)

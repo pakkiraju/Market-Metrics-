@@ -10,7 +10,6 @@ from src import cache
 from src.cache import FAST, MEDIUM
 from src.data_fetcher import (
     fetch_group_indicators,
-    fetch_group_indicators_from_url,
     fetch_industry_map_from_overview,
     fetch_sector_data as fetch_sector_data_raw,
     fetch_20pct_weekly_from_urls,
@@ -265,7 +264,7 @@ def compute_key_metrics_single_group(name: str) -> list[dict]:
     from src.data_fetcher import fetch_group_indicators, fetch_metric_count
 
     groups = {
-        "NQ100": ("ind_QQQE", []),
+        "NQ100": ("ind_NQ100", []),
         "SPY500": ("ind_RSP", []),
         "DJIA": ("ind_DJIA", []),
         "RUS2000": ("ind_RUS2000", []),
@@ -279,7 +278,13 @@ def compute_key_metrics_single_group(name: str) -> list[dict]:
     rows = compute_key_metrics_for_group(ind)
     n = len(ind) if not ind.empty else 0
 
-    URL_FETCH_METRICS = ["Open Chg", "EMA10>SMA20", "New 20-Day Highs", "New 20-Day Lows"]
+    # Price to SMA, EMA>SMA, SMA>SMA, New 20-Day High/Low: use existing URLs (unchanged). Do not compute from base export.
+    URL_FETCH_METRICS = [
+        "Open Chg",
+        "Price to SMA10", "Price to SMA20", "Price to SMA50", "Price to SMA200",
+        "EMA10>SMA20", "SMA20<SMA50", "SMA50<SMA200", "SMA20<SMA50<SMA200",
+        "New 20-Day Highs", "New 20-Day Lows",
+    ]
     url_fetch_indices = {m: KEY_METRIC_ROWS.index(m) for m in URL_FETCH_METRICS if m in KEY_METRIC_ROWS}
 
     for metric_label, row_idx in url_fetch_indices.items():
@@ -299,7 +304,7 @@ def compute_key_metrics_single_group(name: str) -> list[dict]:
 
 
 def compute_all_key_metrics() -> dict:
-    """Compute key metrics for all index groups. Uses cache when full result exists."""
+    """Compute key metrics for all index groups. Fetches all URLs, caches full result, returns when done."""
     import time
 
     groups_order = ["NQ100", "SPY500", "DJIA", "RUS2000", "$1B+"]
@@ -318,10 +323,32 @@ def compute_all_key_metrics() -> dict:
 
 
 # -----------------------------------------------------------------------
-# RRG (Relative Rotation Graph) — Sector SPDRs vs VTI
-# Uses same FinViz sector data (daily, week, month, qtr, hyear, year).
-# RS-Ratio proxy = year outperformance vs VTI; RS-Momentum proxy = quarter outperformance.
+# RRG (Relative Rotation Graph) — Sector SPDRs and Thematics vs VTI
+# Same math for both: RS-Ratio = year outperformance vs VTI; RS-Momentum = qtr outperformance.
+# Normalize to ~100 baseline (mean=100, spread by std*10).
 # -----------------------------------------------------------------------
+
+def _normalize_rrg_rows(rows: list[dict]) -> None:
+    """Apply same RRG normalization as sector SPDRs. Mutates rows in place."""
+    if not rows:
+        return
+    ratio_vals = np.array([x["rs_ratio_raw"] for x in rows])
+    mom_vals = np.array([x["rs_momentum_raw"] for x in rows])
+    r_mean, r_std = ratio_vals.mean(), max(ratio_vals.std(), 1e-6)
+    m_mean, m_std = mom_vals.mean(), max(mom_vals.std(), 1e-6)
+
+    def _norm_r(v):
+        return float(100 + (v - r_mean) / r_std * 10)
+
+    def _norm_m(v):
+        return float(100 + (v - m_mean) / m_std * 10)
+
+    for i, row in enumerate(rows):
+        row["rs_ratio"] = _norm_r(ratio_vals[i])
+        row["rs_momentum"] = _norm_m(mom_vals[i])
+        del row["rs_ratio_raw"]
+        del row["rs_momentum_raw"]
+
 
 def compute_rrg_data(
     benchmark: str = RRG_BENCHMARK,
@@ -358,24 +385,7 @@ def compute_rrg_data(
     if not rows:
         return []
 
-    # Normalize to ~100 baseline (mean=100, spread by std)
-    ratio_vals = np.array([x["rs_ratio_raw"] for x in rows])
-    mom_vals = np.array([x["rs_momentum_raw"] for x in rows])
-    r_mean, r_std = ratio_vals.mean(), max(ratio_vals.std(), 1e-6)
-    m_mean, m_std = mom_vals.mean(), max(mom_vals.std(), 1e-6)
-
-    def _norm_r(v):
-        return float(100 + (v - r_mean) / r_std * 10)
-
-    def _norm_m(v):
-        return float(100 + (v - m_mean) / m_std * 10)
-
-    for i, row in enumerate(rows):
-        row["rs_ratio"] = _norm_r(ratio_vals[i])
-        row["rs_momentum"] = _norm_m(mom_vals[i])
-        del row["rs_ratio_raw"]
-        del row["rs_momentum_raw"]
-
+    _normalize_rrg_rows(rows)
     cache.put(cache_key, rows, ttl=MEDIUM)
     return rows
 
@@ -789,13 +799,14 @@ def compute_thematics_rrg_data(
     benchmark: str = RRG_BENCHMARK,
     cache_key: str = "thematics_rrg_data",
 ) -> list[dict]:
-    """RRG for themes vs VTI. Theme performance = avg of stocks in theme (year, qtr)."""
+    """RRG for themes vs VTI. Same math as sector SPDR RRG: RS-Ratio = year vs VTI, RS-Momentum = qtr vs VTI.
+    Uses ind_thematics_rrg (v=141) for reliable Perf Year/Qtr columns; theme = industry (sector fallback)."""
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
-    indicators = fetch_thematics_data(cache_key="thematics_data", ttl=MEDIUM)
-    if not isinstance(indicators, pd.DataFrame) or indicators.empty:
+    indicators = fetch_group_indicators([], cache_key="ind_thematics_rrg")
+    if indicators.empty:
         return []
 
     vti = fetch_benchmark_performance(benchmark=benchmark)
@@ -805,6 +816,15 @@ def compute_thematics_rrg_data(
     vti_qtr = vti.get("qtr") or 0.0
     vti_year = vti.get("year") or 0.0
 
+    # Theme = industry (sector fallback), same as thematics table
+    ind = indicators.get("industry", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+    sec = indicators.get("sector", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+    ind_valid = (ind.str.len() > 0) & (ind != "-") & (ind != "")
+    sec_valid = (sec.str.len() > 0) & (sec != "-") & (sec != "")
+    indicators = indicators.copy()
+    indicators["theme"] = ind.where(ind_valid, sec.where(sec_valid, "Uncategorized"))
+
+    # Same logic as sector RRG: year outperformance = RS-Ratio, qtr outperformance = RS-Momentum
     grouped = indicators.groupby("theme").agg(
         year_avg=("year_chg", "mean"),
         qtr_avg=("qtr_chg", "mean"),
@@ -830,22 +850,6 @@ def compute_thematics_rrg_data(
     if not rows:
         return []
 
-    ratio_vals = np.array([x["rs_ratio_raw"] for x in rows])
-    mom_vals = np.array([x["rs_momentum_raw"] for x in rows])
-    r_mean, r_std = ratio_vals.mean(), max(ratio_vals.std(), 1e-6)
-    m_mean, m_std = mom_vals.mean(), max(mom_vals.std(), 1e-6)
-
-    def _norm_r(v):
-        return float(100 + (v - r_mean) / r_std * 10)
-
-    def _norm_m(v):
-        return float(100 + (v - m_mean) / m_std * 10)
-
-    for i, row in enumerate(rows):
-        row["rs_ratio"] = _norm_r(ratio_vals[i])
-        row["rs_momentum"] = _norm_m(mom_vals[i])
-        del row["rs_ratio_raw"]
-        del row["rs_momentum_raw"]
-
+    _normalize_rrg_rows(rows)
     cache.put(cache_key, rows, ttl=MEDIUM)
     return rows

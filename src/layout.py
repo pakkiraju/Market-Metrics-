@@ -459,7 +459,7 @@ def build_earnings_table(data: list[dict], widget_id: str = None, sort_col: str 
 
 
 def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
-    """Stocks In Play: Ticker, News/Link, Price, Avg Vol, Rel Vol, Change, Vol, ATR %. Sorted by change desc."""
+    """Stocks In Play: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR %, News (rightmost). Sorted by change desc."""
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
@@ -471,10 +471,10 @@ def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col
     has_news = any(r.get("news") or r.get("news_url") for r in data)
     if has_news:
         headers = [
-            ("Ticker", "ticker"), ("Link", "news"), ("Price", "price"), ("Avg Vol", "avg_vol"),
-            ("Rel Vol", "rel_vol"), ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"),
+            ("Ticker", "ticker"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
+            ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"), ("News", "news"),
         ]
-        col_widths = ["70px", "50px", "55px", "65px", "55px", "55px", "65px", "55px"]
+        col_widths = ["70px", "55px", "65px", "55px", "55px", "65px", "55px", "45px"]
     else:
         headers = [
             ("Ticker", "ticker"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
@@ -494,18 +494,6 @@ def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col
         row_cells = [
             {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
              "style": TABLE_CELL_STYLE},
-        ]
-        if has_news:
-            news_url = r.get("news_url")
-            if news_url:
-                row_cells.append({
-                    "text": html.A("LINK", href=news_url, target="_blank", rel="noopener noreferrer",
-                                  style={"color": COLORS["accent"], "textDecoration": "underline", "fontSize": "9px"}),
-                    "style": TABLE_CELL_STYLE,
-                })
-            else:
-                row_cells.append(str(r.get("news", "")))
-        row_cells.extend([
             str(r.get("price", "")),
             avg_str,
             str(r.get("rel_vol", "")),
@@ -513,7 +501,17 @@ def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col
              "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
             vol_str,
             atr_str,
-        ])
+        ]
+        if has_news:
+            news_url = r.get("news_url")
+            if news_url:
+                row_cells.append({
+                    "text": html.A("News", href=news_url, target="_blank", rel="noopener noreferrer",
+                                  style={"color": COLORS["accent"], "textDecoration": "underline", "fontSize": "9px"}),
+                    "style": TABLE_CELL_STYLE,
+                })
+            else:
+                row_cells.append(str(r.get("news", "")))
         rows.append(row_cells)
     return _table(headers, rows, col_widths=col_widths,
                   widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
@@ -1065,7 +1063,7 @@ def build_stockbee_breadth(breadth: dict | None) -> html.Div:
     """Stockbee-style breadth metric cards: S&P 500, T2108, 5-Day Ratio, 10-Day Ratio, Up 4%+, Down 4%+."""
     if not breadth:
         return html.Div("Breadth data unavailable. Start Stockbee API or check Sheets.", style={
-            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+            "color": COLORS["text_muted"], "fontSize": "12px", "padding": "8px",
         })
     sp_up = (breadth.get("sp500_change") or 0) >= 0
     t2108 = breadth.get("t2108") or 50
@@ -1077,12 +1075,13 @@ def build_stockbee_breadth(breadth: dict | None) -> html.Div:
 
     def _card(label: str, value, sub: str, color: str):
         return html.Div([
-            html.Div(label, style={"fontSize": "8px", "color": COLORS["text_muted"], "marginBottom": "2px"}),
-            html.Div(str(value), style={"fontSize": "11px", "fontWeight": 700, "color": color}),
-            html.Div(sub, style={"fontSize": "8px", "color": COLORS["text_faint"], "marginTop": "2px"}),
+            html.Div(label, style={"fontSize": "12px", "color": COLORS["text_muted"], "marginBottom": "6px"}),
+            html.Div(str(value), style={"fontSize": "22px", "fontWeight": 700, "color": color}),
+            html.Div(sub, style={"fontSize": "11px", "color": COLORS["text_faint"], "marginTop": "6px"}),
         ], style={
-            "padding": "6px 8px", "borderRadius": "4px", "background": COLORS["surface2"],
+            "padding": "16px 12px", "borderRadius": "6px", "background": COLORS["surface2"],
             "border": f"1px solid {COLORS['border']}",
+            "display": "flex", "flexDirection": "column", "justifyContent": "center",
         })
 
     grid = html.Div([
@@ -1097,7 +1096,8 @@ def build_stockbee_breadth(breadth: dict | None) -> html.Div:
         _card("Up 4%+", f"{breadth.get('up4', 0):,}", "today", COLORS["green_light"]),
         _card("Down 4%+", f"{breadth.get('down4', 0):,}", "today", COLORS["red_light"]),
     ], style={
-        "display": "grid", "gridTemplateColumns": "repeat(3, 1fr)", "gap": "6px",
+        "display": "grid", "gridTemplateColumns": "repeat(3, 1fr)", "gridTemplateRows": "1fr 1fr",
+        "gap": "12px", "minHeight": "330px", "padding": "8px", "boxSizing": "border-box",
     })
     return grid
 
@@ -1464,7 +1464,7 @@ def build_layout() -> html.Div:
             # ---- PRIMARY ROW: full-size widgets ----
             html.Div([
                 _widget("key-metrics", "Key Metrics",
-                        html.Div(id="key-metrics-content", children=[empty_table], style={"minHeight": "40px"}),
+                        _loading_wrap("key-metrics-content", [empty_table], style={"minHeight": "40px"}),
                         primary=True,
                         initial_hidden=not DEFAULT_VISIBILITY.get("key-metrics", True),
                         body_style=KEY_METRICS_BODY_STYLE,
@@ -1539,6 +1539,8 @@ def build_layout() -> html.Div:
                         initial_hidden=not DEFAULT_VISIBILITY.get("qulla", True),
                         extra_header=html.Span([
                             _finviz_link("EP", "qullamaggie", {"marginLeft": "8px"}),
+                            html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
+                            _finviz_link("Breakouts", "qulla_breakouts"),
                             html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
                             _finviz_link("PS Small", "qulla_ps_small"),
                             html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),

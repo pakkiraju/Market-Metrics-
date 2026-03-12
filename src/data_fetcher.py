@@ -257,7 +257,8 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
             c = _find_csv_col(keys, exact="News") or _find_csv_col(keys, "news")
             if c and str(c).strip().lower() not in _exclude_news:
                 news_col = c
-        news_link_col = _find_csv_col(keys, "link") or _find_csv_col(keys, "url") or _find_csv_col(keys, "news", "link")
+        news_link_col = (_find_csv_col(keys, "news", "link") or _find_csv_col(keys, "link") or
+                        _find_csv_col(keys, "url") or _find_csv_col(keys, "news", "url"))
 
         def _val(row: dict, col: str | None, *fallbacks: str):
             if col and row.get(col) not in (None, "", "-"):
@@ -289,6 +290,10 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
             news_val = _val(row, news_col) if news_col else ""
             news_link_val = _val(row, news_link_col) if news_link_col else ""
             news_url = str(news_link_val).strip() if news_link_val else (str(news_val).strip() if news_val and str(news_val).strip().lower().startswith(("http://", "https://")) else "")
+            # Normalize relative URLs (e.g. /news/123/... or /quote.ashx...)
+            if news_url and news_url.startswith("/"):
+                news_url = "https://finviz.com" + news_url
+            # Only use actual news URLs from export - do NOT fallback to quote page (stock view)
             row_dict = {
                 "ticker": t,
                 "price": price,
@@ -527,7 +532,7 @@ def fetch_4pct_daily_from_url(ttl: int = MEDIUM) -> list[dict]:
 
 def fetch_thematics_data(cache_key: str = "thematics_data", ttl: int = MEDIUM) -> pd.DataFrame:
     """Fetch thematics universe (geo_usa, sh_avgvol_o1000, sh_price_o1).
-    Single call with c=1,3,4,41,42,43,45,64 for Ticker,Sector,Industry,PerfWeek,PerfMonth,PerfQtr,PerfYear,Change."""
+    Uses ind_USA export (same as leading industries) for Industry, Sector, PerfWeek, PerfMonth, etc."""
     cached = cache.get(cache_key)
     if cached is not None and isinstance(cached, pd.DataFrame):
         return cached
@@ -535,59 +540,28 @@ def fetch_thematics_data(cache_key: str = "thematics_data", ttl: int = MEDIUM) -
         cache.invalidate(cache_key)  # Bad cache (e.g. string from disk)
 
     try:
-        from src.finviz_elite import fetch_export_from_url, is_elite_configured
-        from src.constants import FINVIZ_EXPORT_URLS
-
-        if not is_elite_configured():
-            logger.warning("fetch_thematics_data: FinViz Elite not configured (set FINVIZ_API_KEY in .env)")
+        indicators = fetch_group_indicators([], cache_key="ind_USA")
+        if indicators.empty:
             return pd.DataFrame()
 
-        url = FINVIZ_EXPORT_URLS.get("thematics")
-        if not url:
-            return pd.DataFrame()
-        data = fetch_export_from_url(url, caller="thematics")
-        if not data:
-            logger.warning("fetch_thematics_data: FinViz export returned empty (auth may have failed or rate limited)")
-            return pd.DataFrame()
+        # Map industry/sector to theme (Industry = many themes; Sector = 11 fallback)
+        ind = indicators.get("industry", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+        sec = indicators.get("sector", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+        ind_valid = (ind.str.len() > 0) & (ind != "-") & (ind != "")
+        sec_valid = (sec.str.len() > 0) & (sec != "-") & (sec != "")
+        theme = ind.where(ind_valid, sec.where(sec_valid, "Uncategorized"))
 
-        keys = list(data[0].keys())
-        ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
-        sec_col = _find_csv_col(keys, exact="Sector") or _find_csv_col(keys, "sector")
-
-        def _pct(row: dict, *key_names: str) -> float:
-            v = _get_csv_val(row, *key_names)
-            p = _parse_pct(v)
-            return p if not pd.isna(p) else float("nan")
-
-        rows = []
-        seen = set()
-        for row in data:
-            t = str(row.get(ticker_col, "") or "").strip().upper()
-            if not t or t in seen:
-                continue
-            seen.add(t)
-            sec = str(_get_csv_val(row, "Sector", "sector") or "").strip()
-            theme = sec if sec and sec not in ("-", "") and not sec.isdigit() else "Uncategorized"
-
-            change = _parse_pct(_get_csv_val(row, "Change", "change"))
-            if pd.isna(change):
-                change = 0.0
-
-            rows.append({
-                "ticker": t,
-                "theme": theme,
-                "day_chg": float(change),
-                "week_chg": _pct(row, "Performance (Week)", "Perf Week", "perf week"),
-                "month_chg": _pct(row, "Performance (Month)", "Perf Month", "perf month"),
-                "qtr_chg": _pct(row, "Performance (Quarter)", "Perf Quart", "Perf Quarter", "Perf Q", "perf quart"),
-                "year_chg": _pct(row, "Performance (Year)", "Perf Year", "Perf Y", "Perf YTD", "perf year"),
-            })
-
-        result = pd.DataFrame(rows)
+        result = pd.DataFrame({
+            "ticker": indicators["ticker"],
+            "theme": theme,
+            "day_chg": indicators["day_chg"].fillna(0),
+            "week_chg": indicators["week_chg"],
+            "month_chg": indicators["month_chg"],
+            "qtr_chg": indicators["qtr_chg"],
+            "year_chg": indicators["year_chg"],
+        })
         if not result.empty:
             cache.put(cache_key, result, ttl=ttl)
-        else:
-            logger.warning("fetch_thematics_data: no rows parsed from %d raw rows", len(data))
         return result
     except Exception as e:
         logger.warning("fetch_thematics_data failed: %s", e)
@@ -624,126 +598,6 @@ def fetch_metric_count(url: str, cache_key: str) -> int:
         return 0
 
 
-def fetch_group_indicators_from_url(cache_key: str) -> pd.DataFrame:
-    """
-    Fetch Key Metrics data from a single export.ashx URL. One request per group, fast.
-    Uses URLs from FINVIZ_SCREENER_URLS - same URLs user clicks in browser.
-    """
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    try:
-        from src.finviz_elite import fetch_csv_from_url, is_elite_configured
-        from src.constants import FINVIZ_SCREENER_URLS
-
-        if not is_elite_configured():
-            return pd.DataFrame()
-
-        url_key = {"ind_QQQE": "NQ100", "ind_RSP": "SPY500", "ind_DJIA": "DJIA",
-                   "ind_RUS2000": "RUS2000", "ind_$1B+": "$1B+"}.get(cache_key, "")
-        fetch_url = FINVIZ_SCREENER_URLS.get(url_key)
-        if not fetch_url:
-            return pd.DataFrame()
-
-        data = fetch_csv_from_url(fetch_url, caller=cache_key)
-        if not data:
-            return pd.DataFrame()
-
-        def _v(row, *alts):
-            return _get_csv_val(row, *alts)
-
-        rows = []
-        for row in data:
-            t = str(_v(row, "Ticker", "ticker") or "").strip().upper()
-            if not t:
-                continue
-            price = _parse_num(_v(row, "Price", "price", "Last", "Close"))
-            if price is None or price <= 0:
-                continue
-            change = _parse_pct(_v(row, "Change", "change"))
-            if pd.isna(change):
-                change = 0.0
-
-            def _pct(*alts):
-                v = _v(row, *alts)
-                p = _parse_pct(v)
-                return p if not pd.isna(p) else float("nan")
-
-            def _pct_to_sma(pct, p):
-                if pct is None or p is None or p <= 0:
-                    return None
-                denom = 1 + pct / 100
-                if abs(denom) < 0.01:
-                    return None
-                return p / denom
-
-            sma20_pct = _parse_num(_v(row, "SMA20", "20-Day SMA", "20-Day Simple Moving Average"))
-            sma50_pct = _parse_num(_v(row, "SMA50", "50-Day SMA", "50-Day Simple Moving Average"))
-            sma200_pct = _parse_num(_v(row, "SMA200", "200-Day SMA", "200-Day Simple Moving Average"))
-            sma20 = _pct_to_sma(sma20_pct, price)
-            sma50 = _pct_to_sma(sma50_pct, price)
-            sma200 = _pct_to_sma(sma200_pct, price)
-
-            week_chg = _pct("Performance (Week)", "Perf Week")
-            month_chg = _pct("Performance (Month)", "Perf Month")
-            qtr_chg = _pct("Performance (Quarter)", "Perf Quart", "Perf Quarter", "Perf Q")
-            half_chg = _pct("Performance (Half Year)", "Perf Half", "Perf Half Y")
-            year_chg = _pct("Performance (Year)", "Perf Year", "Perf Y", "Perf YTD")
-
-            vol = _parse_num(_v(row, "Volume", "volume"))
-            avg_vol = _parse_num(_v(row, "Avg Volume", "Average Volume", "avg_volume"))
-            rel_vol = _parse_num(_v(row, "Rel Volume", "Relative Volume", "rel_volume"))
-            if rel_vol is None and vol and avg_vol and avg_vol != 0:
-                rel_vol = vol / avg_vol
-            mcap_str = _v(row, "Market Cap", "market_cap")
-            market_cap = _parse_num(mcap_str)
-            if market_cap and market_cap > 0 and market_cap < 1e7 and "B" not in str(mcap_str or "").upper() and "M" not in str(mcap_str or "").upper():
-                market_cap = market_cap * 1e6
-
-            rows.append({
-                "ticker": t,
-                "close": float(price),
-                "prev_close": float(price / (1 + change / 100)) if change != -100 else price,
-                "open": price,
-                "day_chg": float(change),
-                "open_chg": float(change),
-                "week_chg": week_chg,
-                "month_chg": month_chg,
-                "qtr_chg": qtr_chg,
-                "half_chg": half_chg,
-                "year_chg": year_chg,
-                "sma10": sma20,
-                "sma20": sma20,
-                "sma50": sma50,
-                "sma200": sma200,
-                "ema10": sma20,
-                "atr": None,
-                "atr_pct": None,
-                "high_20": None,
-                "low_20": None,
-                "price_to_20_range": 50.0,
-                "high_52w": _parse_num(_v(row, "52W High", "52-Week High")),
-                "low_52w": _parse_num(_v(row, "52W Low", "52-Week Low")),
-                "volume": vol,
-                "avg_volume": avg_vol if avg_vol is not None else vol,
-                "rel_volume": rel_vol,
-                "market_cap": market_cap,
-                "new_20_high": False,
-                "new_20_low": False,
-                "industry": str(_v(row, "Industry", "industry") or ""),
-                "sector": str(_v(row, "Sector", "sector") or ""),
-            })
-
-        result = pd.DataFrame(rows)
-        if cache_key and not result.empty:
-            cache.put(cache_key, result, ttl=MEDIUM)
-        return result
-    except Exception as e:
-        logger.warning("fetch_group_indicators_from_url failed: %s", e)
-        return pd.DataFrame()
-
-
 def fetch_stage_indicators(cache_key: str = "ind_stage") -> pd.DataFrame:
     """Fetch stage analysis data from single export URL (geo_usa, avgvol 1000+, price $1+). Returns DataFrame with close, ema10, sma20, sma50, week_chg, month_chg."""
     cached = cache.get(cache_key)
@@ -774,7 +628,8 @@ _GROUP_INDICATOR_URL_KEYS = {
     "ind_9m_movers": ["ind_9m"],
     "ind_leading": ["ind_1b"],
     "ind_USA": ["ind_usa"],
-    "ind_QQQE": ["ind_ndx"],
+    "ind_thematics_rrg": ["ind_thematics_rrg"],
+    "ind_NQ100": ["ind_ndx"],
     "ind_RSP": ["ind_sp500"],
     "ind_DJIA": ["ind_dji"],
     "ind_RUS2000": ["ind_rut"],
@@ -797,10 +652,11 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
         t = str(row.get(ticker_col, "") or "").strip().upper()
         if not t or (ticker_set and t not in ticker_set):
             continue
-        price = _parse_num(_v(row, "Price", "price", "Last", "Close"))
+        # v=152 c=60,66 = Price, Change; support various header names
+        price = _parse_num(_v(row, "Price", "price", "Last", "Close", "Last Price"))
         if price is None or price <= 0:
             continue
-        change = _parse_pct(_v(row, "Change", "change"))
+        change = _parse_pct(_v(row, "Change", "change", "Change %", "Change%"))
         if pd.isna(change):
             change = 0.0
 
@@ -839,11 +695,12 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
         high52 = _parse_num(_v(row, "52W High", "52-Week High"))
         low52 = _parse_num(_v(row, "52W Low", "52-Week Low"))
         atr_val = _parse_num(_v(row, "ATR", "ATR (14)", "Average True Range", "atr", "ATR(14)"))
-        week_chg = _pct("Performance (Week)", "Perf Week")
-        month_chg = _pct("Performance (Month)", "Perf Month")
-        qtr_chg = _pct("Performance (Quarter)", "Perf Quart", "Perf Quarter", "Perf Q")
-        half_chg = _pct("Performance (Half Year)", "Perf Half", "Perf Half Y")
-        year_chg = _pct("Performance (Year)", "Perf Year", "Perf Y", "Perf YTD")
+        # v=152 uses c=42,43,44,45,47 for perf columns; support various header names
+        week_chg = _pct("Performance (Week)", "Perf Week", "Perf. Week", "Perf Week %", "1W", "Perf 1W")
+        month_chg = _pct("Performance (Month)", "Perf Month", "Perf. Month", "Perf Month %", "1M", "Perf 1M")
+        qtr_chg = _pct("Performance (Quarter)", "Perf Quart", "Perf Quarter", "Perf Q", "Perf. Quarter", "3M", "Perf 3M")
+        half_chg = _pct("Performance (Half Year)", "Perf Half", "Perf Half Y", "Perf. Half", "Perf 6M", "6M")
+        year_chg = _pct("Performance (Year)", "Perf Year", "Perf Y", "Perf YTD", "Perf. Year", "Perf 1Y", "1Y")
         industry = str(_v(row, "Industry", "industry") or "").strip()
         sector = str(_v(row, "Sector", "sector") or "").strip()
         rows.append({
@@ -880,6 +737,32 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
             "sector": sector,
         })
     return rows
+
+
+def fetch_single_indicator_url(group_cache_key: str, url_key: str) -> pd.DataFrame:
+    """Fetch one indicator URL for a Key Metrics group. One request, then update UI.
+    Used for per-URL progressive loading to avoid rate limits."""
+    cached = cache.get(group_cache_key)
+    if cached is not None:
+        return cached
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS
+        if not is_elite_configured():
+            return pd.DataFrame()
+        url = FINVIZ_EXPORT_URLS.get(url_key)
+        if not url:
+            return pd.DataFrame()
+        time.sleep(_FINVIZ_DELAY_SEC)
+        data = fetch_export_from_url(url, caller=f"group_indicators/{url_key}")
+        rows = _parse_group_indicators_rows(data, None)
+        if rows:
+            result = pd.DataFrame(rows)
+            cache.put(group_cache_key, result, ttl=MEDIUM)
+            return result
+    except Exception as e:
+        logger.warning("fetch_single_indicator_url failed %s/%s: %s", group_cache_key, url_key, e)
+    return pd.DataFrame()
 
 
 def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> pd.DataFrame:
@@ -920,7 +803,7 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
 
     # Fallback: legacy 3-view fetch
     filter_sets_by_group = {
-        "ind_QQQE": [["idx_ndx"]],
+        "ind_NQ100": [["idx_ndx"]],
         "ind_RSP": [["idx_sp500"]],
         "ind_DJIA": [["idx_dji"]],
         "ind_RUS2000": [["idx_rut"]],
@@ -1021,11 +904,12 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
         low52 = _parse_num(_v("52W Low", "52-Week Low"))
         atr_val = _parse_num(_v("ATR", "Average True Range", "atr"))
 
-        week_chg = _pct("Performance (Week)", "Perf Week")
-        month_chg = _pct("Performance (Month)", "Perf Month")
-        qtr_chg = _pct("Performance (Quarter)", "Perf Quart", "Perf Quarter", "Perf Q")
-        half_chg = _pct("Performance (Half Year)", "Perf Half", "Perf Half Y")
-        year_chg = _pct("Performance (Year)", "Perf Year", "Perf Y", "Perf YTD")
+        # v=152 uses c=42,43,44,45,47 for perf columns; support various header names
+        week_chg = _pct("Performance (Week)", "Perf Week", "Perf. Week", "Perf Week %", "1W", "Perf 1W")
+        month_chg = _pct("Performance (Month)", "Perf Month", "Perf. Month", "Perf Month %", "1M", "Perf 1M")
+        qtr_chg = _pct("Performance (Quarter)", "Perf Quart", "Perf Quarter", "Perf Q", "Perf. Quarter", "3M", "Perf 3M")
+        half_chg = _pct("Performance (Half Year)", "Perf Half", "Perf Half Y", "Perf. Half", "Perf 6M", "6M")
+        year_chg = _pct("Performance (Year)", "Perf Year", "Perf Y", "Perf YTD", "Perf. Year", "Perf 1Y", "1Y")
 
         industry = str(_v("Industry", "industry") or "").strip()
         sector = str(_v("Sector", "sector") or "").strip()

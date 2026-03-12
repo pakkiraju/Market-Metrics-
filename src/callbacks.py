@@ -289,7 +289,7 @@ def register_callbacks(app):
     #  Each group loads independently; widgets appear as soon as ready.
     # ==================================================================
 
-    # Key Metrics: sequential fetch (parallel causes rate limits)
+    # Key Metrics: fetch all URLs, cache full result, display when done. Loading spinner until complete.
     @app.callback(
         [
             Output("key-metrics-content", "children"),
@@ -313,7 +313,6 @@ def register_callbacks(app):
             rus_data = metrics.get("RUS2000", [])
             b1_data = metrics.get("$1B+", [])
 
-            # Chart 2: NQ100 vs SPY500 vs DJIA (3-way)
             chart2_fig = build_metrics_bar_chart([
                 (nq100_data, "NQ100", "#991b1b", "#dc2626"),
                 (spy500_data, "SPY500", "#166534", "#22c55e"),
@@ -324,7 +323,6 @@ def register_callbacks(app):
                 config={"displayModeBar": False},
                 style={"height": "100%", "width": "100%"},
             )
-            # Chart 3: RUS2000 vs $1B+
             chart3_fig = build_metrics_bar_chart([
                 (rus_data, "RUS2000", "#7f1d1d", "#ef4444"),
                 (b1_data, "$1B+", "#14532d", "#4ade80"),
