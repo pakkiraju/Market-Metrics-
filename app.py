@@ -32,7 +32,7 @@ logging.basicConfig(
 
 app = Dash(
     __name__,
-    title="Market Metrics Dashboard",
+    title="Pradly Portal",
     update_title="Loading...",
     suppress_callback_exceptions=True,
 )
@@ -61,10 +61,10 @@ app.index_string = f"""<!DOCTYPE html>
             font-variant-numeric: tabular-nums lining-nums;
             -webkit-font-smoothing: antialiased;
         }}
-        ::-webkit-scrollbar {{ width: 6px; height: 6px; }}
-        ::-webkit-scrollbar-track {{ background: transparent; }}
-        ::-webkit-scrollbar-thumb {{ background: {COLORS['border_light']}; border-radius: 3px; }}
-        ::-webkit-scrollbar-thumb:hover {{ background: {COLORS['text_faint']}; }}
+        ::-webkit-scrollbar {{ width: 12px; height: 12px; }}
+        ::-webkit-scrollbar-track {{ background: {COLORS['surface2']}; border-radius: 6px; }}
+        ::-webkit-scrollbar-thumb {{ background: {COLORS['text_muted']}; border-radius: 6px; }}
+        ::-webkit-scrollbar-thumb:hover {{ background: {COLORS['text']}; }}
         #react-entry-point {{ height: 100%; }}
         ._dash-loading {{ display: none !important; }}
 

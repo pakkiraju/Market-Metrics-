@@ -211,6 +211,10 @@ FINVIZ_SCREENER_URLS = {
     "earnings_yesterday_today": "https://elite.finviz.com/screener.ashx?v=111&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=change",
     # Stocks In Play: news yesterday|today, avg vol 1000+, price $1+, rel vol 2+
     "stocks_in_play": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa,news_date_yesterday|today,sh_avgvol_o1000,sh_price_o1,sh_relvol_o2&o=-change",
+    # Pre-market Scanner: USA, avg vol 1000+, price $1+, rel vol 1+, up 3%
+    "pre_market_scanner": "https://elite.finviz.com/screener.ashx?v=151&f=geo_usa,sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_u3&o=-change",
+    # Pre-market Scanner (down 3%)
+    "pre_market_scanner_down": "https://elite.finviz.com/screener.ashx?v=151&f=geo_usa,sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_d3&o=change",
     # Thematics Tracker
     "thematics": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1",
 }
@@ -234,6 +238,10 @@ FINVIZ_EXPORT_URLS = {
     "earnings_yesterday_today_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change",
     # Stocks in Play: c=1,137,47,61,62,63,64,65 = Ticker,News/Link,ATR,AvgVol,RelVol,Price,Change,Volume
     "stocks_in_play": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,news_date_yesterday|today,sh_avgvol_o1000,sh_price_o1,sh_relvol_o2&o=-change&c=1,137,47,61,62,63,64,65",
+    # Pre-market Scanner: USA, avg vol 1000+, price $1+, rel vol 1+, up 3%. Columns: Ticker, Gap, Avg Volume, Rel Volume, Volume, Price, Change, News Time, News Title, Daily Digest, News URL
+    "pre_market_scanner": "https://elite.finviz.com/export.ashx?v=151&f=geo_usa,sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_u3&o=-change&c=1,61,62,65,63,64,136,137,138",
+    # Pre-market Scanner (down 3%): same columns
+    "pre_market_scanner_down": "https://elite.finviz.com/export.ashx?v=151&f=geo_usa,sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_d3&o=change&c=1,61,62,65,63,64,136,137,138",
     # Thematics Tracker: USA, avg vol 1K+, price $1+. v=141 + c= for Sector,Industry,PerfWeek,PerfMonth,PerfQtr,PerfYear,Change. Theme = Industry (many themes).
     "thematics": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,3,4,41,42,43,45,64",
     # Qullamaggie: c=1,47,61,62,63,64,65 = Ticker,ATR,AvgVol,RelVol,Price,Change,Volume (single request per screener)

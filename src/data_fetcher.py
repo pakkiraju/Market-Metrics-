@@ -12,9 +12,12 @@ from pathlib import Path
 import pandas as pd
 
 from src import cache
-from src.cache import MEDIUM
+from src.cache import MEDIUM, FAST
 
 logger = logging.getLogger(__name__)
+
+# Live index snapshot: QQQ, SPY, DIA, IWM, VIX (5-min cache for intraday)
+LIVE_INDEX_TICKERS = ["QQQ", "SPY", "DIA", "IWM", "VIX"]
 
 # Delay between FinViz fetches to avoid 429 rate limit
 _FINVIZ_DELAY_SEC = 2.0
@@ -317,6 +320,54 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
         return rows
     except Exception as e:
         logger.warning("fetch_screener_from_url failed: %s", e)
+        return []
+
+
+def _normalize_pre_market_rows(data: list[dict]) -> list[dict]:
+    """Normalize pre-market rows: preserve all columns, ensure ticker key and Change column."""
+    rows = []
+    seen = set()
+    for row in data:
+        ticker_val = row.get("Ticker") or row.get("ticker") or ""
+        t = str(ticker_val).strip().upper()
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        out = dict(row)
+        out["ticker"] = t
+        if "Ticker" not in out:
+            out["Ticker"] = t
+        rows.append(out)
+    return rows
+
+
+def fetch_pre_market_scanner(ttl: int = MEDIUM) -> list[dict]:
+    """Pre-market Scanner: USA, avg vol 1K+, price $1+, rel vol 1+, up 3% AND down 3%.
+    Returns raw rows with ALL columns from FinViz export (no normalization)."""
+    cached = cache.get("pre_market_scanner")
+    if cached is not None:
+        return cached
+
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS
+
+        if not is_elite_configured():
+            return []
+        url_up = FINVIZ_EXPORT_URLS.get("pre_market_scanner")
+        url_down = FINVIZ_EXPORT_URLS.get("pre_market_scanner_down")
+        if not url_up:
+            return []
+        data_up = fetch_export_from_url(url_up, caller="pre_market_scanner") or []
+        data_down = fetch_export_from_url(url_down, caller="pre_market_scanner_down") or [] if url_down else []
+        rows_up = _normalize_pre_market_rows(data_up)
+        rows_down = _normalize_pre_market_rows(data_down)
+        rows = rows_up + rows_down
+        if rows:
+            cache.put("pre_market_scanner", rows, ttl=ttl)
+        return rows
+    except Exception as e:
+        logger.warning("fetch_pre_market_scanner failed: %s", e)
         return []
 
 
@@ -1193,6 +1244,94 @@ def fetch_tickers_bulk_csv(tickers: list[str], cache_key: str | None = None, ttl
         return rows
     except Exception as e:
         logger.warning("fetch_tickers_bulk_csv failed: %s", e)
+        return []
+
+
+def _fetch_vix_via_yfinance() -> dict | None:
+    """Fetch VIX quote via yfinance (^VIX). FinViz quote.ashx returns 404 for VIX."""
+    try:
+        import yfinance as yf
+        hist = yf.Ticker("^VIX").history(period="5d")
+        if hist.empty or len(hist) < 1:
+            return None
+        last = hist.iloc[-1]
+        price = float(last["Close"])
+        prev = float(hist.iloc[-2]["Close"]) if len(hist) >= 2 else price
+        chg = ((price - prev) / prev * 100) if prev and prev != 0 else 0.0
+        return {
+            "ticker": "VIX",
+            "price": f"{price:.2f}",
+            "change": f"{chg:+.2f}%",
+        }
+    except Exception as e:
+        logger.warning("yfinance VIX fetch failed: %s", e)
+        return None
+
+
+def fetch_live_index_quotes(ttl: int = FAST) -> list[dict]:
+    """Fetch live quotes for QQQ, SPY, DIA, IWM, VIX. Cached 5 min for intraday snapshot.
+    Uses FinViz for ETFs; yfinance fallback for VIX (FinViz returns 404 for VIX)."""
+    cache_key = "live_index_quotes"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        from src.finviz_elite import fetch_elite_stock, is_elite_configured
+
+        rows: list[dict] = []
+        vix_row: dict | None = None
+
+        for t in LIVE_INDEX_TICKERS:
+            if t == "VIX":
+                if is_elite_configured():
+                    s = fetch_elite_stock(t)
+                    if s:
+                        price = _parse_num(_get_csv_val(s, "Price", "price", "Last", "Close"))
+                        if price is not None:
+                            change = _parse_pct(_get_csv_val(s, "Change", "change"))
+                            chg_val = 0.0 if (change is None or (isinstance(change, float) and change != change)) else float(change)
+                            vix_row = {"ticker": "VIX", "price": f"{price:.2f}", "change": f"{chg_val:+.2f}%"}
+                if vix_row is None:
+                    vix_row = _fetch_vix_via_yfinance()
+                if vix_row:
+                    rows.append(vix_row)
+                continue
+
+            if not is_elite_configured():
+                continue
+            s = fetch_elite_stock(t)
+            if not s:
+                time.sleep(_FINVIZ_DELAY_SEC)
+                continue
+            price = _parse_num(_get_csv_val(s, "Price", "price", "Last", "Close"))
+            if price is None:
+                time.sleep(_FINVIZ_DELAY_SEC)
+                continue
+            change = _parse_pct(_get_csv_val(s, "Change", "change"))
+            chg_val = 0.0 if (change is None or (isinstance(change, float) and change != change)) else float(change)
+            rows.append({
+                "ticker": t,
+                "price": f"{price:.2f}" if price >= 1 else f"{price:.4f}",
+                "change": f"{chg_val:+.2f}%",
+            })
+            time.sleep(_FINVIZ_DELAY_SEC)
+
+        if vix_row is None:
+            vix_row = _fetch_vix_via_yfinance()
+            if vix_row:
+                rows.append(vix_row)
+
+        if not rows and is_elite_configured():
+            vix_row = _fetch_vix_via_yfinance()
+            if vix_row:
+                rows.append(vix_row)
+
+        if rows:
+            cache.put(cache_key, rows, ttl=ttl)
+        return rows
+    except Exception as e:
+        logger.warning("fetch_live_index_quotes failed: %s", e)
         return []
 
 

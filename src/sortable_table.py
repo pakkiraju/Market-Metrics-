@@ -81,6 +81,31 @@ THEMATICS_SORT_KEYS = {
     "top_both": lambda r: (1 if r.get("top_both") else 0, (r.get("theme") or "").lower()),
 }
 
+# Pre-market Scanner: generic sort for any column (numeric or string)
+def _pre_market_extractor(col: str):
+    """Sort extractor for pre-market: try numeric, else string. Works with any column key."""
+
+    def _extract(r):
+        val = r.get(col)
+        if val is None or val == "" or (isinstance(val, float) and val != val):
+            return (0.0, "")
+        s = str(val).strip()
+        if not s or s == "-":
+            return (0.0, "")
+        n = _parse_sort_num(s)
+        if n != 0.0 or (s and s[0] in "0123456789.-"):
+            return (n, "")
+        return (0.0, s.lower())
+
+    return _extract
+
+
+def sort_data_pre_market(data: list[dict], col_key: str, asc: bool) -> list[dict]:
+    """Sort pre-market data by any column. Uses generic numeric/string extractor."""
+    extractor = _pre_market_extractor(col_key)
+    return sorted(data, key=extractor, reverse=not asc)
+
+
 # Thematics by Sector (Theme, Week, Month, Qtr, H.Year, YTD)
 THEMATICS_SECTOR_SORT_KEYS = {
     "theme": lambda r: ((r.get("theme") or "").lower(),),

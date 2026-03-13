@@ -40,7 +40,8 @@ ET = timezone(timedelta(hours=-5))
 
 # Widget registry: (id_suffix, display_name, is_primary_size)
 # is_primary_size only controls sizing (full-size vs max-height), NOT toggleability
-WIDGETS = [
+# Market Metrics tab widgets (excludes in_play — moved to Intraday)
+MARKET_METRICS_WIDGETS = [
     ("key-metrics",    "Key Metrics",                True),
     ("chart2",         "NQ100, SPY500 & DJIA Metrics", True),
     ("chart3",         "RUS2000 & $1B+ Stocks", True),
@@ -55,7 +56,6 @@ WIDGETS = [
     ("weekly",         "StockBee - 20% Weekly Movers",          False),
     ("daily",          "StockBee - 4% Daily Gainers",           False),
     ("earnings",       "Earnings Yesterday + Today",    False),
-    ("in_play",        "Stocks In Play",             False),
     ("leading",        "Leading Industries",         False),
     ("thematics",      "Thematics Tracker",          False),
     ("thematics-sector", "Thematics by Sector (Top YTD)", False),
@@ -68,11 +68,20 @@ WIDGETS = [
     ("breadth-sp500",  "StockBee - S&P 500 — Last 60 Days",    False),
     ("stage",          "Stage Analysis",             False),
 ]
-
+# Intraday tab widgets (in_play moved here; earnings duplicated for both tabs)
+INTRADAY_WIDGETS = [
+    ("live_index",     "Market Snapshot",             False),
+    ("in_play",        "Stocks In Play",             False),
+    ("intraday-earnings", "Earnings Yesterday + Today", False),
+    ("pre_market",     "Pre-market Scanner",         False),
+    ("cnbc_premarket", "CNBC Pre-Market Watchlist", False),
+]
+# Combined for backward compatibility and visibility callback
+WIDGETS = MARKET_METRICS_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
-# Key Metrics + bar charts + Qullamaggie + Minervini + O'Neil + Watchlist + Sector SPDR + 97 Club + 9M Movers + 20% Weekly + 4% Daily + Leading Industries enabled by default
+# Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "in_play", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "live_index", "in_play", "intraday-earnings", "pre_market", "cnbc_premarket") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -459,6 +468,107 @@ def build_earnings_table(data: list[dict], widget_id: str = None, sort_col: str 
     return _build_screener_table(data, widget_id, sort_col, sort_asc)
 
 
+def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Pre-market Scanner: USA, avg vol 1K+, price $1+, rel vol 1+, up 3% and down 3%."""
+    if not data:
+        return html.Div("No results. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    from src.sortable_table import sort_data_pre_market
+
+    skip_cols = frozenset({"No.", "No", "#", "Rank", "Analyst Recom", "Analyst Recommendation"})
+    seen_ticker = False
+    cols = []
+    for k in data[0].keys():
+        if not k or not str(k).strip() or str(k).strip() in skip_cols:
+            continue
+        if "analyst" in k.lower() or "recom" in k.lower():
+            continue
+        if "performance" in k.lower():
+            continue
+        if "ticker" in k.lower():
+            if seen_ticker:
+                continue
+            seen_ticker = True
+        cols.append(k)
+    # Skip Change column (redundant with Gap in pre-market); move News URL to last
+    cols = [c for c in cols if not ("change" in c.lower() and "url" not in c.lower())]
+    news_url_cols = [c for c in cols if "news" in c.lower() and "url" in c.lower()]
+    other_cols = [c for c in cols if c not in news_url_cols]
+    cols = other_cols + news_url_cols
+    if not cols:
+        return html.Div("No columns", style={"color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px"})
+
+    if widget_id and sort_col and sort_col in cols:
+        data = sort_data_pre_market(data, sort_col, sort_asc)
+    elif not sort_col and cols:
+        gap_col = next((c for c in cols if "gap" in c.lower() and "url" not in c.lower()), None)
+        if gap_col:
+            data = sort_data_pre_market(data, gap_col, False)
+
+    # Column widths: News Title gets more space; others stay compact
+    def _col_width(col_name: str) -> str:
+        c = (col_name or "").lower()
+        if "news" in c and "title" in c:
+            return "380px"
+        if "daily" in c and "digest" in c:
+            return "380px"
+        if "ticker" in c:
+            return "70px"
+        if "gap" in c and "url" not in c:
+            return "55px"
+        if "price" in c:
+            return "55px"
+        if "relative" in c or "rel" in c:
+            return "60px"
+        if "news" in c and "url" in c:
+            return "50px"
+        return "65px"  # avg vol, etc.
+    col_widths = [_col_width(c) for c in cols]
+
+    headers = [(c, c) for c in cols]
+    rows = []
+    for r in data:
+        row_cells = []
+        for col in cols:
+            val = r.get(col)
+            if col and "ticker" in col.lower():
+                cell = {"text": _clickable_ticker(r.get("ticker", r.get(col, "") or ""), {"fontWeight": 700}),
+                        "style": TABLE_CELL_STYLE}
+            elif "gap" in col.lower() and "url" not in col.lower():
+                try:
+                    chg_num = float(str(val or "0").replace("%", "").replace(",", "")) if val not in (None, "") else 0
+                except (ValueError, TypeError):
+                    chg_num = 0
+                cell = {"text": str(val) if val not in (None, "") else "",
+                        "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}}
+            elif col and (("average" in col.lower() and "volume" in col.lower()) or ("avg" in col.lower() and "vol" in col.lower())):
+                _, avg_str = _format_screener_vol(None, val)
+                cell = (avg_str or str(val)) if val not in (None, "") else ""
+            elif col and "news" in col.lower() and "url" in col.lower() and val:
+                url = str(val).strip()
+                if url.startswith("/"):
+                    url = "https://finviz.com" + url
+                if url.startswith(("http://", "https://")):
+                    cell = {"text": html.A("Open", href=url, target="_blank", rel="noopener noreferrer",
+                                          style={"color": COLORS["accent"], "textDecoration": "underline", "fontSize": "9px"}),
+                            "style": TABLE_CELL_STYLE}
+                else:
+                    cell = str(val)
+            elif col and (("news" in col.lower() and "title" in col.lower()) or "daily digest" in col.lower()):
+                text = str(val) if val not in (None, "") else ""
+                cell = {"text": text,
+                        "style": {**TABLE_CELL_STYLE, "fontSize": "12px", "lineHeight": "1.45",
+                                  "whiteSpace": "normal", "overflow": "visible",
+                                  "textOverflow": "unset", "wordWrap": "break-word", "textAlign": "left",
+                                  "minWidth": "360px", "maxWidth": "none"}}
+            else:
+                cell = str(val) if val not in (None, "") else ""
+            row_cells.append(cell)
+        rows.append(row_cells)
+    return _table(headers, rows, col_widths=col_widths, widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
+
+
 def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     """Stocks In Play: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR %, News (rightmost). Sorted by change desc."""
     if not data:
@@ -516,6 +626,60 @@ def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col
         rows.append(row_cells)
     return _table(headers, rows, col_widths=col_widths,
                   widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
+
+
+def build_cnbc_premarket_watchlist_table(data: list[dict], article_url: str = "") -> html.Div:
+    """CNBC Pre-Market Watchlist: Ticker, News from latest CNBC Market Insider premarket report."""
+    if not data:
+        return html.Div("No premarket data. Check CNBC Market Insider.", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    headers = [("Ticker", None), ("News", None), ("", None)]
+    rows = []
+    for r in data:
+        url = r.get("url", article_url)
+        link_cell = ""
+        if url:
+            link_cell = {"text": html.A("Article", href=url, target="_blank", rel="noopener noreferrer",
+                                       style={"color": COLORS["accent"], "textDecoration": "underline", "fontSize": "9px"}),
+                        "style": TABLE_CELL_STYLE}
+        rows.append([
+            {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}),
+             "style": TABLE_CELL_STYLE},
+            {"text": r.get("news", ""),
+             "style": {**TABLE_CELL_STYLE, "fontSize": "12px", "lineHeight": "1.45",
+                       "whiteSpace": "normal", "wordWrap": "break-word", "textAlign": "left",
+                       "minWidth": "320px", "maxWidth": "none"}},
+            link_cell or "",
+        ])
+    col_widths = ["70px", "1fr", "50px"]
+    def _cell(content):
+        if isinstance(content, dict):
+            return html.Td(content.get("text", ""), style=content.get("style", TABLE_CELL_STYLE))
+        return html.Td(content, style=TABLE_CELL_STYLE)
+
+    table = html.Table(
+        [html.Thead(html.Tr([html.Th(h[0], style=TABLE_HEADER_STYLE) for h in headers])),
+         html.Tbody([html.Tr([_cell(c) for c in row]) for row in rows])],
+        style={**TABLE_STYLE, "tableLayout": "fixed"},
+    )
+    article_date = data[0].get("article_date", "") if data else ""
+    if not article_date and data:
+        import re
+        url = data[0].get("url", "")
+        m = re.search(r"/(\d{4})/(\d{2})/(\d{2})/", url)
+        if m:
+            from datetime import datetime
+            try:
+                dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                article_date = dt.strftime("%b %d, %Y")
+            except (ValueError, TypeError):
+                article_date = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    date_label = html.Span(article_date, style={"fontSize": "10px", "color": COLORS["text_muted"], "marginBottom": "4px"}) if article_date else html.Div()
+    return html.Div([
+        html.Div([date_label], style={"marginBottom": "4px"}) if article_date else html.Div(),
+        table,
+    ], style={"display": "flex", "flexDirection": "column"})
 
 
 def _parse_vol(val):
@@ -1101,6 +1265,42 @@ def build_sp500_chart(history: list[dict]) -> go.Figure:
     return fig
 
 
+def build_live_index_snapshot(data: list[dict]) -> html.Div:
+    """Live QQQ, SPY, DIA, IWM, VIX snapshot for intraday traders."""
+    if not data:
+        return html.Div("Live data unavailable. Set FINVIZ_API_KEY in .env.", style={
+            "color": COLORS["text_muted"], "fontSize": "10px", "padding": "8px",
+        })
+
+    def _card(ticker: str, price: str, change: str) -> html.Div:
+        try:
+            chg_val = float(str(change or "").replace("%", "").replace(",", "").strip()) if change else 0.0
+        except (ValueError, TypeError):
+            chg_val = 0.0
+        color = chg_color(chg_val)
+        return html.Div([
+            html.Div(_clickable_ticker(ticker, {"fontSize": "10px", "marginBottom": "2px"}),
+                    style={"color": COLORS["text_muted"]}),
+            html.Div(price, style={"fontSize": "16px", "fontWeight": 700, "color": COLORS["text"]}),
+            html.Div(change or "—", style={"fontSize": "11px", "fontWeight": 600, "color": color}),
+        ], style={
+            "padding": "10px 14px", "borderRadius": "6px", "background": COLORS["surface2"],
+            "border": f"1px solid {COLORS['border']}",
+            "display": "flex", "flexDirection": "column", "justifyContent": "center",
+            "minWidth": "72px",
+        })
+
+    cards = []
+    for r in data:
+        t = r.get("ticker", "")
+        if t:
+            cards.append(_card(t, r.get("price", "—"), r.get("change", "")))
+    return html.Div(cards, style={
+        "display": "flex", "flexWrap": "wrap", "gap": "10px", "padding": "8px",
+        "alignItems": "stretch",
+    })
+
+
 def build_stockbee_breadth(breadth: dict | None) -> html.Div:
     """Stockbee-style breadth metric cards: S&P 500, T2108, 5-Day Ratio, 10-Day Ratio, Up 4%+, Down 4%+."""
     if not breadth:
@@ -1405,7 +1605,7 @@ def build_header() -> html.Div:
 
     return html.Div([
         html.Div([
-            html.Span("Market Metrics", style=HEADER_LOGO_STYLE),
+            html.Span("Pradly Portal", style=HEADER_LOGO_STYLE),
         ], style={"display": "flex", "alignItems": "center", "gap": "8px"}),
         html.Div([
             html.Span(date_str, id="header-date", style=HEADER_DATE_STYLE),
@@ -1430,28 +1630,40 @@ def build_header() -> html.Div:
 
 
 # -----------------------------------------------------------------------
-# Settings drawer (ALL widgets toggleable)
+# Settings drawer (tab-specific widget toggles)
 # -----------------------------------------------------------------------
 
+def _build_toggle_item(wid: str, name: str) -> html.Div:
+    """Single toggle row for a widget."""
+    return html.Div([
+        html.Label([
+            dcc.Checklist(
+                id=f"toggle-{wid}",
+                options=[{"label": "", "value": "on"}],
+                value=["on"] if DEFAULT_VISIBILITY.get(wid, False) else [],
+                style={"display": "inline-block", "marginRight": "6px"},
+                inputStyle={"cursor": "pointer"},
+            ),
+            html.Span(name, style=TOGGLE_LABEL_STYLE),
+        ], style={"display": "flex", "alignItems": "center"}),
+    ], style=SETTINGS_ITEM_STYLE)
+
+
 def build_settings_drawer() -> html.Div:
-    toggle_items = []
-    for wid, name, _ in WIDGETS:
-        toggle_items.append(html.Div([
-            html.Label([
-                dcc.Checklist(
-                    id=f"toggle-{wid}",
-                    options=[{"label": "", "value": "on"}],
-                    value=["on"] if DEFAULT_VISIBILITY.get(wid, False) else [],
-                    style={"display": "inline-block", "marginRight": "6px"},
-                    inputStyle={"cursor": "pointer"},
-                ),
-                html.Span(name, style=TOGGLE_LABEL_STYLE),
-            ], style={"display": "flex", "alignItems": "center"}),
-        ], style=SETTINGS_ITEM_STYLE))
+    """Settings drawer with tab-specific sections. Content shown based on active tab."""
+    market_toggles = [_build_toggle_item(wid, name) for wid, name, _ in MARKET_METRICS_WIDGETS]
+    intraday_toggles = [_build_toggle_item(wid, name) for wid, name, _ in INTRADAY_WIDGETS]
 
     return html.Div([
         html.Div("Widget Settings", style=SETTINGS_TITLE_STYLE),
-        *toggle_items,
+        html.Div([
+            html.Div("Market Metrics", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
+            *market_toggles,
+        ], id="settings-market-metrics"),
+        html.Div([
+            html.Div("Intraday", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
+            *intraday_toggles,
+        ], id="settings-intraday"),
     ], id="settings-drawer", style=SETTINGS_OVERLAY_STYLE_HIDDEN)
 
 
@@ -1495,6 +1707,7 @@ def build_layout() -> html.Div:
 
     return html.Div([
         dcc.Interval(id="interval-refresh", interval=3600_000, n_intervals=0),
+        dcc.Interval(id="interval-live-snapshot", interval=300_000, n_intervals=0),
         dcc.Interval(id="market-hours-check", interval=60_000, n_intervals=0),
         dcc.Store(id="watchlist-store", data=_initial_watchlist()),
 
@@ -1502,7 +1715,34 @@ def build_layout() -> html.Div:
         build_settings_drawer(),
         build_tv_modal(),
 
-        html.Div([
+        dcc.Tabs(
+            id="main-tabs",
+            value="market-metrics",
+            style={
+                "backgroundColor": COLORS["surface"],
+                "borderBottom": f"1px solid {COLORS['border']}",
+                "padding": "0 12px",
+            },
+            children=[
+                dcc.Tab(
+                    label="Market Metrics",
+                    value="market-metrics",
+                    style={
+                        "backgroundColor": COLORS["surface2"],
+                        "color": COLORS["text_muted"],
+                        "border": f"1px solid {COLORS['border']}",
+                        "padding": "6px 16px",
+                        "fontSize": "11px",
+                        "fontWeight": 600,
+                    },
+                    selected_style={
+                        "backgroundColor": COLORS["surface"],
+                        "color": COLORS["accent"],
+                        "borderBottom": "none",
+                        "borderTop": f"2px solid {COLORS['accent']}",
+                    },
+                    children=[
+                        html.Div([
             # ---- PRIMARY ROW: full-size widgets ----
             html.Div([
                 _widget("key-metrics", "Key Metrics",
@@ -1685,17 +1925,10 @@ def build_layout() -> html.Div:
                         extra_header=html.Span([
                             _finviz_link("FinViz", "earnings_yesterday_today", {"marginLeft": "8px"}),
                         ])),
-                _widget("in_play", "Stocks In Play",
-                        _sortable_table_wrap("in_play"),
-                        variant="teal",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("in_play", True),
-                        extra_header=html.Span([
-                            _finviz_link("FinViz", "stocks_in_play", {"marginLeft": "8px"}),
-                        ])),
                 _widget("stage", "Stage Analysis",
                         _loading_wrap("stage-content", [loading]),
                         initial_hidden=not DEFAULT_VISIBILITY.get("stage", True)),
-            ], id="row-bottom", style=QUARTER_ROW_STYLE),
+            ], id="row-bottom", style=THIRD_ROW_STYLE),
 
             # ---- THEMATICS ROW ----
             html.Div([
@@ -1733,5 +1966,83 @@ def build_layout() -> html.Div:
                         initial_hidden=not DEFAULT_VISIBILITY.get("thematics-rrg", True)),
             ], id="row-thematics", style=THIRD_ROW_STYLE),
         ], style=CONTENT_AREA_STYLE),
+                    ],
+                ),
+                dcc.Tab(
+                    label="Intraday",
+                    value="intraday",
+                    style={
+                        "backgroundColor": COLORS["surface2"],
+                        "color": COLORS["text_muted"],
+                        "border": f"1px solid {COLORS['border']}",
+                        "padding": "6px 16px",
+                        "fontSize": "11px",
+                        "fontWeight": 600,
+                    },
+                    selected_style={
+                        "backgroundColor": COLORS["surface"],
+                        "color": COLORS["accent"],
+                        "borderBottom": "none",
+                        "borderTop": f"2px solid {COLORS['accent']}",
+                    },
+                    children=[
+                        html.Div([
+                        html.Div([
+                            html.Div([
+                                _widget("live_index", "Market Snapshot",
+                                        _loading_wrap("live_index-content"),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("live_index", True),
+                                        card_style_override={
+                                            **WIDGET_STYLE,
+                                            "maxHeight": "110px",
+                                            "width": "fit-content",
+                                        }),
+                            ], style={"width": "fit-content"}),
+                        ], style=WIDE_ROW_STYLE),
+                        html.Div([
+                            _widget("in_play", "Stocks In Play",
+                                    _sortable_table_wrap("in_play"),
+                                    variant="teal",
+                                    initial_hidden=not DEFAULT_VISIBILITY.get("in_play", True),
+                                    extra_header=html.Span([
+                                        _finviz_link("FinViz", "stocks_in_play", {"marginLeft": "8px"}),
+                                    ])),
+                            _widget("intraday-earnings", "Earnings Yesterday + Today",
+                                    _sortable_table_wrap("intraday-earnings"),
+                                    variant="orange",
+                                    initial_hidden=not DEFAULT_VISIBILITY.get("intraday-earnings", True),
+                                    extra_header=html.Span([
+                                        _finviz_link("FinViz", "earnings_yesterday_today", {"marginLeft": "8px"}),
+                                    ])),
+                        ], style=HALF_ROW_STYLE),
+                        html.Div([
+                            _widget("pre_market", "Pre-market Scanner",
+                                    _sortable_table_wrap("pre_market", default_sort_col="Gap", default_sort_asc=False),
+                                    variant="teal",
+                                    initial_hidden=not DEFAULT_VISIBILITY.get("pre_market", True),
+                                    extra_header=html.Span([
+                                        _finviz_link("+3%", "pre_market_scanner", {"marginRight": "6px"}),
+                                        html.Span(" | ", style={"color": COLORS["text_faint"], "fontSize": "8px", "margin": "0 2px"}),
+                                        _finviz_link("-3%", "pre_market_scanner_down"),
+                                    ])),
+                        ], style=WIDE_ROW_STYLE),
+                        html.Div([
+                            _widget("cnbc_premarket", "CNBC Pre-Market Watchlist",
+                                    _loading_wrap("cnbc_premarket-content"),
+                                    variant="teal",
+                                    initial_hidden=not DEFAULT_VISIBILITY.get("cnbc_premarket", True),
+                                    extra_header=html.Span([
+                                        html.A("Market Insider", href="https://www.cnbc.com/market-insider/",
+                                               target="_blank", rel="noopener noreferrer",
+                                               style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                      "textDecoration": "none", "marginLeft": "8px"}),
+                                    ])),
+                        ], style=WIDE_ROW_STYLE),
+                        ], style=CONTENT_AREA_STYLE),
+                    ],
+                ),
+            ],
+        ),
 
     ], style=DASHBOARD_STYLE)
