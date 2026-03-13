@@ -21,7 +21,7 @@ from src.constants import (
 from src.styles import (
     DASHBOARD_STYLE, HEADER_STYLE, HEADER_LOGO_STYLE,
     SCROLLABLE_BODY_HEIGHT,
-    HEADER_DATE_STYLE, MARKET_STATUS_STYLE_CLOSED, REFRESH_BTN_STYLE,
+    HEADER_DATE_STYLE, REFRESH_BTN_STYLE,
     SETTINGS_BTN_STYLE,
     CONTENT_AREA_STYLE,
     PRIMARY_ROW_STYLE, QUARTER_ROW_STYLE, THIRD_ROW_STYLE, WIDE_ROW_STYLE, HALF_ROW_STYLE,
@@ -1701,25 +1701,12 @@ def build_header() -> html.Div:
     now = datetime.now(ET)
     date_str = now.strftime("%A, %B %d, %Y")
 
-    is_weekday = now.weekday() < 5
-    t = now.hour * 60 + now.minute
-    is_open = is_weekday and 9 * 60 + 30 <= t < 16 * 60
-
     return html.Div([
         html.Div([
             html.Span("Pradly Portal", style=HEADER_LOGO_STYLE),
         ], style={"display": "flex", "alignItems": "center", "gap": "8px"}),
         html.Div([
             html.Span(date_str, id="header-date", style=HEADER_DATE_STYLE),
-            html.Span(
-                "OPEN" if is_open else "CLOSED",
-                id="market-status",
-                style=MARKET_STATUS_STYLE_CLOSED if not is_open else {
-                    **MARKET_STATUS_STYLE_CLOSED,
-                    "backgroundColor": COLORS["green_cell"],
-                    "color": COLORS["green_light"],
-                },
-            ),
         ], style={"display": "flex", "alignItems": "center", "gap": "12px"}),
         html.Div([
             html.Button("Refresh", id="btn-refresh", style=REFRESH_BTN_STYLE),
