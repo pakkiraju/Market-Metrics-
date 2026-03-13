@@ -217,6 +217,8 @@ FINVIZ_SCREENER_URLS = {
     "pre_market_scanner_down": "https://elite.finviz.com/screener.ashx?v=151&f=geo_usa,sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_d3&o=change",
     # Thematics Tracker
     "thematics": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1",
+    # Economic Calendar
+    "economic_calendar": "https://elite.finviz.com/calendar/economic",
 }
 
 # Stockbee (Pradeep Bonde) — external links

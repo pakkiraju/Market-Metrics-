@@ -1248,7 +1248,7 @@ def fetch_tickers_bulk_csv(tickers: list[str], cache_key: str | None = None, ttl
 
 
 def _fetch_vix_via_yfinance() -> dict | None:
-    """Fetch VIX quote via yfinance (^VIX). FinViz quote.ashx returns 404 for VIX."""
+    """Fetch VIX quote via yfinance (^VIX)."""
     try:
         import yfinance as yf
         hist = yf.Ticker("^VIX").history(period="5d")
@@ -1270,7 +1270,7 @@ def _fetch_vix_via_yfinance() -> dict | None:
 
 def fetch_live_index_quotes(ttl: int = FAST) -> list[dict]:
     """Fetch live quotes for QQQ, SPY, DIA, IWM, VIX. Cached 5 min for intraday snapshot.
-    Uses FinViz for ETFs; yfinance fallback for VIX (FinViz returns 404 for VIX)."""
+    Uses FinViz for ETFs; yfinance for VIX."""
     cache_key = "live_index_quotes"
     cached = cache.get(cache_key)
     if cached is not None:
@@ -1280,20 +1280,10 @@ def fetch_live_index_quotes(ttl: int = FAST) -> list[dict]:
         from src.finviz_elite import fetch_elite_stock, is_elite_configured
 
         rows: list[dict] = []
-        vix_row: dict | None = None
 
         for t in LIVE_INDEX_TICKERS:
             if t == "VIX":
-                if is_elite_configured():
-                    s = fetch_elite_stock(t)
-                    if s:
-                        price = _parse_num(_get_csv_val(s, "Price", "price", "Last", "Close"))
-                        if price is not None:
-                            change = _parse_pct(_get_csv_val(s, "Change", "change"))
-                            chg_val = 0.0 if (change is None or (isinstance(change, float) and change != change)) else float(change)
-                            vix_row = {"ticker": "VIX", "price": f"{price:.2f}", "change": f"{chg_val:+.2f}%"}
-                if vix_row is None:
-                    vix_row = _fetch_vix_via_yfinance()
+                vix_row = _fetch_vix_via_yfinance()
                 if vix_row:
                     rows.append(vix_row)
                 continue
@@ -1316,16 +1306,6 @@ def fetch_live_index_quotes(ttl: int = FAST) -> list[dict]:
                 "change": f"{chg_val:+.2f}%",
             })
             time.sleep(_FINVIZ_DELAY_SEC)
-
-        if vix_row is None:
-            vix_row = _fetch_vix_via_yfinance()
-            if vix_row:
-                rows.append(vix_row)
-
-        if not rows and is_elite_configured():
-            vix_row = _fetch_vix_via_yfinance()
-            if vix_row:
-                rows.append(vix_row)
 
         if rows:
             cache.put(cache_key, rows, ttl=ttl)

@@ -760,6 +760,26 @@ def _is_stale_thematics_cache(cached: list) -> bool:
     return cached[0].get("theme") == "Uncategorized"
 
 
+def compute_top_gainers_losers(top_n: int = 12) -> tuple[list[dict], list[dict]]:
+    """Top gainers and top losers from thematics universe (same data as Thematics Tracker).
+    Uses fetch_thematics_data (ind_USA) — no extra API call when thematics is refreshed."""
+    df = fetch_thematics_data(cache_key="thematics_data", ttl=MEDIUM)
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return [], []
+    df = df.dropna(subset=["day_chg"])
+    gainers = (
+        df.nlargest(top_n, "day_chg")[["ticker", "day_chg"]]
+        .rename(columns={"day_chg": "change"})
+        .to_dict("records")
+    )
+    losers = (
+        df.nsmallest(top_n, "day_chg")[["ticker", "day_chg"]]
+        .rename(columns={"day_chg": "change"})
+        .to_dict("records")
+    )
+    return gainers, losers
+
+
 def compute_thematics(tickers: list[str]) -> list[dict]:
     """Top 20% themes by weekly+monthly relative strength. USA, avg vol 1K+, price $1+.
     Green = top 20% on BOTH weekly and monthly. Shows top 4 stocks per theme by day change."""
