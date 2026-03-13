@@ -86,7 +86,7 @@ CONTENT_AREA_STYLE = {
     "flex": 1,
     "overflowY": "auto",
     "overflowX": "hidden",
-    "padding": "4px",
+    "padding": "4px 20px 4px 4px",  # Extra right padding for scrollbar visibility
 }
 
 # ---------- Primary row: Key Metrics + 2 bar charts side by side ----------

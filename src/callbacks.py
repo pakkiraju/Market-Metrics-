@@ -34,7 +34,9 @@ from src.screeners import (
     oneil_screener,
 )
 from src.layout import (
+    build_cnbc_premarket_watchlist_table,
     build_key_metrics_table,
+    build_live_index_snapshot,
     build_metrics_bar_chart,
     build_sector_table,
     build_rrg_chart,
@@ -665,6 +667,41 @@ def register_callbacks(app):
         except Exception as e:
             logger.exception("Group D failed: %s", e)
             return [_err_div(e), [], no_update, _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
+
+    @app.callback(
+        Output("cnbc_premarket-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_cnbc_premarket(n_intervals, n_clicks):
+        try:
+            from src.cnbc_premarket import fetch_cnbc_premarket_watchlist
+            data = fetch_cnbc_premarket_watchlist()
+            article_url = data[0].get("url", "") if data else ""
+            return build_cnbc_premarket_watchlist_table(data, article_url)
+        except Exception as e:
+            logger.exception("CNBC Pre-Market Watchlist failed: %s", e)
+            return _err_div(e)
+
+    @app.callback(
+        Output("live_index-content", "children"),
+        [
+            Input("interval-live-snapshot", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_live_index(n_intervals, n_clicks):
+        try:
+            from src.data_fetcher import fetch_live_index_quotes
+            data = fetch_live_index_quotes()
+            return build_live_index_snapshot(data)
+        except Exception as e:
+            logger.exception("Market Snapshot failed: %s", e)
+            return _err_div(e)
 
     @app.callback(
         [

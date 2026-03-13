@@ -70,16 +70,18 @@ MARKET_METRICS_WIDGETS = [
 ]
 # Intraday tab widgets (in_play moved here; earnings duplicated for both tabs)
 INTRADAY_WIDGETS = [
+    ("live_index",     "Market Snapshot",             False),
     ("in_play",        "Stocks In Play",             False),
     ("intraday-earnings", "Earnings Yesterday + Today", False),
     ("pre_market",     "Pre-market Scanner",         False),
+    ("cnbc_premarket", "CNBC Pre-Market Watchlist", False),
 ]
 # Combined for backward compatibility and visibility callback
 WIDGETS = MARKET_METRICS_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "in_play", "intraday-earnings", "pre_market") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "live_index", "in_play", "intraday-earnings", "pre_market", "cnbc_premarket") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -556,7 +558,8 @@ def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort
             elif col and (("news" in col.lower() and "title" in col.lower()) or "daily digest" in col.lower()):
                 text = str(val) if val not in (None, "") else ""
                 cell = {"text": text,
-                        "style": {**TABLE_CELL_STYLE, "whiteSpace": "normal", "overflow": "visible",
+                        "style": {**TABLE_CELL_STYLE, "fontSize": "12px", "lineHeight": "1.45",
+                                  "whiteSpace": "normal", "overflow": "visible",
                                   "textOverflow": "unset", "wordWrap": "break-word", "textAlign": "left",
                                   "minWidth": "360px", "maxWidth": "none"}}
             else:
@@ -623,6 +626,60 @@ def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col
         rows.append(row_cells)
     return _table(headers, rows, col_widths=col_widths,
                   widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
+
+
+def build_cnbc_premarket_watchlist_table(data: list[dict], article_url: str = "") -> html.Div:
+    """CNBC Pre-Market Watchlist: Ticker, News from latest CNBC Market Insider premarket report."""
+    if not data:
+        return html.Div("No premarket data. Check CNBC Market Insider.", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    headers = [("Ticker", None), ("News", None), ("", None)]
+    rows = []
+    for r in data:
+        url = r.get("url", article_url)
+        link_cell = ""
+        if url:
+            link_cell = {"text": html.A("Article", href=url, target="_blank", rel="noopener noreferrer",
+                                       style={"color": COLORS["accent"], "textDecoration": "underline", "fontSize": "9px"}),
+                        "style": TABLE_CELL_STYLE}
+        rows.append([
+            {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}),
+             "style": TABLE_CELL_STYLE},
+            {"text": r.get("news", ""),
+             "style": {**TABLE_CELL_STYLE, "fontSize": "12px", "lineHeight": "1.45",
+                       "whiteSpace": "normal", "wordWrap": "break-word", "textAlign": "left",
+                       "minWidth": "320px", "maxWidth": "none"}},
+            link_cell or "",
+        ])
+    col_widths = ["70px", "1fr", "50px"]
+    def _cell(content):
+        if isinstance(content, dict):
+            return html.Td(content.get("text", ""), style=content.get("style", TABLE_CELL_STYLE))
+        return html.Td(content, style=TABLE_CELL_STYLE)
+
+    table = html.Table(
+        [html.Thead(html.Tr([html.Th(h[0], style=TABLE_HEADER_STYLE) for h in headers])),
+         html.Tbody([html.Tr([_cell(c) for c in row]) for row in rows])],
+        style={**TABLE_STYLE, "tableLayout": "fixed"},
+    )
+    article_date = data[0].get("article_date", "") if data else ""
+    if not article_date and data:
+        import re
+        url = data[0].get("url", "")
+        m = re.search(r"/(\d{4})/(\d{2})/(\d{2})/", url)
+        if m:
+            from datetime import datetime
+            try:
+                dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                article_date = dt.strftime("%b %d, %Y")
+            except (ValueError, TypeError):
+                article_date = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    date_label = html.Span(article_date, style={"fontSize": "10px", "color": COLORS["text_muted"], "marginBottom": "4px"}) if article_date else html.Div()
+    return html.Div([
+        html.Div([date_label], style={"marginBottom": "4px"}) if article_date else html.Div(),
+        table,
+    ], style={"display": "flex", "flexDirection": "column"})
 
 
 def _parse_vol(val):
@@ -1208,6 +1265,42 @@ def build_sp500_chart(history: list[dict]) -> go.Figure:
     return fig
 
 
+def build_live_index_snapshot(data: list[dict]) -> html.Div:
+    """Live QQQ, SPY, DIA, IWM, VIX snapshot for intraday traders."""
+    if not data:
+        return html.Div("Live data unavailable. Set FINVIZ_API_KEY in .env.", style={
+            "color": COLORS["text_muted"], "fontSize": "10px", "padding": "8px",
+        })
+
+    def _card(ticker: str, price: str, change: str) -> html.Div:
+        try:
+            chg_val = float(str(change or "").replace("%", "").replace(",", "").strip()) if change else 0.0
+        except (ValueError, TypeError):
+            chg_val = 0.0
+        color = chg_color(chg_val)
+        return html.Div([
+            html.Div(_clickable_ticker(ticker, {"fontSize": "10px", "marginBottom": "2px"}),
+                    style={"color": COLORS["text_muted"]}),
+            html.Div(price, style={"fontSize": "16px", "fontWeight": 700, "color": COLORS["text"]}),
+            html.Div(change or "—", style={"fontSize": "11px", "fontWeight": 600, "color": color}),
+        ], style={
+            "padding": "10px 14px", "borderRadius": "6px", "background": COLORS["surface2"],
+            "border": f"1px solid {COLORS['border']}",
+            "display": "flex", "flexDirection": "column", "justifyContent": "center",
+            "minWidth": "72px",
+        })
+
+    cards = []
+    for r in data:
+        t = r.get("ticker", "")
+        if t:
+            cards.append(_card(t, r.get("price", "—"), r.get("change", "")))
+    return html.Div(cards, style={
+        "display": "flex", "flexWrap": "wrap", "gap": "10px", "padding": "8px",
+        "alignItems": "stretch",
+    })
+
+
 def build_stockbee_breadth(breadth: dict | None) -> html.Div:
     """Stockbee-style breadth metric cards: S&P 500, T2108, 5-Day Ratio, 10-Day Ratio, Up 4%+, Down 4%+."""
     if not breadth:
@@ -1614,6 +1707,7 @@ def build_layout() -> html.Div:
 
     return html.Div([
         dcc.Interval(id="interval-refresh", interval=3600_000, n_intervals=0),
+        dcc.Interval(id="interval-live-snapshot", interval=300_000, n_intervals=0),
         dcc.Interval(id="market-hours-check", interval=60_000, n_intervals=0),
         dcc.Store(id="watchlist-store", data=_initial_watchlist()),
 
@@ -1893,6 +1987,20 @@ def build_layout() -> html.Div:
                     },
                     children=[
                         html.Div([
+                        html.Div([
+                            html.Div([
+                                _widget("live_index", "Market Snapshot",
+                                        _loading_wrap("live_index-content"),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("live_index", True),
+                                        card_style_override={
+                                            **WIDGET_STYLE,
+                                            "maxHeight": "110px",
+                                            "width": "fit-content",
+                                        }),
+                            ], style={"width": "fit-content"}),
+                        ], style=WIDE_ROW_STYLE),
+                        html.Div([
                             _widget("in_play", "Stocks In Play",
                                     _sortable_table_wrap("in_play"),
                                     variant="teal",
@@ -1919,6 +2027,19 @@ def build_layout() -> html.Div:
                                         _finviz_link("-3%", "pre_market_scanner_down"),
                                     ])),
                         ], style=WIDE_ROW_STYLE),
+                        html.Div([
+                            _widget("cnbc_premarket", "CNBC Pre-Market Watchlist",
+                                    _loading_wrap("cnbc_premarket-content"),
+                                    variant="teal",
+                                    initial_hidden=not DEFAULT_VISIBILITY.get("cnbc_premarket", True),
+                                    extra_header=html.Span([
+                                        html.A("Market Insider", href="https://www.cnbc.com/market-insider/",
+                                               target="_blank", rel="noopener noreferrer",
+                                               style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                      "textDecoration": "none", "marginLeft": "8px"}),
+                                    ])),
+                        ], style=WIDE_ROW_STYLE),
+                        ], style=CONTENT_AREA_STYLE),
                     ],
                 ),
             ],
