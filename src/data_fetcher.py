@@ -677,7 +677,7 @@ def fetch_stage_indicators(cache_key: str = "ind_stage") -> pd.DataFrame:
 
 # Map cache_key to export URL key(s) for single-request fetch. None = use legacy _fetch_screener_multi.
 _GROUP_INDICATOR_URL_KEYS = {
-    "ind_$1B+": ["ind_1b"],
+    "ind_$1B+": ["ind_1b_km"],
     "ind_9m_movers": ["ind_9m"],
     "ind_leading": ["ind_1b"],
     # ind_USA: use legacy Overview+Performance+Technical merge (has Industry/Sector + Perf Quarter/YTD)
@@ -713,6 +713,8 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
         change = _parse_pct(_v(row, "Change", "change", "Change %", "Change%"))
         if pd.isna(change):
             change = 0.0
+        open_chg_val = _parse_pct(_v(row, "Change from Open", "Change from Open %", "Change from Open%"))
+        open_chg = float(open_chg_val) if not pd.isna(open_chg_val) else change
 
         def _pct(*alts):
             v = _v(row, *alts)
@@ -763,7 +765,7 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
             "prev_close": float(price / (1 + change / 100)) if change != -100 else price,
             "open": price,
             "day_chg": float(change),
-            "open_chg": float(change),
+            "open_chg": float(open_chg),
             "week_chg": week_chg,
             "month_chg": month_chg,
             "qtr_chg": qtr_chg,

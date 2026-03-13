@@ -284,10 +284,9 @@ def compute_key_metrics_single_group(name: str) -> list[dict]:
     rows = compute_key_metrics_for_group(ind)
     n = len(ind) if not ind.empty else 0
 
-    # Price to SMA, EMA>SMA, SMA>SMA, New 20-Day High/Low: use existing URLs (unchanged). Do not compute from base export.
+    # These metrics require URL fetch (not in v=152 export): Price to SMA10, EMA10>SMA20, SMA crossovers, New 20-Day High/Low.
     URL_FETCH_METRICS = [
-        "Open Chg",
-        "Price to SMA10", "Price to SMA20", "Price to SMA50", "Price to SMA200",
+        "Price to SMA10",
         "EMA10>SMA20", "SMA20<SMA50", "SMA50<SMA200", "SMA20<SMA50<SMA200",
         "New 20-Day Highs", "New 20-Day Lows",
     ]
