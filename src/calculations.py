@@ -518,11 +518,11 @@ def compute_97_club(tickers: list[str]) -> list[dict]:
     """$1B+ stocks in top 3% relative strength across Day, Week, Month. Data from FinViz API (Overview+Performance+Technical)."""
     cached = cache.get("97_club")
     if cached is not None and len(cached) > 0:
-        if any(r.get("atr_pct") is not None for r in cached[:5]):
+        if any(r.get("atr_pct") is not None for r in cached[:5]) and any(r.get("avg_vol") or r.get("rel_vol") or r.get("volume") for r in cached[:5]):
             return cached
         cache.invalidate("97_club")
 
-    indicators = fetch_group_indicators([], cache_key="ind_$1B+")
+    indicators = fetch_group_indicators([], cache_key="ind_97_club")
     if indicators.empty:
         return []
 

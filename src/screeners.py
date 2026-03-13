@@ -203,6 +203,7 @@ def minervini_screener(indicators=None) -> list[dict]:
                 continue
             if sma50 <= sma150_approx or sma50 <= sma200 or close <= sma50:
                 continue
+            # Close must be at least 30% above 52-week low (30 or above), not within 30% of low
             if low52 <= 0 or (close - low52) / low52 < 0.30:
                 continue
             if high52 <= 0 or (high52 - close) / high52 > 0.25:

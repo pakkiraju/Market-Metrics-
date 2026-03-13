@@ -678,6 +678,7 @@ def fetch_stage_indicators(cache_key: str = "ind_stage") -> pd.DataFrame:
 # Map cache_key to export URL key(s) for single-request fetch. None = use legacy _fetch_screener_multi.
 _GROUP_INDICATOR_URL_KEYS = {
     "ind_$1B+": ["ind_1b_km"],
+    "ind_97_club": ["ind_1b"],  # ind_1b has Avg Vol, Rel Vol, Volume (ind_1b_km v=152 does not)
     "ind_9m_movers": ["ind_9m"],
     "ind_leading": ["ind_1b"],
     # ind_USA: use legacy Overview+Performance+Technical merge (has Industry/Sector + Perf Quarter/YTD)
@@ -866,6 +867,7 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
         "ind_Composite": [["idx_sp500"], ["idx_ndx"], ["idx_dji"]],
         "ind_leading": [["cap_1to", "geo_usa", "sh_avgvol_o1000", "sh_price_o1"]],
         "ind_$1B+": [["cap_1to", "geo_usa", "sh_avgvol_o1000", "sh_price_o1"]],
+        "ind_97_club": [["cap_1to", "geo_usa", "sh_avgvol_o1000", "sh_price_o1"]],
         "ind_9m_movers": [["cap_1to", "geo_usa", "sh_curvol_9000tox", "sh_price_o1", "sh_relvol_1.25to"]],
         "ind_USA": [["geo_usa", "sh_price_o1", "sh_avgvol_o1000"]],
     }
