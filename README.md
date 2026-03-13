@@ -18,7 +18,6 @@ Create a `.env` file in the project root:
 
 ```
 FINVIZ_API_KEY=your_api_key
-STOCKBEE_API_URL=http://localhost:8000   # optional
 ```
 
 Run the app:
