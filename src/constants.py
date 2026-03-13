@@ -217,6 +217,8 @@ FINVIZ_SCREENER_URLS = {
     "pre_market_scanner_down": "https://elite.finviz.com/screener.ashx?v=151&f=geo_usa,sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_d3&o=change",
     # Thematics Tracker
     "thematics": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1",
+    # Economic Calendar
+    "economic_calendar": "https://elite.finviz.com/calendar/economic",
 }
 
 # Stockbee (Pradeep Bonde) — external links
@@ -251,22 +253,26 @@ FINVIZ_EXPORT_URLS = {
     "qulla_ps_small": "https://elite.finviz.com/export.ashx?v=141&f=cap_to9,geo_usa,ta_perf_300to-4w,ta_perf2_100to-1w&ft=4&o=-change&c=1,47,61,62,63,64,65",
     "qulla_breakouts": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_highlow52w_0to25-bhx,ta_perf_30to-4w,tad_0_close::close:d|abvpct::10:|sma:20:sma:d&o=-change&c=1,47,61,62,63,64,65",
     # Minervini Trend Template: c=1,47,61,62,63,64,65 = Ticker,ATR,AvgVol,RelVol,Price,Change,Volume (single request)
+    # tad_6: close above 30% of 52w low (30% or above), not within 30% of low. abvpct:30 = above by 30% min.
     "minervini": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_sma200_pa,tad_0_sma:150:sma:d|abv:::1|close::close:d,tad_1_sma:200:sma:d|abv:::1|close::close:d,tad_2_sma:200:sma:d|abv:::1|sma:150:sma:d,tad_3_sma:50:sma:d|abv:::|sma:150:sma:d,tad_4_sma:50:sma:d|abv:::|sma:200:sma:d,tad_5_sma:50:sma:d|abv:::1|close::close:d,tad_6_close::close:d|abvpct:30::|hilo:52:low:d,tad_7_close::close:d|blwpct::25:|hilo:52:high:d,tad_8_rsi:14:rsi:d|abveq:::|value:::70&o=-change&c=1,47,61,62,63,64,65",
     # O'Neil/CANSLIM: c=1,32,40,47,61,62,63,64,65 = Ticker,ROE,ProfitMargin,ATR,AvgVol,RelVol,Price,Change,Volume. ft=2 for fundamental filters.
     "oneil": "https://elite.finviz.com/export.ashx?v=161&f=fa_epsyoy_o25,fa_epsyoy1_o25,fa_epsyoyttm_pos,fa_netmargin_pos,fa_roe_pos,geo_usa&o=-change&ft=2&c=1,32,40,47,61,62,63,64,65",
     # Group indicators: v=141 Performance view has Perf Week/Month (v=111 Overview ignores c=). c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65
-    # ind_1b: $1B+ universe for Key Metrics + Leading Industries. v=141 has Perf Week/Month (week_chg, month_chg) for green coloring.
+    # ind_1b: $1B+ universe for Leading Industries (needs Industry/Sector, Perf Week/Month).
     "ind_1b": "https://elite.finviz.com/export.ashx?v=141&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
+    # ind_1b_km: $1B+ for Key Metrics only (v=152 single-URL, no Industry/Sector).
+    "ind_1b_km": "https://elite.finviz.com/export.ashx?v=152&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
     "ind_9m": "https://elite.finviz.com/export.ashx?v=141&f=cap_1to,geo_usa,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
     # ind_usa: v=141 Performance has Perf Week/Month/Qtr/YTD (Industry/Sector for themes)
     "ind_usa": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_price_o1,sh_avgvol_o1000&o=-change&c=1,3,4,6,41,42,43,44,45,47,50,51,52,55,56,61,62,63,64,65",
     # Thematics RRG: v=141 for reliable Perf Year/Qtr columns (v=152 may have different layout)
     "ind_thematics_rrg": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_price_o1,sh_avgvol_o1000&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
-    # Key Metrics base data: v=152 has all needed columns (Day Chg, Week, Month, Qtr, Year). Price/SMA/EMA/New Highs-Lows use URL fetch (unchanged).
-    "ind_ndx": "https://elite.finviz.com/export.ashx?v=152&f=idx_ndx&ft=4&o=-change&c=1,4,42,43,44,45,47,60,66",
-    "ind_sp500": "https://elite.finviz.com/export.ashx?v=152&f=idx_sp500&ft=4&o=-change&c=1,4,42,43,44,45,47,60,66",
-    "ind_dji": "https://elite.finviz.com/export.ashx?v=152&f=idx_dji&ft=4&o=-change&c=1,4,42,43,44,45,47,60,66",
-    "ind_rut": "https://elite.finviz.com/export.ashx?v=152&f=idx_rut&ft=4&o=-change&c=1,4,42,43,44,45,47,60,66",
+    # Key Metrics base data: v=152 single-URL per index. c=1,42,43,44,45,47,52,53,54,60,65,66 = Ticker,PerfWeek,PerfMonth,PerfQuart,PerfHalf,PerfYTD,SMA20,SMA50,SMA200,ChgFromOpen,Price,Change.
+    # Price to SMA10, EMA10>SMA20, SMA20<SMA50, SMA50<SMA200, SMA20<SMA50<SMA200, New 20-Day High/Low: keep URL fetch (unchanged).
+    "ind_ndx": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_ndx&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
+    "ind_sp500": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_sp500&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
+    "ind_dji": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_dji&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
+    "ind_rut": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_rut&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
     # Stage analysis: export.ashx, USA universe. v=171 Technical has 20/50/200-Day SMA (Relative), EMA10.
     "ind_stage": "https://elite.finviz.com/export.ashx?v=171&f=geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,41,42,47,50,51,52,55,56,61,62,63,64,65",
 }

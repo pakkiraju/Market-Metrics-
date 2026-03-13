@@ -284,10 +284,9 @@ def compute_key_metrics_single_group(name: str) -> list[dict]:
     rows = compute_key_metrics_for_group(ind)
     n = len(ind) if not ind.empty else 0
 
-    # Price to SMA, EMA>SMA, SMA>SMA, New 20-Day High/Low: use existing URLs (unchanged). Do not compute from base export.
+    # These metrics require URL fetch (not in v=152 export): Price to SMA10, EMA10>SMA20, SMA crossovers, New 20-Day High/Low.
     URL_FETCH_METRICS = [
-        "Open Chg",
-        "Price to SMA10", "Price to SMA20", "Price to SMA50", "Price to SMA200",
+        "Price to SMA10",
         "EMA10>SMA20", "SMA20<SMA50", "SMA50<SMA200", "SMA20<SMA50<SMA200",
         "New 20-Day Highs", "New 20-Day Lows",
     ]
@@ -519,11 +518,11 @@ def compute_97_club(tickers: list[str]) -> list[dict]:
     """$1B+ stocks in top 3% relative strength across Day, Week, Month. Data from FinViz API (Overview+Performance+Technical)."""
     cached = cache.get("97_club")
     if cached is not None and len(cached) > 0:
-        if any(r.get("atr_pct") is not None for r in cached[:5]):
+        if any(r.get("atr_pct") is not None for r in cached[:5]) and any(r.get("avg_vol") or r.get("rel_vol") or r.get("volume") for r in cached[:5]):
             return cached
         cache.invalidate("97_club")
 
-    indicators = fetch_group_indicators([], cache_key="ind_$1B+")
+    indicators = fetch_group_indicators([], cache_key="ind_97_club")
     if indicators.empty:
         return []
 
@@ -758,6 +757,26 @@ def _is_stale_thematics_cache(cached: list) -> bool:
     if not cached or len(cached) != 1:
         return False
     return cached[0].get("theme") == "Uncategorized"
+
+
+def compute_top_gainers_losers(top_n: int = 12) -> tuple[list[dict], list[dict]]:
+    """Top gainers and top losers from thematics universe (same data as Thematics Tracker).
+    Uses fetch_thematics_data (ind_USA) — no extra API call when thematics is refreshed."""
+    df = fetch_thematics_data(cache_key="thematics_data", ttl=MEDIUM)
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return [], []
+    df = df.dropna(subset=["day_chg"])
+    gainers = (
+        df.nlargest(top_n, "day_chg")[["ticker", "day_chg"]]
+        .rename(columns={"day_chg": "change"})
+        .to_dict("records")
+    )
+    losers = (
+        df.nsmallest(top_n, "day_chg")[["ticker", "day_chg"]]
+        .rename(columns={"day_chg": "change"})
+        .to_dict("records")
+    )
+    return gainers, losers
 
 
 def compute_thematics(tickers: list[str]) -> list[dict]:

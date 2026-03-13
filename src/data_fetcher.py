@@ -677,7 +677,8 @@ def fetch_stage_indicators(cache_key: str = "ind_stage") -> pd.DataFrame:
 
 # Map cache_key to export URL key(s) for single-request fetch. None = use legacy _fetch_screener_multi.
 _GROUP_INDICATOR_URL_KEYS = {
-    "ind_$1B+": ["ind_1b"],
+    "ind_$1B+": ["ind_1b_km"],
+    "ind_97_club": ["ind_1b"],  # ind_1b has Avg Vol, Rel Vol, Volume (ind_1b_km v=152 does not)
     "ind_9m_movers": ["ind_9m"],
     "ind_leading": ["ind_1b"],
     # ind_USA: use legacy Overview+Performance+Technical merge (has Industry/Sector + Perf Quarter/YTD)
@@ -713,6 +714,8 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
         change = _parse_pct(_v(row, "Change", "change", "Change %", "Change%"))
         if pd.isna(change):
             change = 0.0
+        open_chg_val = _parse_pct(_v(row, "Change from Open", "Change from Open %", "Change from Open%"))
+        open_chg = float(open_chg_val) if not pd.isna(open_chg_val) else change
 
         def _pct(*alts):
             v = _v(row, *alts)
@@ -763,7 +766,7 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
             "prev_close": float(price / (1 + change / 100)) if change != -100 else price,
             "open": price,
             "day_chg": float(change),
-            "open_chg": float(change),
+            "open_chg": float(open_chg),
             "week_chg": week_chg,
             "month_chg": month_chg,
             "qtr_chg": qtr_chg,
@@ -864,6 +867,7 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
         "ind_Composite": [["idx_sp500"], ["idx_ndx"], ["idx_dji"]],
         "ind_leading": [["cap_1to", "geo_usa", "sh_avgvol_o1000", "sh_price_o1"]],
         "ind_$1B+": [["cap_1to", "geo_usa", "sh_avgvol_o1000", "sh_price_o1"]],
+        "ind_97_club": [["cap_1to", "geo_usa", "sh_avgvol_o1000", "sh_price_o1"]],
         "ind_9m_movers": [["cap_1to", "geo_usa", "sh_curvol_9000tox", "sh_price_o1", "sh_relvol_1.25to"]],
         "ind_USA": [["geo_usa", "sh_price_o1", "sh_avgvol_o1000"]],
     }
@@ -1248,7 +1252,7 @@ def fetch_tickers_bulk_csv(tickers: list[str], cache_key: str | None = None, ttl
 
 
 def _fetch_vix_via_yfinance() -> dict | None:
-    """Fetch VIX quote via yfinance (^VIX). FinViz quote.ashx returns 404 for VIX."""
+    """Fetch VIX quote via yfinance (^VIX)."""
     try:
         import yfinance as yf
         hist = yf.Ticker("^VIX").history(period="5d")
@@ -1270,7 +1274,7 @@ def _fetch_vix_via_yfinance() -> dict | None:
 
 def fetch_live_index_quotes(ttl: int = FAST) -> list[dict]:
     """Fetch live quotes for QQQ, SPY, DIA, IWM, VIX. Cached 5 min for intraday snapshot.
-    Uses FinViz for ETFs; yfinance fallback for VIX (FinViz returns 404 for VIX)."""
+    Uses FinViz for ETFs; yfinance for VIX."""
     cache_key = "live_index_quotes"
     cached = cache.get(cache_key)
     if cached is not None:
@@ -1280,20 +1284,10 @@ def fetch_live_index_quotes(ttl: int = FAST) -> list[dict]:
         from src.finviz_elite import fetch_elite_stock, is_elite_configured
 
         rows: list[dict] = []
-        vix_row: dict | None = None
 
         for t in LIVE_INDEX_TICKERS:
             if t == "VIX":
-                if is_elite_configured():
-                    s = fetch_elite_stock(t)
-                    if s:
-                        price = _parse_num(_get_csv_val(s, "Price", "price", "Last", "Close"))
-                        if price is not None:
-                            change = _parse_pct(_get_csv_val(s, "Change", "change"))
-                            chg_val = 0.0 if (change is None or (isinstance(change, float) and change != change)) else float(change)
-                            vix_row = {"ticker": "VIX", "price": f"{price:.2f}", "change": f"{chg_val:+.2f}%"}
-                if vix_row is None:
-                    vix_row = _fetch_vix_via_yfinance()
+                vix_row = _fetch_vix_via_yfinance()
                 if vix_row:
                     rows.append(vix_row)
                 continue
@@ -1316,16 +1310,6 @@ def fetch_live_index_quotes(ttl: int = FAST) -> list[dict]:
                 "change": f"{chg_val:+.2f}%",
             })
             time.sleep(_FINVIZ_DELAY_SEC)
-
-        if vix_row is None:
-            vix_row = _fetch_vix_via_yfinance()
-            if vix_row:
-                rows.append(vix_row)
-
-        if not rows and is_elite_configured():
-            vix_row = _fetch_vix_via_yfinance()
-            if vix_row:
-                rows.append(vix_row)
 
         if rows:
             cache.put(cache_key, rows, ttl=ttl)

@@ -21,7 +21,7 @@ from src.constants import (
 from src.styles import (
     DASHBOARD_STYLE, HEADER_STYLE, HEADER_LOGO_STYLE,
     SCROLLABLE_BODY_HEIGHT,
-    HEADER_DATE_STYLE, MARKET_STATUS_STYLE_CLOSED, REFRESH_BTN_STYLE,
+    HEADER_DATE_STYLE, REFRESH_BTN_STYLE,
     SETTINGS_BTN_STYLE,
     CONTENT_AREA_STYLE,
     PRIMARY_ROW_STYLE, QUARTER_ROW_STYLE, THIRD_ROW_STYLE, WIDE_ROW_STYLE, HALF_ROW_STYLE,
@@ -73,6 +73,9 @@ INTRADAY_WIDGETS = [
     ("live_index",     "Market Snapshot",             False),
     ("in_play",        "Stocks In Play",             False),
     ("intraday-earnings", "Earnings Yesterday + Today", False),
+    ("top_gainers",    "Top Gainers",                False),
+    ("top_losers",     "Top Losers",                 False),
+    ("economic_calendar", "Economic Calendar",       False),
     ("pre_market",     "Pre-market Scanner",         False),
     ("cnbc_premarket", "CNBC Pre-Market Watchlist", False),
 ]
@@ -81,7 +84,7 @@ WIDGETS = MARKET_METRICS_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "live_index", "in_play", "intraday-earnings", "pre_market", "cnbc_premarket") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "economic_calendar", "pre_market", "cnbc_premarket") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -110,12 +113,25 @@ def _clickable_ticker(symbol, style=None):
 # Helper builders
 # -----------------------------------------------------------------------
 
+# Small refresh button for per-widget reload (clears cache, refetches that widget only)
+WIDGET_REFRESH_BTN_STYLE = {
+    "background": "rgba(255,255,255,0.15)",
+    "border": "none",
+    "borderRadius": "3px",
+    "color": "#fff",
+    "cursor": "pointer",
+    "fontSize": "10px",
+    "fontWeight": 600,
+    "padding": "1px 5px",
+    "marginLeft": "4px",
+    "lineHeight": 1,
+}
 def _widget(widget_id, header_text, body_children, variant="default",
             count=None, extra_header=None, primary=False, initial_hidden=False,
-            body_style=None, card_style_override=None):
-    header_kids = [html.Span(header_text)]
+            body_style=None, card_style_override=None, refreshable=True):
+    left_kids = [html.Span(header_text)]
     if count is not None:
-        header_kids.append(html.Span(
+        left_kids.append(html.Span(
             str(count),
             style={
                 "background": "rgba(255,255,255,0.2)",
@@ -126,7 +142,14 @@ def _widget(widget_id, header_text, body_children, variant="default",
             },
         ))
     if extra_header:
-        header_kids.append(extra_header)
+        left_kids.append(extra_header)
+
+    header_kids = [html.Div(left_kids, style={"display": "flex", "alignItems": "center", "flexWrap": "wrap"})]
+    if refreshable:
+        header_kids.append(
+            html.Button("↻", id=f"btn-refresh-{widget_id}", title="Refresh this widget",
+                        style=WIDGET_REFRESH_BTN_STYLE, n_clicks=0)
+        )
 
     card_style = card_style_override or (WIDGET_PRIMARY_STYLE if primary else WIDGET_SECONDARY_STYLE)
     if initial_hidden:
@@ -679,6 +702,85 @@ def build_cnbc_premarket_watchlist_table(data: list[dict], article_url: str = ""
     return html.Div([
         html.Div([date_label], style={"marginBottom": "4px"}) if article_date else html.Div(),
         table,
+    ], style={"display": "flex", "flexDirection": "column"})
+
+
+def build_top_gainers_table(data: list[dict]) -> html.Div:
+    """Top gainers on the day — from thematics universe (same data as Thematics Tracker)."""
+    if not data:
+        return html.Div("No data. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    headers = [("Ticker", None), ("Chg", None)]
+    rows = []
+    for r in data:
+        chg = r.get("change", 0)
+        try:
+            chg_num = float(chg) if chg is not None else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        rows.append([
+            {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}),
+             "style": TABLE_CELL_STYLE},
+            {"text": f"{chg_num:+.2f}%",
+             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+        ])
+    return _table(headers, rows, col_widths=["70px", "55px"])
+
+
+def build_top_losers_table(data: list[dict]) -> html.Div:
+    """Top losers on the day — from thematics universe (same data as Thematics Tracker)."""
+    if not data:
+        return html.Div("No data. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    headers = [("Ticker", None), ("Chg", None)]
+    rows = []
+    for r in data:
+        chg = r.get("change", 0)
+        try:
+            chg_num = float(chg) if chg is not None else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        rows.append([
+            {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}),
+             "style": TABLE_CELL_STYLE},
+            {"text": f"{chg_num:+.2f}%",
+             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+        ])
+    return _table(headers, rows, col_widths=["70px", "55px"])
+
+
+def build_economic_calendar_table(data: list[dict]) -> html.Div:
+    """Today's economic calendar — scraped from Forex Factory. Time, Country, Impact, Event, Forecast, Actual, Prior."""
+    if not data:
+        return html.Div([
+            "No events today. ",
+            html.A("Forex Factory", href="https://www.forexfactory.com/calendar", target="_blank", rel="noopener noreferrer",
+                   style={"color": COLORS["accent"], "textDecoration": "underline", "fontSize": "9px"}),
+        ], style={"color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px"})
+
+    headers = [("Time", None), ("Ccy", None), ("Impact", None), ("Event", None), ("Forecast", None), ("Actual", None), ("Prior", None)]
+    rows = []
+    impact_colors = {"High": COLORS["red_light"], "Medium": COLORS["green_light"], "Low": COLORS["text_muted"]}
+    for r in data:
+        impact = r.get("impact", "")
+        impact_style = {"color": impact_colors.get(impact, COLORS["text_muted"])} if impact else {}
+        rows.append([
+            {"text": r.get("time", ""), "style": TABLE_CELL_STYLE},
+            {"text": r.get("country", ""), "style": TABLE_CELL_STYLE},
+            {"text": impact, "style": {**TABLE_CELL_STYLE, **impact_style, "fontWeight": 600}},
+            {"text": (r.get("title", "") or "")[:50] + ("..." if len(r.get("title", "") or "") > 50 else ""),
+             "style": {**TABLE_CELL_STYLE, "textAlign": "left", "maxWidth": "180px"}},
+            {"text": (r.get("forecast") or "-")[:12], "style": TABLE_CELL_STYLE},
+            {"text": (r.get("actual") or "-")[:12], "style": TABLE_CELL_STYLE},
+            {"text": (r.get("previous") or "-")[:12], "style": TABLE_CELL_STYLE},
+        ])
+    table = _table(headers, rows, col_widths=["55px", "40px", "50px", "1fr", "60px", "60px", "60px"])
+    return html.Div([
+        table,
+        html.A("Forex Factory", href="https://www.forexfactory.com/calendar", target="_blank", rel="noopener noreferrer",
+               style={"fontSize": "8px", "color": COLORS["accent"], "textDecoration": "none", "marginTop": "4px"}),
     ], style={"display": "flex", "flexDirection": "column"})
 
 
@@ -1599,25 +1701,12 @@ def build_header() -> html.Div:
     now = datetime.now(ET)
     date_str = now.strftime("%A, %B %d, %Y")
 
-    is_weekday = now.weekday() < 5
-    t = now.hour * 60 + now.minute
-    is_open = is_weekday and 9 * 60 + 30 <= t < 16 * 60
-
     return html.Div([
         html.Div([
             html.Span("Pradly Portal", style=HEADER_LOGO_STYLE),
         ], style={"display": "flex", "alignItems": "center", "gap": "8px"}),
         html.Div([
             html.Span(date_str, id="header-date", style=HEADER_DATE_STYLE),
-            html.Span(
-                "OPEN" if is_open else "CLOSED",
-                id="market-status",
-                style=MARKET_STATUS_STYLE_CLOSED if not is_open else {
-                    **MARKET_STATUS_STYLE_CLOSED,
-                    "backgroundColor": COLORS["green_cell"],
-                    "color": COLORS["green_light"],
-                },
-            ),
         ], style={"display": "flex", "alignItems": "center", "gap": "12px"}),
         html.Div([
             html.Button("Refresh", id="btn-refresh", style=REFRESH_BTN_STYLE),
@@ -2016,6 +2105,44 @@ def build_layout() -> html.Div:
                                         _finviz_link("FinViz", "earnings_yesterday_today", {"marginLeft": "8px"}),
                                     ])),
                         ], style=HALF_ROW_STYLE),
+                        html.Div([
+                            _widget("top_gainers", "Top Gainers",
+                                    _loading_wrap("top_gainers-content"),
+                                    variant="teal",
+                                    initial_hidden=not DEFAULT_VISIBILITY.get("top_gainers", True),
+                                    card_style_override={
+                                        **WIDGET_STYLE,
+                                        "maxHeight": "260px",
+                                    },
+                                    extra_header=html.Span([
+                                        _finviz_link("FinViz", "thematics", {"marginLeft": "8px"}),
+                                    ])),
+                            _widget("top_losers", "Top Losers",
+                                    _loading_wrap("top_losers-content"),
+                                    variant="teal",
+                                    initial_hidden=not DEFAULT_VISIBILITY.get("top_losers", True),
+                                    card_style_override={
+                                        **WIDGET_STYLE,
+                                        "maxHeight": "260px",
+                                    },
+                                    extra_header=html.Span([
+                                        _finviz_link("FinViz", "thematics", {"marginLeft": "8px"}),
+                                    ])),
+                            _widget("economic_calendar", "Economic Calendar — Today",
+                                    _loading_wrap("economic_calendar-content"),
+                                    variant="teal",
+                                    initial_hidden=not DEFAULT_VISIBILITY.get("economic_calendar", True),
+                                    card_style_override={
+                                        **WIDGET_STYLE,
+                                        "maxHeight": "300px",
+                                    },
+                                    extra_header=html.Span([
+                                        html.A("Forex Factory", href="https://www.forexfactory.com/calendar",
+                                               target="_blank", rel="noopener noreferrer",
+                                               style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                      "textDecoration": "none", "marginLeft": "8px"}),
+                                    ])),
+                        ], style=THIRD_ROW_STYLE),
                         html.Div([
                             _widget("pre_market", "Pre-market Scanner",
                                     _sortable_table_wrap("pre_market", default_sort_col="Gap", default_sort_asc=False),
