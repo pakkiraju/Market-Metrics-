@@ -53,6 +53,7 @@ from src.layout import (
     build_20pct_weekly_table,
     build_4pct_daily_table,
     build_earnings_table,
+    build_earnings_calendar_table,
     build_stocks_in_play_table,
     build_pre_market_scanner_table,
     build_leading_industries_table,
@@ -92,7 +93,6 @@ WIDGET_CACHE_KEYS = {
     "movers": ["9m_movers"],
     "weekly": ["20pct_weekly"],
     "daily": ["4pct_daily"],
-    "earnings": ["earnings_yesterday_today"],
     "in_play": ["stocks_in_play"],
     "intraday-earnings": ["earnings_yesterday_today"],
     "pre_market": ["pre_market_scanner"],
@@ -118,6 +118,7 @@ WIDGET_CACHE_KEYS = {
     "breadth-sp500": ["stockbee_breadth_history"],
     "rrg": ["rrg_data"],
     "sp500-landscape": ["sp500_landscape"],
+    "earnings-calendar-week": ["earnings_this_week"],
 }
 
 
@@ -493,6 +494,29 @@ def register_callbacks(app):
 
     @app.callback(
         [
+            Output("earnings-calendar-week-content", "children"),
+            Output("earnings-calendar-week-data-store", "data"),
+        ],
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-earnings-calendar-week", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_earnings_calendar_week(n_intervals, n_clicks, btn_w):
+        if btn_w:
+            _invalidate_widget_cache("earnings-calendar-week")
+        try:
+            from src.data_fetcher import fetch_earnings_this_week
+            data = fetch_earnings_this_week()
+            return build_earnings_calendar_table(data, "earnings-calendar-week", "market_cap", False), data
+        except Exception as e:
+            logger.exception("Earnings Calendar Week failed: %s", e)
+            return _err_div(e), []
+
+    @app.callback(
+        [
             Output("stockbee-content", "children"),
             Output("stockbee-data-store", "data"),
             Output("stockbee-sort-store", "data"),
@@ -680,7 +704,7 @@ def register_callbacks(app):
             logger.exception("S&P 500 Landscape failed: %s", e)
             return no_update, no_update, _err_div(e)
 
-    _GROUP_D_WIDGETS = ["club97", "movers", "weekly", "daily", "earnings", "in_play", "intraday-earnings", "pre_market"]
+    _GROUP_D_WIDGETS = ["club97", "movers", "weekly", "daily", "in_play", "intraday-earnings", "pre_market"]
 
     @app.callback(
         [
@@ -693,8 +717,6 @@ def register_callbacks(app):
             Output("weekly-data-store", "data"),
             Output("daily-content", "children"),
             Output("daily-data-store", "data"),
-            Output("earnings-content", "children"),
-            Output("earnings-data-store", "data"),
             Output("in_play-content", "children"),
             Output("in_play-data-store", "data"),
             Output("intraday-earnings-content", "children"),
@@ -721,7 +743,7 @@ def register_callbacks(app):
             """Build output list; use no_update for widgets we didn't refresh when single_widget is set."""
             if not single_widget:
                 return list(vals)
-            out = [no_update] * 17
+            out = [no_update] * 15
             idx = _GROUP_D_WIDGETS.index(single_widget) if single_widget in _GROUP_D_WIDGETS else -1
             if idx == 0:
                 out[0], out[1], out[2] = vals[0], vals[1], vals[2]
@@ -737,8 +759,6 @@ def register_callbacks(app):
                 out[11], out[12] = vals[11], vals[12]
             elif idx == 6:
                 out[13], out[14] = vals[13], vals[14]
-            elif idx == 7:
-                out[15], out[16] = vals[15], vals[16]
             else:
                 return list(vals)
             return out
@@ -763,22 +783,22 @@ def register_callbacks(app):
                 d = compute_4pct_daily([])
                 return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update,
                     build_4pct_daily_table(d, "daily", "chg", False), d, no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update)
-            if single_widget in ("earnings", "intraday-earnings"):
+                    no_update, no_update)
+            if single_widget == "intraday-earnings":
                 d = compute_earnings_yesterday_today([])
-                et = build_earnings_table(d, "earnings", "change", False)
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    et, d, no_update, no_update, et, d, no_update, no_update)
+                et = build_earnings_table(d, "intraday-earnings", "change", False)
+                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
+                    no_update, no_update, et, d, no_update, no_update, no_update)
             if single_widget == "in_play":
                 d = compute_stocks_in_play([])
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    no_update, no_update, build_stocks_in_play_table(d, "in_play", "change", False), d,
+                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
+                    build_stocks_in_play_table(d, "in_play", "change", False), d,
                     no_update, no_update, no_update, no_update)
             if single_widget == "pre_market":
                 d = compute_pre_market_scanner([])
                 gap = next((c for c in (d[0].keys() if d else []) if "gap" in c.lower() and "url" not in c.lower()), "Gap")
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update, no_update, no_update,
+                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
+                    no_update, no_update, no_update, no_update,
                     build_pre_market_scanner_table(d, "pre_market", gap, False), d)
 
             # Full refresh
@@ -791,7 +811,7 @@ def register_callbacks(app):
             daily_data = compute_4pct_daily([])
             daily_table = build_4pct_daily_table(daily_data, "daily", "chg", False)
             earnings_data = compute_earnings_yesterday_today([])
-            earnings_table = build_earnings_table(earnings_data, "earnings", "change", False)
+            earnings_table = build_earnings_table(earnings_data, "intraday-earnings", "change", False)
             in_play_data = compute_stocks_in_play([])
             in_play_table = build_stocks_in_play_table(in_play_data, "in_play", "change", False)
             pre_market_data = compute_pre_market_scanner([])
@@ -801,7 +821,6 @@ def register_callbacks(app):
                 club97_table, club97_data, {"col": "change", "asc": False},
                 movers_table, movers_data,
                 weekly_table, weekly_data, daily_table, daily_data,
-                earnings_table, earnings_data,
                 in_play_table, in_play_data,
                 earnings_table, earnings_data,
                 pre_market_table, pre_market_data,
@@ -1016,9 +1035,9 @@ def register_callbacks(app):
         "movers": (build_9m_movers_table, "movers-content", {}),
         "weekly": (build_20pct_weekly_table, "weekly-content", {}),
         "daily": (build_4pct_daily_table, "daily-content", {}),
-        "earnings": (build_earnings_table, "earnings-content", {}),
         "in_play": (build_stocks_in_play_table, "in_play-content", {}),
         "intraday-earnings": (build_earnings_table, "intraday-earnings-content", {}),
+        "earnings-calendar-week": (build_earnings_calendar_table, "earnings-calendar-week-content", {}),
         "pre_market": (build_pre_market_scanner_table, "pre_market-content", {}),
         "leading": (build_leading_industries_table, "leading-content", {}),
         "thematics": (build_thematics_table, "thematics-content", {}),

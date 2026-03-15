@@ -56,7 +56,6 @@ MARKET_METRICS_WIDGETS = [
     ("movers",         "StockBee - 9 Million Movers",           False),
     ("weekly",         "StockBee - 20% Weekly Movers",          False),
     ("daily",          "StockBee - 4% Daily Gainers",           False),
-    ("earnings",       "Earnings Yesterday + Today",    False),
     ("leading",        "Leading Industries",         False),
     ("thematics",      "Thematics Tracker",          False),
     ("thematics-sector", "Thematics by Sector (Top YTD)", False),
@@ -68,8 +67,9 @@ MARKET_METRICS_WIDGETS = [
     ("breadth-secondary", "StockBee - Secondary Breadth — Up/Down 25%+ Qtr", False),
     ("breadth-sp500",  "StockBee - S&P 500 — Last 60 Days",    False),
     ("stage",          "Stage Analysis",             False),
+    ("earnings-calendar-week", "Earnings Calendar — This Week", False),
 ]
-# Intraday tab widgets (in_play moved here; earnings duplicated for both tabs)
+# Intraday tab widgets (in_play and earnings here)
 INTRADAY_WIDGETS = [
     ("live_index",     "Market Snapshot",             False),
     ("in_play",        "Stocks In Play",             False),
@@ -85,7 +85,7 @@ WIDGETS = MARKET_METRICS_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "earnings", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "economic_calendar", "pre_market", "cnbc_premarket") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "economic_calendar", "pre_market", "cnbc_premarket") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -490,6 +490,60 @@ def build_earnings_table(data: list[dict], widget_id: str = None, sort_col: str 
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
     return _build_screener_table(data, widget_id, sort_col, sort_asc)
+
+
+def _fmt_mcap(val) -> str:
+    """Format market cap for display."""
+    if val is None or (isinstance(val, float) and (val != val or val == 0)):
+        return "-"
+    if val >= 1e12:
+        return f"${val/1e12:.2f}T"
+    if val >= 1e9:
+        return f"${val/1e9:.2f}B"
+    if val >= 1e6:
+        return f"${val/1e6:.2f}M"
+    return f"${val:,.0f}"
+
+
+def build_earnings_calendar_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Earnings This Week: Ticker, Market Cap, Price, Avg Vol, Rel Vol, Change, Vol, ATR %. Sorted by market cap by default."""
+    from src.sortable_table import sort_data, SCREENER_SORT_KEYS
+
+    if not data:
+        return html.Div("No earnings this week", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    sort_keys = {**SCREENER_SORT_KEYS}
+    if widget_id and sort_col and sort_col in sort_keys:
+        data = sort_data(data, sort_col, sort_asc, sort_keys)
+    elif not sort_col:
+        data = sort_data(data, "market_cap", False, sort_keys)
+    headers = [
+        ("Ticker", "ticker"), ("Mkt Cap", "market_cap"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
+        ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"),
+    ]
+    rows = []
+    for r in data:
+        chg_val = r.get("change")
+        try:
+            chg_num = float(str(chg_val).replace("%", "")) if chg_val not in (None, "") else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        atr_pct = r.get("atr_pct")
+        atr_str = f"{atr_pct:.2f}%" if atr_pct is not None else ""
+        rows.append([
+            {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}), "style": TABLE_CELL_STYLE},
+            _fmt_mcap(r.get("market_cap")),
+            str(r.get("price", "")),
+            avg_str,
+            str(r.get("rel_vol", "")),
+            {"text": f"{chg_num}%" if chg_val not in (None, "") else "", "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
+            atr_str,
+        ])
+    return _table(headers, rows, col_widths=["65px", "60px", "55px", "65px", "50px", "55px", "65px", "50px"],
+                  widget_id=widget_id, sort_col=sort_col or "market_cap", sort_asc=sort_asc)
 
 
 def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
@@ -2169,16 +2223,20 @@ def build_layout() -> html.Div:
                         extra_header=html.Span([
                             _finviz_link("FinViz", "leading", {"marginLeft": "8px"}),
                         ])),
-                _widget("earnings", "Earnings Yesterday + Today",
-                        _sortable_table_wrap("earnings"),
-                        variant="orange",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("earnings", True),
-                        extra_header=html.Span([
-                            _finviz_link("FinViz", "earnings_yesterday_today", {"marginLeft": "8px"}),
-                        ])),
                 _widget("stage", "Stage Analysis",
                         _loading_wrap("stage-content", [loading]),
                         initial_hidden=not DEFAULT_VISIBILITY.get("stage", True)),
+                _widget("earnings-calendar-week", "Earnings Calendar — This Week",
+                        html.Div([
+                            dcc.Store(id="earnings-calendar-week-data-store"),
+                            dcc.Store(id="earnings-calendar-week-sort-store", data={"col": "market_cap", "asc": False}),
+                            _loading_wrap("earnings-calendar-week-content"),
+                        ]),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("earnings-calendar-week", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "earnings_this_week", {"marginLeft": "8px"}),
+                        ])),
             ], id="row-bottom", style=THIRD_ROW_STYLE),
 
             # ---- THEMATICS ROW ----
