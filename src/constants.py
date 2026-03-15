@@ -228,6 +228,18 @@ FINVIZ_SCREENER_URLS = {
     "core_inflation_yoy": "https://elite.finviz.com/calendar/economic/detail/USACORECPIRATE",
 }
 
+# Rate Watch — external links per central bank
+RATE_WATCH_LINKS = {
+    "USD": "https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html",
+    "EUR": "https://centralbank.watch/european-central-bank",
+    "GBP": "https://centralbank.watch/bank-of-england",
+    "JPY": "https://centralbank.watch/bank-of-japan",
+    "CAD": "https://centralbank.watch/bank-of-canada",
+    "CHF": "https://centralbank.watch/swiss-national-bank",
+    "AUD": "https://centralbank.watch/reserve-bank-of-australia",
+    "NZD": "https://centralbank.watch/reserve-bank-of-new-zealand",
+}
+
 # Stockbee (Pradeep Bonde) — external links
 STOCKBEE_LINKS = {
     "momentum50": "https://docs.google.com/spreadsheets/d/1xjbe9SF0HsxwY_Uy3NC2tT92BqK0nhArUaYU16Q0p9M/",

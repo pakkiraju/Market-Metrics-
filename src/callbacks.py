@@ -11,7 +11,7 @@ from dash import html, dcc, Input, Output, State, callback, no_update, ctx, ALL
 import plotly.graph_objects as go
 
 from src import cache
-from src.constants import COLORS
+from src.constants import COLORS, RATE_WATCH_LINKS
 from src.calculations import (
     compute_all_key_metrics,
     compute_sector_data,
@@ -66,6 +66,7 @@ from src.layout import (
     build_cpi_chart,
     build_core_inflation_mom_chart,
     build_core_inflation_yoy_chart,
+    build_rate_watch_content,
     build_stage_chart,
     build_stage_summary,
     build_ticker_grid,
@@ -113,6 +114,14 @@ WIDGET_CACHE_KEYS = {
     "cpi": ["cpi_ytd"],
     "core_inflation_mom": ["core_inflation_mom_ytd"],
     "core_inflation_yoy": ["core_inflation_yoy_ytd"],
+    "rate_watch_probabilities": ["rate_watch_USD", "rate_watch_EUR", "rate_watch_GBP", "rate_watch_JPY",
+                                 "rate_watch_CAD", "rate_watch_CHF", "rate_watch_AUD", "rate_watch_NZD"],
+    "rate_watch_rate_path": ["rate_watch_USD", "rate_watch_EUR", "rate_watch_GBP", "rate_watch_JPY",
+                             "rate_watch_CAD", "rate_watch_CHF", "rate_watch_AUD", "rate_watch_NZD"],
+    "rate_watch_distribution": ["rate_watch_USD", "rate_watch_EUR", "rate_watch_GBP", "rate_watch_JPY",
+                                "rate_watch_CAD", "rate_watch_CHF", "rate_watch_AUD", "rate_watch_NZD"],
+    "rate_watch_rate_ranges": ["rate_watch_USD", "rate_watch_EUR", "rate_watch_GBP", "rate_watch_JPY",
+                               "rate_watch_CAD", "rate_watch_CHF", "rate_watch_AUD", "rate_watch_NZD"],
     "qulla": ["qulla_episodic_v2", "qulla_parabolic_v2", "qulla_breakouts_v2"],
     "minervini": ["minervini_table"],
     "oneil": ["oneil_table"],
@@ -852,6 +861,80 @@ def register_callbacks(app):
         except Exception as e:
             logger.exception("Group D failed: %s", e)
             return [_err_div(e), [], no_update, _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
+
+    # Sync Rate Watch currency: when any dropdown changes, update store; when store changes, sync all 4 dropdowns
+    @app.callback(
+        Output("rate-watch-currency-store", "data"),
+        [
+            Input("rate-watch-probabilities-currency", "value"),
+            Input("rate-watch-rate-path-currency", "value"),
+            Input("rate-watch-distribution-currency", "value"),
+            Input("rate-watch-rate-ranges-currency", "value"),
+        ],
+        prevent_initial_call=False,
+    )
+    def sync_rate_watch_currency_store(p1, p2, p3, p4):
+        triggered = ctx.triggered
+        if not triggered:
+            return "USD"
+        tid = triggered[0].get("prop_id", "")
+        if "probabilities" in tid:
+            return p1 or "USD"
+        if "rate-path" in tid:
+            return p2 or "USD"
+        if "distribution" in tid:
+            return p3 or "USD"
+        if "rate-ranges" in tid:
+            return p4 or "USD"
+        return "USD"
+
+    @app.callback(
+        [
+            Output("rate-watch-probabilities-currency", "value"),
+            Output("rate-watch-rate-path-currency", "value"),
+            Output("rate-watch-distribution-currency", "value"),
+            Output("rate-watch-rate-ranges-currency", "value"),
+        ],
+        Input("rate-watch-currency-store", "data"),
+        prevent_initial_call=False,
+    )
+    def sync_rate_watch_dropdowns(currency):
+        ccy = currency or "USD"
+        return ccy, ccy, ccy, ccy
+
+    def _make_rate_watch_callback(widget_id: str, view: str):
+        """Factory for Rate Watch widget callbacks."""
+        @app.callback(
+            [
+                Output(f"{widget_id}-content", "children"),
+                Output(f"rate-watch-{view.replace('_', '-')}-link", "href"),
+            ],
+            [
+                Input("interval-refresh", "n_intervals"),
+                Input("btn-refresh", "n_clicks"),
+                Input(f"btn-refresh-{widget_id}", "n_clicks"),
+                Input("rate-watch-currency-store", "data"),
+            ],
+            prevent_initial_call=False,
+        )
+        def _cb(n_intervals, n_clicks, btn_widget, currency):
+            if btn_widget:
+                _invalidate_widget_cache(widget_id)
+            currency = currency or "USD"
+            try:
+                from src.rate_watch_data import fetch_rate_watch_data
+                data = fetch_rate_watch_data(currency)
+                content = build_rate_watch_content(currency, data, view.replace("_", "-"))
+                link = RATE_WATCH_LINKS.get(currency, "https://centralbank.watch/")
+                return content, link
+            except Exception as e:
+                logger.exception("Rate Watch %s failed: %s", widget_id, e)
+                return _err_div(e), RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/")
+
+    _make_rate_watch_callback("rate_watch_probabilities", "probabilities")
+    _make_rate_watch_callback("rate_watch_rate_path", "rate_path")
+    _make_rate_watch_callback("rate_watch_distribution", "distribution")
+    _make_rate_watch_callback("rate_watch_rate_ranges", "rate_ranges")
 
     @app.callback(
         Output("economic_calendar-content", "children"),

@@ -17,7 +17,7 @@ from src.constants import (
     COLORS, KEY_METRIC_ROWS, INDEX_GROUPS, SECTOR_NAMES,
     STAGE_BAR_COLORS, STAGE_LABELS, FINVIZ_SCREENER_URLS,
     build_metric_screener_url, RRG_BENCHMARK, RRG_COLORS,
-    STOCKBEE_LINKS,
+    STOCKBEE_LINKS, RATE_WATCH_LINKS,
 )
 from src.styles import (
     DASHBOARD_STYLE, HEADER_STYLE, HEADER_LOGO_STYLE,
@@ -72,6 +72,10 @@ MARKET_METRICS_WIDGETS = [
 ]
 # Macro Monitor tab widgets
 MACRO_MONITOR_WIDGETS = [
+    ("rate_watch_probabilities", "Rate Watch — Probabilities", False),
+    ("rate_watch_rate_path", "Rate Watch — Rate Path",        False),
+    ("rate_watch_distribution", "Rate Watch — Distribution",  False),
+    ("rate_watch_rate_ranges", "Rate Watch — Rate Ranges",    False),
     ("economic_calendar", "Economic Calendar",       False),
     ("cpi", "Consumer Price Index CPI",              False),
     ("core_inflation_mom", "Core Inflation Rate MoM", False),
@@ -92,7 +96,7 @@ WIDGETS = MARKET_METRICS_WIDGETS + MACRO_MONITOR_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "economic_calendar", "cpi", "core_inflation_mom", "core_inflation_yoy", "pre_market", "cnbc_premarket") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "rate_watch_probabilities", "rate_watch_rate_path", "rate_watch_distribution", "rate_watch_rate_ranges", "economic_calendar", "cpi", "core_inflation_mom", "core_inflation_yoy", "pre_market", "cnbc_premarket") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -912,6 +916,148 @@ def build_core_inflation_mom_chart(data: list[dict]) -> go.Figure:
 def build_core_inflation_yoy_chart(data: list[dict]) -> go.Figure:
     """Bar chart: Expected vs Actual Core Inflation Rate YoY YTD."""
     return _build_expected_actual_chart(data, "% YoY", "No Core Inflation YoY data available.", min_pad=0.1)
+
+
+def _rate_watch_link(text: str, currency: str, style=None) -> html.A:
+    """Inline link to Rate Watch external source (CME FedWatch, CentralBank.watch)."""
+    url = RATE_WATCH_LINKS.get(currency, "https://centralbank.watch/")
+    base = {"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"], "textDecoration": "none"}
+    if style:
+        base.update(style)
+    return html.A(text, href=url, target="_blank", rel="noopener noreferrer", style=base)
+
+
+def _build_rate_watch_probability_chart(data: dict, height: int = 220) -> go.Figure:
+    """Stacked bar: Cut (red), Hold (yellow), Hike (green) for next 6 meetings."""
+    meetings = data.get("meetings", [])[:6]
+    if not meetings:
+        fig = go.Figure()
+        fig.add_annotation(text="No meeting data", xref="paper", yref="paper", x=0.5, y=0.5,
+                            showarrow=False, font=dict(size=12, color=COLORS["text_muted"]))
+    else:
+        labels = [m["date_label"] for m in meetings]
+        cut = [m["cut_pct"] for m in meetings]
+        hold = [m["hold_pct"] for m in meetings]
+        hike = [m["hike_pct"] for m in meetings]
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=labels, y=cut, name="Cut", marker_color=COLORS["red"], width=0.6))
+        fig.add_trace(go.Bar(x=labels, y=hold, name="Hold", marker_color=COLORS["yellow"], width=0.6))
+        fig.add_trace(go.Bar(x=labels, y=hike, name="Hike", marker_color=COLORS["green"], width=0.6))
+        fig.update_layout(barmode="stack")
+    fig.update_layout(
+        paper_bgcolor=COLORS["surface"],
+        plot_bgcolor=COLORS["surface"],
+        margin=dict(l=4, r=4, t=24, b=4),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
+                   font=dict(size=9, color=COLORS["text_muted"])),
+        xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
+        yaxis=dict(
+            title=dict(text="Probability %", font=dict(size=9, color=COLORS["text_muted"])),
+            tickfont=dict(size=8, color=COLORS["text_faint"]),
+            gridcolor="rgba(255,255,255,0.05)",
+            zeroline=False,
+            range=[0, 100],
+        ),
+        font=dict(family="Inter", size=8),
+        height=height,
+    )
+    return fig
+
+
+def _build_rate_watch_rate_path_chart(data: dict, height: int = 220) -> go.Figure:
+    """Line chart: Expected rate (orange) vs current rate (yellow dashed) for next 8 meetings."""
+    meetings = data.get("meetings", [])[:8]
+    current = data.get("current_rate") or 0
+    if not meetings:
+        fig = go.Figure()
+        fig.add_annotation(text="No meeting data", xref="paper", yref="paper", x=0.5, y=0.5,
+                            showarrow=False, font=dict(size=12, color=COLORS["text_muted"]))
+    else:
+        labels = [m["date_label"] for m in meetings]
+        exp_rates = [m["exp_rate"] for m in meetings]
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=labels, y=exp_rates, name="Expected Rate", mode="lines+markers",
+                                 line=dict(color=COLORS["orange"], width=2),
+                                 marker=dict(size=6)))
+        fig.add_trace(go.Scatter(x=labels, y=[current] * len(labels), name="Current",
+                                 line=dict(color=COLORS["yellow"], width=1.5, dash="dash")))
+        fig.update_layout(
+            paper_bgcolor=COLORS["surface"],
+            plot_bgcolor=COLORS["surface"],
+            margin=dict(l=4, r=4, t=24, b=4),
+            showlegend=True,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
+                       font=dict(size=9, color=COLORS["text_muted"])),
+            xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
+            yaxis=dict(
+                title=dict(text="Rate %", font=dict(size=9, color=COLORS["text_muted"])),
+                tickfont=dict(size=8, color=COLORS["text_faint"]),
+                gridcolor="rgba(255,255,255,0.05)",
+                zeroline=False,
+            ),
+            font=dict(family="Inter", size=8),
+            height=height,
+        )
+    return fig
+
+
+def build_rate_watch_content(currency: str, data: dict, view: str = "probabilities") -> html.Div:
+    """Build Rate Watch widget content for a single sub-view (dropdown and tabs in layout)."""
+    if not data:
+        return html.Div("No data available.", style={"color": COLORS["text_muted"], "padding": "8px"})
+
+    bank_name = data.get("bank_name", "")
+    current_str = data.get("current_rate_str", "")
+    next_date = data.get("next_meeting_date", "")
+    next_days = data.get("next_meeting_days")
+    meetings = data.get("meetings", [])
+
+    chart_height = 200
+
+    if view == "probabilities":
+        return dcc.Graph(
+            figure=_build_rate_watch_probability_chart(data, height=chart_height),
+            config={"displayModeBar": False},
+            style={"height": "100%", "width": "100%"},
+        )
+    if view == "rate-path":
+        return dcc.Graph(
+            figure=_build_rate_watch_rate_path_chart(data, height=chart_height),
+            config={"displayModeBar": False},
+            style={"height": "100%", "width": "100%"},
+        )
+    if view == "distribution":
+        headers = [("Meeting", None), ("Days", None), ("Exp.Rate", None), ("Cut %", None), ("Hold %", None), ("Hike %", None)]
+        rows = []
+        for m in meetings:
+            rows.append([
+                {"text": m["date_label"], "style": TABLE_CELL_STYLE},
+                {"text": str(m["days_until"]), "style": TABLE_CELL_STYLE},
+                {"text": f"{m['exp_rate']:.3f}", "style": TABLE_CELL_STYLE},
+                {"text": f"{m['cut_pct']:.1f}", "style": {**TABLE_CELL_STYLE, "color": COLORS["red_light"]}},
+                {"text": f"{m['hold_pct']:.1f}", "style": {**TABLE_CELL_STYLE, "color": COLORS["yellow"]}},
+                {"text": f"{m['hike_pct']:.1f}", "style": {**TABLE_CELL_STYLE, "color": COLORS["green_light"]}},
+            ])
+        prob_table = _table(headers, rows, col_widths=["80px", "45px", "65px", "55px", "55px", "55px"]) if rows else html.Div()
+        return html.Div([prob_table], style={"overflow": "auto", "maxHeight": "220px"})
+
+    if view == "rate-ranges":
+        if currency != "USD" or not meetings:
+            return html.Div(
+                "Rate Range probabilities are only available for the Federal Reserve (USD).",
+                style={"color": COLORS["text_muted"], "fontSize": "10px", "padding": "12px"},
+            )
+        first = meetings[0]
+        rate_ranges = first.get("rate_ranges", [])
+        if not rate_ranges:
+            return html.Div("No rate range data.", style={"color": COLORS["text_muted"], "padding": "8px"})
+        rr_headers = [("Rate Range", None), ("Prob %", None)]
+        rr_rows = [[{"text": r["range"], "style": TABLE_CELL_STYLE}, {"text": f"{r['pct']:.1f}", "style": TABLE_CELL_STYLE}] for r in rate_ranges]
+        rate_range_table = _table(rr_headers, rr_rows, col_widths=["90px", "60px"])
+        return html.Div([rate_range_table], style={"overflow": "auto", "maxHeight": "220px"})
+
+    return html.Div("Unknown view.", style={"color": COLORS["text_muted"], "padding": "8px"})
 
 
 def _parse_vol(val):
@@ -2109,7 +2255,92 @@ def build_layout() -> html.Div:
                     },
                     children=[
                         html.Div([
+                            dcc.Store(id="rate-watch-currency-store", data="USD"),
                             html.Div([
+                                _widget("rate_watch_probabilities", "Rate Watch — Probabilities",
+                                        html.Div([
+                                            html.Div([
+                                                html.Label("Currency: ", style={"fontSize": "10px", "marginRight": "6px"}),
+                                                dcc.Dropdown(
+                                                    id="rate-watch-probabilities-currency",
+                                                    options=[{"label": c, "value": c} for c in ["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"]],
+                                                    value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
+                                                ),
+                                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
+                                            _loading_wrap("rate_watch_probabilities-content", [loading], style={**CHART_WRAP_STYLE, "minHeight": "220px"}),
+                                        ]),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_probabilities", True),
+                                        card_style_override={**WIDGET_STYLE, "maxHeight": "300px"},
+                                        extra_header=html.Span([
+                                            html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
+                                                  id="rate-watch-probabilities-link", target="_blank", rel="noopener noreferrer",
+                                                  style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                         "textDecoration": "none", "marginLeft": "8px"}),
+                                        ])),
+                                _widget("rate_watch_rate_path", "Rate Watch — Rate Path",
+                                        html.Div([
+                                            html.Div([
+                                                html.Label("Currency: ", style={"fontSize": "10px", "marginRight": "6px"}),
+                                                dcc.Dropdown(
+                                                    id="rate-watch-rate-path-currency",
+                                                    options=[{"label": c, "value": c} for c in ["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"]],
+                                                    value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
+                                                ),
+                                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
+                                            _loading_wrap("rate_watch_rate_path-content", [loading], style={**CHART_WRAP_STYLE, "minHeight": "220px"}),
+                                        ]),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_rate_path", True),
+                                        card_style_override={**WIDGET_STYLE, "maxHeight": "300px"},
+                                        extra_header=html.Span([
+                                            html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
+                                                  id="rate-watch-rate-path-link", target="_blank", rel="noopener noreferrer",
+                                                  style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                         "textDecoration": "none", "marginLeft": "8px"}),
+                                        ])),
+                                _widget("rate_watch_distribution", "Rate Watch — Distribution",
+                                        html.Div([
+                                            html.Div([
+                                                html.Label("Currency: ", style={"fontSize": "10px", "marginRight": "6px"}),
+                                                dcc.Dropdown(
+                                                    id="rate-watch-distribution-currency",
+                                                    options=[{"label": c, "value": c} for c in ["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"]],
+                                                    value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
+                                                ),
+                                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
+                                            _loading_wrap("rate_watch_distribution-content", [loading], style={**CHART_WRAP_STYLE, "minHeight": "220px"}),
+                                        ]),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_distribution", True),
+                                        card_style_override={**WIDGET_STYLE, "maxHeight": "300px"},
+                                        extra_header=html.Span([
+                                            html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
+                                                  id="rate-watch-distribution-link", target="_blank", rel="noopener noreferrer",
+                                                  style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                         "textDecoration": "none", "marginLeft": "8px"}),
+                                        ])),
+                                _widget("rate_watch_rate_ranges", "Rate Watch — Rate Ranges",
+                                        html.Div([
+                                            html.Div([
+                                                html.Label("Currency: ", style={"fontSize": "10px", "marginRight": "6px"}),
+                                                dcc.Dropdown(
+                                                    id="rate-watch-rate-ranges-currency",
+                                                    options=[{"label": c, "value": c} for c in ["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"]],
+                                                    value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
+                                                ),
+                                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
+                                            _loading_wrap("rate_watch_rate_ranges-content", [loading], style={**CHART_WRAP_STYLE, "minHeight": "220px"}),
+                                        ]),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_rate_ranges", True),
+                                        card_style_override={**WIDGET_STYLE, "maxHeight": "300px"},
+                                        extra_header=html.Span([
+                                            html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
+                                                  id="rate-watch-rate-ranges-link", target="_blank", rel="noopener noreferrer",
+                                                  style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                         "textDecoration": "none", "marginLeft": "8px"}),
+                                        ])),
                                 _widget("economic_calendar", "Economic Calendar — Today",
                                         _loading_wrap("economic_calendar-content"),
                                         variant="teal",
