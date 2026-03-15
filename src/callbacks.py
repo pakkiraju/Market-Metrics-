@@ -41,6 +41,7 @@ from src.layout import (
     build_metrics_bar_chart,
     build_sector_table,
     build_rrg_chart,
+    build_sp500_landscape_chart,
     build_stockbee_momentum50_table,
     build_stockbee_breadth,
     build_primary_breadth_chart,
@@ -116,6 +117,7 @@ WIDGET_CACHE_KEYS = {
     "breadth-secondary": ["stockbee_breadth_history"],
     "breadth-sp500": ["stockbee_breadth_history"],
     "rrg": ["rrg_data"],
+    "sp500-landscape": ["sp500_landscape"],
 }
 
 
@@ -623,6 +625,60 @@ def register_callbacks(app):
         except Exception as e:
             logger.exception("RRG failed: %s", e)
             return None, _err_div(e)
+
+    @app.callback(
+        [
+            Output("sp500-landscape-data-store", "data"),
+            Output("sp500-landscape-sector-filter", "options"),
+            Output("sp500-landscape-content", "children"),
+        ],
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-sp500-landscape", "n_clicks"),
+            Input("sp500-landscape-sector-filter", "value"),
+        ],
+        State("sp500-landscape-data-store", "data"),
+        prevent_initial_call=False,
+    )
+    def refresh_sp500_landscape(n_intervals, n_clicks, btn_w, sector_filter, stored_data):
+        from src.data_fetcher import fetch_sp500_landscape_data
+
+        triggered = ctx.triggered_id if ctx.triggered else None
+        is_filter_change = triggered == "sp500-landscape-sector-filter"
+
+        if is_filter_change:
+            data = stored_data or []
+            if not data:
+                return no_update, no_update, html.Div("No data. Refresh to load.", style={
+                    "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+                })
+            fig = build_sp500_landscape_chart(data, sector_filter=sector_filter)
+            return no_update, no_update, dcc.Graph(
+                figure=fig,
+                config={"displayModeBar": False, "scrollZoom": True},
+                style={"height": "100%", "width": "100%"},
+            )
+
+        if btn_w:
+            _invalidate_widget_cache("sp500-landscape")
+        try:
+            data = fetch_sp500_landscape_data()
+            if not data:
+                return [], [], html.Div("No S&P 500 data. FinViz Elite required.", style={
+                    "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+                })
+            sectors = sorted(set((str(r.get("sector", "") or "Unknown").strip() or "Unknown") for r in data))
+            options = [{"label": s, "value": s} for s in sectors]
+            fig = build_sp500_landscape_chart(data, sector_filter=sector_filter)
+            return data, options, dcc.Graph(
+                figure=fig,
+                config={"displayModeBar": False, "scrollZoom": True},
+                style={"height": "100%", "width": "100%"},
+            )
+        except Exception as e:
+            logger.exception("S&P 500 Landscape failed: %s", e)
+            return no_update, no_update, _err_div(e)
 
     _GROUP_D_WIDGETS = ["club97", "movers", "weekly", "daily", "earnings", "in_play", "intraday-earnings", "pre_market"]
 

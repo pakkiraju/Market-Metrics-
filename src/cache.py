@@ -39,6 +39,7 @@ _DISK_PERSISTENT_KEYS = frozenset({
     "stage_analysis",
     "rrg_data",
     "rrg_benchmark",
+    "sp500_landscape",
     "stockbee_momentum50",
     "stockbee_breadth",
 })

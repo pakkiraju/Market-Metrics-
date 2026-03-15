@@ -275,6 +275,9 @@ FINVIZ_EXPORT_URLS = {
     "ind_rut": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_rut&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
     # Stage analysis: export.ashx, USA universe. v=171 Technical has 20/50/200-Day SMA (Relative), EMA10.
     "ind_stage": "https://elite.finviz.com/export.ashx?v=171&f=geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,41,42,47,50,51,52,55,56,61,62,63,64,65",
+    # S&P 500 Landscape: Overview (Market Cap, P/E) + Valuation (P/S) for Revenue/Net Income derivation
+    "sp500_landscape_overview": "https://elite.finviz.com/export.ashx?v=111&f=geo_usa,idx_sp500&o=-marketcap",
+    "sp500_landscape_valuation": "https://elite.finviz.com/export.ashx?v=121&f=geo_usa,idx_sp500&o=-marketcap",
 }
 
 # ---------- Sector SPDR tickers ----------

@@ -51,6 +51,7 @@ MARKET_METRICS_WIDGETS = [
     ("watchlist",      "Watchlist",                  False),
     ("sector",         "Sector SPDR ETFs",           False),
     ("rrg",            "RRG Sector Rotation",        False),
+    ("sp500-landscape", "S&P 500 Landscape Bubble Chart", False),
     ("club97",         "97 Club",                    False),
     ("movers",         "StockBee - 9 Million Movers",           False),
     ("weekly",         "StockBee - 20% Weekly Movers",          False),
@@ -84,7 +85,7 @@ WIDGETS = MARKET_METRICS_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "economic_calendar", "pre_market", "cnbc_premarket") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "earnings", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "economic_calendar", "pre_market", "cnbc_premarket") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -1547,6 +1548,145 @@ def build_rrg_chart(rrg_data: list[dict]) -> go.Figure:
     return fig
 
 
+def _fmt_b(val, suffix="B"):
+    """Format billions with suffix."""
+    if val is None or (isinstance(val, float) and (val != val or val == 0)):
+        return "-"
+    if abs(val) >= 1e12:
+        return f"${val/1e12:.1f}T"
+    if abs(val) >= 1e9:
+        return f"${val/1e9:.1f}{suffix}"
+    if abs(val) >= 1e6:
+        return f"${val/1e6:.1f}M"
+    return f"${val:,.0f}"
+
+
+def build_sp500_landscape_chart(data: list[dict], sector_filter: list[str] | None = None) -> go.Figure:
+    """S&P 500 Landscape Bubble Chart: Revenue (X) vs Net Income (Y), size=Market Cap, color=12M Change."""
+    if not data:
+        return go.Figure()
+
+    # Apply sector filter if set
+    if sector_filter and len(sector_filter) > 0:
+        sector_set = set(s.strip() for s in sector_filter if s and str(s).strip())
+        if sector_set:
+            data = [r for r in data if r.get("sector", "").strip() in sector_set]
+
+    # Filter valid points for axes (need revenue for X; net_income can be negative)
+    valid = [
+        r for r in data
+        if r.get("revenue") is not None and r.get("revenue") > 0
+        and r.get("net_income") is not None
+        and r.get("market_cap") and r.get("market_cap") > 0
+    ]
+    if not valid:
+        return go.Figure()
+
+    # Sort by market cap (largest first) for layering
+    valid.sort(key=lambda x: x.get("market_cap") or 0, reverse=True)
+
+    rev_b = [r["revenue"] / 1e9 for r in valid]
+    ni_b = [r["net_income"] / 1e9 for r in valid]
+    mcap = [r["market_cap"] for r in valid]
+    chg12m = [r.get("change_12m") or 0 for r in valid]
+    tickers = [r["ticker"] for r in valid]
+
+    # Bubble size: scale by sqrt(mcap) for visibility (log-like)
+    import math
+    mcap_min, mcap_max = min(mcap), max(mcap)
+    size_min, size_max = 4, 50
+    if mcap_max <= mcap_min:
+        sizes = [20] * len(mcap)
+    else:
+        log_min, log_max = math.log10(max(1e6, mcap_min)), math.log10(max(1e6, mcap_max))
+        sizes = [
+            size_min + (size_max - size_min) * (math.log10(max(1e6, m)) - log_min) / (log_max - log_min)
+            for m in mcap
+        ]
+
+    # Color scale: red (-50%) -> grey (0) -> green (100%)
+    def _color_for_chg(chg):
+        if chg >= 0:
+            t = min(1.0, chg / 100)
+            r, g = int(120 + 100 * (1 - t)), int(200 + 55 * t)
+            return f"rgb({r},{g},94)"
+        t = max(-1.0, chg / -50)
+        r, g = int(239 - 100 * (1 - t)), int(68 + 100 * (1 - t))
+        return f"rgb({r},{g},68)"
+
+    colors = [_color_for_chg(c) for c in chg12m]
+
+    # Hover: all fields
+    def _hover(r):
+        rev = _fmt_b(r.get("revenue"), "B")
+        ni = _fmt_b(r.get("net_income"), "B")
+        mcap_str = _fmt_b(r.get("market_cap"), "B")
+        pm = r.get("profit_margin")
+        pm_str = f"{pm:.1f}%" if pm is not None and not (isinstance(pm, float) and (pm != pm)) else "-"
+        prof = r.get("profitability")
+        prof_str = f"{prof:.1f}%" if prof is not None and not (isinstance(prof, float) and (prof != prof)) else pm_str
+        chg = r.get("change_12m") or 0
+        sector = r.get("sector", "") or "-"
+        return (
+            f"<b>{r['ticker']}</b> ({sector})<br>"
+            f"Revenue: {rev}<br>"
+            f"Net Income: {ni}<br>"
+            f"Market Cap: {mcap_str}<br>"
+            f"Price: ${r.get('price', 0):.2f}<br>"
+            f"12M Change: {chg:+.1f}%<br>"
+            f"Profit Margin: {pm_str}<br>"
+            f"Profitability: {prof_str}"
+        )
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=rev_b, y=ni_b,
+        mode="markers+text",
+        text=[t if m >= (mcap_max * 0.02) else "" for t, m in zip(tickers, mcap)],
+        textposition="top center",
+        textfont=dict(size=9, color=COLORS["text"]),
+        marker=dict(
+            size=sizes,
+            color=colors,
+            line=dict(width=0.5, color=COLORS["border"]),
+            opacity=0.75,
+        ),
+        customdata=[_hover(r) for r in valid],
+        hovertemplate="%{customdata}<extra></extra>",
+        hoverlabel=dict(bgcolor=COLORS["surface2"], font=dict(size=10)),
+    ))
+
+    fig.update_layout(
+        paper_bgcolor=COLORS["surface"],
+        plot_bgcolor=COLORS["surface"],
+        margin=dict(l=50, r=20, t=24, b=60),
+        showlegend=False,
+        xaxis=dict(
+            type="log",
+            title=dict(text="Trailing 12-Month Revenue (B$)", font=dict(size=9, color=COLORS["text_muted"])),
+            tickfont=dict(size=8, color=COLORS["text_muted"]),
+            showgrid=True, gridcolor="rgba(255,255,255,0.05)",
+            zeroline=False,
+            fixedrange=False,
+        ),
+        yaxis=dict(
+            title=dict(text="Trailing 12-Month Net Income (B$)", font=dict(size=9, color=COLORS["text_muted"])),
+            tickfont=dict(size=8, color=COLORS["text_muted"]),
+            showgrid=True, gridcolor="rgba(255,255,255,0.05)",
+            zeroline=True, zerolinecolor=COLORS["border_light"], zerolinewidth=1,
+            fixedrange=False,
+        ),
+        font=dict(family="Inter"),
+        height=SCROLLABLE_BODY_HEIGHT,
+        annotations=[
+            dict(x=0.02, y=0.02, xref="paper", yref="paper", showarrow=False,
+                 text="12M Change: -50% (red) → 0% → 100% (green)<br>Size: Market Cap ($1B → $1T)",
+                 font=dict(size=8, color=COLORS["text_muted"]), align="left"),
+        ],
+    )
+    return fig
+
+
 def build_stage_summary(counts: dict) -> html.Div:
     stage1_total = counts.get("1A", 0) + counts.get("1B", 0)
     stage2_total = counts.get("2A", 0) + counts.get("2B", 0) + counts.get("2C", 0)
@@ -1955,7 +2095,29 @@ def build_layout() -> html.Div:
                         ], style={"minHeight": f"{SCROLLABLE_BODY_HEIGHT}px"}),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("rrg", True)),
-            ], id="row-sector", style=HALF_ROW_STYLE),
+                _widget("sp500-landscape", "S&P 500 Landscape Bubble Chart",
+                        html.Div([
+                            dcc.Store(id="sp500-landscape-data-store"),
+                            html.Div([
+                                html.Label("Sector filter:", style={"fontSize": "10px", "color": COLORS["text_muted"], "marginRight": "6px"}),
+                                dcc.Dropdown(
+                                    id="sp500-landscape-sector-filter",
+                                    options=[],
+                                    value=[],
+                                    multi=True,
+                                    placeholder="All sectors",
+                                    clearable=True,
+                                    style={"minWidth": "180px", "fontSize": "10px"},
+                                ),
+                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px", "flexWrap": "wrap"}),
+                            dcc.Loading(
+                                html.Div(id="sp500-landscape-content", children=[loading], style=CHART_WRAP_STYLE),
+                                type="circle", color=COLORS["accent"], style={"minHeight": "40px"},
+                            ),
+                        ], style={"minHeight": f"{SCROLLABLE_BODY_HEIGHT}px", "display": "flex", "flexDirection": "column"}),
+                        variant="teal",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("sp500-landscape", True)),
+            ], id="row-sector", style=THIRD_ROW_STYLE),
 
             # ---- MIDDLE 4 ----
             html.Div([
