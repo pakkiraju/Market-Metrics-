@@ -5,6 +5,7 @@ TradingView modal, watchlist management.
 import logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dash import html, dcc, Input, Output, State, callback, no_update, ctx, ALL
 import plotly.graph_objects as go
@@ -62,6 +63,9 @@ from src.layout import (
     build_top_gainers_table,
     build_top_losers_table,
     build_economic_calendar_table,
+    build_cpi_chart,
+    build_core_inflation_mom_chart,
+    build_core_inflation_yoy_chart,
     build_stage_chart,
     build_stage_summary,
     build_ticker_grid,
@@ -106,6 +110,9 @@ WIDGET_CACHE_KEYS = {
     "stage": ["stage_analysis"],
     "thematics-rrg": ["thematics_rrg_data"],
     "economic_calendar": ["economic_calendar_today"],
+    "cpi": ["cpi_ytd"],
+    "core_inflation_mom": ["core_inflation_mom_ytd"],
+    "core_inflation_yoy": ["core_inflation_yoy_ytd"],
     "qulla": ["qulla_episodic_v2", "qulla_parabolic_v2", "qulla_breakouts_v2"],
     "minervini": ["minervini_table"],
     "oneil": ["oneil_table"],
@@ -184,6 +191,20 @@ def register_callbacks(app):
         return REFRESH_INTERVAL_CLOSED if _is_market_closed() else REFRESH_INTERVAL_OPEN
 
     # ------------------------------------------------------------------
+    # 0b. Header date/time: update NY time every minute
+    # ------------------------------------------------------------------
+    @app.callback(
+        Output("header-date", "children"),
+        Input("interval-header-clock", "n_intervals"),
+        prevent_initial_call=False,
+    )
+    def update_header_datetime(n):
+        now = datetime.now(ZoneInfo("America/New_York"))
+        date_str = now.strftime("%A, %B %d, %Y")
+        time_str = now.strftime("%I:%M:%S %p")
+        return f"{date_str} · {time_str}"
+
+    # ------------------------------------------------------------------
     # 1. Settings drawer toggle
     # ------------------------------------------------------------------
     @app.callback(
@@ -202,6 +223,7 @@ def register_callbacks(app):
     # ------------------------------------------------------------------
     @app.callback(
         [
+            Output("settings-macro-monitor", "style"),
             Output("settings-market-metrics", "style"),
             Output("settings-intraday", "style"),
         ],
@@ -209,9 +231,11 @@ def register_callbacks(app):
         prevent_initial_call=False,
     )
     def settings_tab_content(active_tab):
+        if active_tab == "macro-monitor":
+            return {"display": "block"}, {"display": "none"}, {"display": "none"}
         if active_tab == "intraday":
-            return {"display": "none"}, {"display": "block"}
-        return {"display": "block"}, {"display": "none"}
+            return {"display": "none"}, {"display": "none"}, {"display": "block"}
+        return {"display": "none"}, {"display": "block"}, {"display": "none"}
 
     # ------------------------------------------------------------------
     # 2. Widget visibility: ALL widgets toggleable
@@ -848,6 +872,74 @@ def register_callbacks(app):
             return build_economic_calendar_table(data)
         except Exception as e:
             logger.exception("Economic Calendar failed: %s", e)
+            return _err_div(e)
+
+    @app.callback(
+        Output("cpi-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-cpi", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_cpi(n_intervals, n_clicks, btn_widget):
+        """Consumer Price Index CPI — Expected vs Actual YTD. Scraped from FinViz Elite."""
+        if btn_widget:
+            _invalidate_widget_cache("cpi")
+        try:
+            from src.cpi_data import fetch_cpi_ytd
+            data = fetch_cpi_ytd()
+            fig = build_cpi_chart(data)
+            return dcc.Graph(
+                figure=fig,
+                config={"displayModeBar": False},
+                style={"height": "100%", "width": "100%"},
+            )
+        except Exception as e:
+            logger.exception("CPI widget failed: %s", e)
+            return _err_div(e)
+
+    @app.callback(
+        Output("core_inflation_mom-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-core_inflation_mom", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_core_inflation_mom(n_intervals, n_clicks, btn_widget):
+        if btn_widget:
+            _invalidate_widget_cache("core_inflation_mom")
+        try:
+            from src.cpi_data import fetch_core_inflation_mom_ytd
+            data = fetch_core_inflation_mom_ytd()
+            fig = build_core_inflation_mom_chart(data)
+            return dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "100%", "width": "100%"})
+        except Exception as e:
+            logger.exception("Core Inflation MoM failed: %s", e)
+            return _err_div(e)
+
+    @app.callback(
+        Output("core_inflation_yoy-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-core_inflation_yoy", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_core_inflation_yoy(n_intervals, n_clicks, btn_widget):
+        if btn_widget:
+            _invalidate_widget_cache("core_inflation_yoy")
+        try:
+            from src.cpi_data import fetch_core_inflation_yoy_ytd
+            data = fetch_core_inflation_yoy_ytd()
+            fig = build_core_inflation_yoy_chart(data)
+            return dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "100%", "width": "100%"})
+        except Exception as e:
+            logger.exception("Core Inflation YoY failed: %s", e)
             return _err_div(e)
 
     @app.callback(

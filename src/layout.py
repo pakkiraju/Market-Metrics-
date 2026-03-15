@@ -8,6 +8,7 @@ chart modal. Watchlist supports user add/remove.
 
 import math
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 from dash import html, dcc
 import plotly.graph_objects as go
@@ -69,6 +70,13 @@ MARKET_METRICS_WIDGETS = [
     ("stage",          "Stage Analysis",             False),
     ("earnings-calendar-week", "Earnings Calendar — This Week", False),
 ]
+# Macro Monitor tab widgets
+MACRO_MONITOR_WIDGETS = [
+    ("economic_calendar", "Economic Calendar",       False),
+    ("cpi", "Consumer Price Index CPI",              False),
+    ("core_inflation_mom", "Core Inflation Rate MoM", False),
+    ("core_inflation_yoy", "Core Inflation Rate YoY", False),
+]
 # Intraday tab widgets (in_play and earnings here)
 INTRADAY_WIDGETS = [
     ("live_index",     "Market Snapshot",             False),
@@ -76,16 +84,15 @@ INTRADAY_WIDGETS = [
     ("intraday-earnings", "Earnings Yesterday + Today", False),
     ("top_gainers",    "Top Gainers",                False),
     ("top_losers",     "Top Losers",                 False),
-    ("economic_calendar", "Economic Calendar",       False),
     ("pre_market",     "Pre-market Scanner",         False),
     ("cnbc_premarket", "CNBC Pre-Market Watchlist", False),
 ]
 # Combined for backward compatibility and visibility callback
-WIDGETS = MARKET_METRICS_WIDGETS + INTRADAY_WIDGETS
+WIDGETS = MARKET_METRICS_WIDGETS + MACRO_MONITOR_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "economic_calendar", "pre_market", "cnbc_premarket") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "economic_calendar", "cpi", "core_inflation_mom", "core_inflation_yoy", "pre_market", "cnbc_premarket") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -837,6 +844,74 @@ def build_economic_calendar_table(data: list[dict]) -> html.Div:
         html.A("Forex Factory", href="https://www.forexfactory.com/calendar", target="_blank", rel="noopener noreferrer",
                style={"fontSize": "8px", "color": COLORS["accent"], "textDecoration": "none", "marginTop": "4px"}),
     ], style={"display": "flex", "flexDirection": "column"})
+
+
+def _build_expected_actual_chart(data: list[dict], y_title: str, empty_msg: str, min_pad: float = 1.0) -> go.Figure:
+    """Bar chart: Expected vs Actual. Shared by CPI, Core MoM, Core YoY."""
+    if not data:
+        fig = go.Figure()
+        fig.add_annotation(
+            text=empty_msg,
+            xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False,
+            font=dict(size=12, color=COLORS["text_muted"]),
+        )
+        fig.update_layout(
+            paper_bgcolor=COLORS["surface"],
+            plot_bgcolor=COLORS["surface"],
+            margin=dict(l=4, r=4, t=4, b=4),
+            height=280,
+        )
+        return fig
+
+    months = [r["month"] for r in data]
+    expected = [r.get("expected") for r in data]
+    actual = [r.get("actual") for r in data]
+
+    all_vals = [v for v in expected + actual if v is not None]
+    if all_vals:
+        lo, hi = min(all_vals), max(all_vals)
+        pad = max((hi - lo) * 0.08, min_pad)
+        y_min, y_max = lo - pad, hi + pad
+    else:
+        y_min, y_max = None, None
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=months, y=expected, name="Expected", marker_color=COLORS["accent"], width=0.35, offset=-0.175))
+    fig.add_trace(go.Bar(x=months, y=actual, name="Actual", marker_color=COLORS["green"], width=0.35, offset=0.175))
+    fig.update_layout(
+        barmode="group",
+        paper_bgcolor=COLORS["surface"],
+        plot_bgcolor=COLORS["surface"],
+        margin=dict(l=4, r=4, t=4, b=4),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=9, color=COLORS["text_muted"])),
+        xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
+        yaxis=dict(
+            title=dict(text=y_title, font=dict(size=9, color=COLORS["text_muted"])),
+            tickfont=dict(size=8, color=COLORS["text_faint"]),
+            gridcolor="rgba(255,255,255,0.05)",
+            zeroline=False,
+            range=[y_min, y_max] if y_min is not None else None,
+        ),
+        font=dict(family="Inter", size=8),
+        height=280,
+    )
+    return fig
+
+
+def build_cpi_chart(data: list[dict]) -> go.Figure:
+    """Bar chart: Expected vs Actual CPI YTD."""
+    return _build_expected_actual_chart(data, "CPI Index", "No CPI data available.", min_pad=1.0)
+
+
+def build_core_inflation_mom_chart(data: list[dict]) -> go.Figure:
+    """Bar chart: Expected vs Actual Core Inflation Rate MoM YTD."""
+    return _build_expected_actual_chart(data, "% MoM", "No Core Inflation MoM data available.", min_pad=0.1)
+
+
+def build_core_inflation_yoy_chart(data: list[dict]) -> go.Figure:
+    """Bar chart: Expected vs Actual Core Inflation Rate YoY YTD."""
+    return _build_expected_actual_chart(data, "% YoY", "No Core Inflation YoY data available.", min_pad=0.1)
 
 
 def _parse_vol(val):
@@ -1892,15 +1967,17 @@ def build_tv_modal() -> html.Div:
 # -----------------------------------------------------------------------
 
 def build_header() -> html.Div:
-    now = datetime.now(ET)
+    now = datetime.now(ZoneInfo("America/New_York"))
     date_str = now.strftime("%A, %B %d, %Y")
+    time_str = now.strftime("%I:%M:%S %p")
+    date_time_str = f"{date_str} · {time_str}"
 
     return html.Div([
         html.Div([
             html.Span("Pradly Portal", style=HEADER_LOGO_STYLE),
         ], style={"display": "flex", "alignItems": "center", "gap": "8px"}),
         html.Div([
-            html.Span(date_str, id="header-date", style=HEADER_DATE_STYLE),
+            html.Span(date_time_str, id="header-date", style=HEADER_DATE_STYLE),
         ], style={"display": "flex", "alignItems": "center", "gap": "12px"}),
         html.Div([
             html.Button("Refresh", id="btn-refresh", style=REFRESH_BTN_STYLE),
@@ -1935,16 +2012,21 @@ def _build_toggle_item(wid: str, name: str) -> html.Div:
 def build_settings_drawer() -> html.Div:
     """Settings drawer with tab-specific sections. Content shown based on active tab."""
     market_toggles = [_build_toggle_item(wid, name) for wid, name, _ in MARKET_METRICS_WIDGETS]
+    macro_toggles = [_build_toggle_item(wid, name) for wid, name, _ in MACRO_MONITOR_WIDGETS]
     intraday_toggles = [_build_toggle_item(wid, name) for wid, name, _ in INTRADAY_WIDGETS]
 
     return html.Div([
         html.Div("Widget Settings", style=SETTINGS_TITLE_STYLE),
         html.Div([
+            html.Div("Macro Monitor", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
+            *macro_toggles,
+        ], id="settings-macro-monitor"),
+        html.Div([
             html.Div("Market Metrics", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
             *market_toggles,
         ], id="settings-market-metrics"),
         html.Div([
-            html.Div("Intraday", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
+            html.Div("Intraday Inspector", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
             *intraday_toggles,
         ], id="settings-intraday"),
     ], id="settings-drawer", style=SETTINGS_OVERLAY_STYLE_HIDDEN)
@@ -1992,6 +2074,7 @@ def build_layout() -> html.Div:
         dcc.Interval(id="interval-refresh", interval=3600_000, n_intervals=0),
         dcc.Interval(id="interval-live-snapshot", interval=300_000, n_intervals=0),
         dcc.Interval(id="market-hours-check", interval=60_000, n_intervals=0),
+        dcc.Interval(id="interval-header-clock", interval=1000, n_intervals=0),
         dcc.Store(id="watchlist-store", data=_initial_watchlist()),
 
         build_header(),
@@ -2007,6 +2090,77 @@ def build_layout() -> html.Div:
                 "padding": "0 12px",
             },
             children=[
+                dcc.Tab(
+                    label="Macro Monitor",
+                    value="macro-monitor",
+                    style={
+                        "backgroundColor": COLORS["surface2"],
+                        "color": COLORS["text_muted"],
+                        "border": f"1px solid {COLORS['border']}",
+                        "padding": "6px 16px",
+                        "fontSize": "11px",
+                        "fontWeight": 600,
+                    },
+                    selected_style={
+                        "backgroundColor": COLORS["surface"],
+                        "color": COLORS["accent"],
+                        "borderBottom": "none",
+                        "borderTop": f"2px solid {COLORS['accent']}",
+                    },
+                    children=[
+                        html.Div([
+                            html.Div([
+                                _widget("economic_calendar", "Economic Calendar — Today",
+                                        _loading_wrap("economic_calendar-content"),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("economic_calendar", True),
+                                        card_style_override={
+                                            **WIDGET_STYLE,
+                                            "maxHeight": "300px",
+                                        },
+                                        extra_header=html.Span([
+                                            html.A("Forex Factory", href="https://www.forexfactory.com/calendar",
+                                                   target="_blank", rel="noopener noreferrer",
+                                                   style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                          "textDecoration": "none", "marginLeft": "8px"}),
+                                        ])),
+                                _widget("cpi", "Consumer Price Index CPI",
+                                        _loading_wrap("cpi-content", [loading], style=CHART_WRAP_STYLE),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("cpi", True),
+                                        card_style_override={
+                                            **WIDGET_STYLE,
+                                            "maxHeight": "300px",
+                                        },
+                                        extra_header=html.Span([
+                                            _finviz_link("FinViz", "cpi", {"marginLeft": "8px"}),
+                                        ])),
+                                _widget("core_inflation_mom", "Core Inflation Rate MoM",
+                                        _loading_wrap("core_inflation_mom-content", [loading], style=CHART_WRAP_STYLE),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("core_inflation_mom", True),
+                                        card_style_override={
+                                            **WIDGET_STYLE,
+                                            "maxHeight": "300px",
+                                        },
+                                        extra_header=html.Span([
+                                            _finviz_link("FinViz", "core_inflation_mom", {"marginLeft": "8px"}),
+                                        ])),
+                                _widget("core_inflation_yoy", "Core Inflation Rate YoY",
+                                        _loading_wrap("core_inflation_yoy-content", [loading], style=CHART_WRAP_STYLE),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("core_inflation_yoy", True),
+                                        card_style_override={
+                                            **WIDGET_STYLE,
+                                            "maxHeight": "300px",
+                                        },
+                                        extra_header=html.Span([
+                                            _finviz_link("FinViz", "core_inflation_yoy", {"marginLeft": "8px"}),
+                                        ])),
+                            ], style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "8px", "marginBottom": "4px"}),
+                        ], style=CONTENT_AREA_STYLE),
+                    ],
+                ),
                 dcc.Tab(
                     label="Market Metrics",
                     value="market-metrics",
@@ -2278,7 +2432,7 @@ def build_layout() -> html.Div:
                     ],
                 ),
                 dcc.Tab(
-                    label="Intraday",
+                    label="Intraday Inspector",
                     value="intraday",
                     style={
                         "backgroundColor": COLORS["surface2"],
@@ -2347,20 +2501,6 @@ def build_layout() -> html.Div:
                                     },
                                     extra_header=html.Span([
                                         _finviz_link("FinViz", "thematics", {"marginLeft": "8px"}),
-                                    ])),
-                            _widget("economic_calendar", "Economic Calendar — Today",
-                                    _loading_wrap("economic_calendar-content"),
-                                    variant="teal",
-                                    initial_hidden=not DEFAULT_VISIBILITY.get("economic_calendar", True),
-                                    card_style_override={
-                                        **WIDGET_STYLE,
-                                        "maxHeight": "300px",
-                                    },
-                                    extra_header=html.Span([
-                                        html.A("Forex Factory", href="https://www.forexfactory.com/calendar",
-                                               target="_blank", rel="noopener noreferrer",
-                                               style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
-                                                      "textDecoration": "none", "marginLeft": "8px"}),
                                     ])),
                         ], style=THIRD_ROW_STYLE),
                         html.Div([
