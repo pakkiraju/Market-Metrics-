@@ -619,6 +619,102 @@ def fetch_thematics_data(cache_key: str = "thematics_data", ttl: int = MEDIUM) -
         return pd.DataFrame()
 
 
+def fetch_earnings_this_week(ttl: int = MEDIUM) -> list[dict]:
+    """Earnings this week, sorted by market cap (largest first). Merges Overview (Market Cap) + Performance (Avg Vol, Rel Vol)."""
+    cached = cache.get("earnings_this_week")
+    if cached is not None:
+        return cached
+
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS
+
+        if not is_elite_configured():
+            return []
+        # 1. Overview: Market Cap
+        url_overview = FINVIZ_EXPORT_URLS.get("earnings_this_week_overview")
+        if not url_overview:
+            return []
+        time.sleep(_FINVIZ_DELAY_SEC)
+        overview_data = fetch_export_from_url(url_overview, caller="earnings_this_week_overview")
+        if not overview_data:
+            return []
+        mcap_map = {}
+        o_keys = list(overview_data[0].keys())
+        o_ticker = _find_csv_col(o_keys, exact="Ticker") or _find_csv_col(o_keys, "ticker") or "Ticker"
+        o_mcap = _find_csv_col(o_keys, "market", "cap") or _find_csv_col(o_keys, "marketcap")
+        for row in overview_data:
+            t = str(row.get(o_ticker, "") or "").strip().upper()
+            if not t:
+                continue
+            mcap_str = _get_csv_val(row, "Market Cap", "market_cap") or row.get(o_mcap)
+            market_cap = _parse_num(mcap_str) if mcap_str else None
+            if market_cap and market_cap > 0 and "B" not in str(mcap_str or "").upper() and "M" not in str(mcap_str or "").upper():
+                if market_cap >= 1000:
+                    market_cap = market_cap * 1e6
+            mcap_map[t] = market_cap
+
+        # 2. Performance: Avg Vol, Rel Vol, Price, Change, Volume, ATR
+        url_perf = FINVIZ_EXPORT_URLS.get("earnings_this_week_perf")
+        if not url_perf:
+            return []
+        time.sleep(_FINVIZ_DELAY_SEC)
+        perf_data = fetch_export_from_url(url_perf, caller="earnings_this_week_perf")
+        if not perf_data:
+            return []
+
+        keys = list(perf_data[0].keys())
+        ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+        price_col = _find_csv_col(keys, exact="Price") or _find_csv_col(keys, "price")
+        change_col = _find_csv_col(keys, exact="Change") or _find_csv_col(keys, "change")
+        vol_col = _find_csv_col(keys, exact="Volume") or _find_csv_col(keys, "volume")
+        avg_vol_col = _find_csv_col(keys, exact="Average Volume") or _find_csv_col(keys, "average", "vol") or _find_csv_col(keys, "avg", "vol")
+        rel_vol_col = _find_csv_col(keys, exact="Relative Volume") or _find_csv_col(keys, "relative", "vol") or _find_csv_col(keys, "rel", "vol")
+        atr_col = _find_csv_col(keys, exact="ATR") or _find_csv_col(keys, "atr")
+
+        def _v(row, col, *alts):
+            if col and row.get(col) not in (None, "", "-"):
+                v = row.get(col)
+                if v is not None and str(v).strip():
+                    return v
+            return _get_csv_val(row, *alts) if alts else ""
+
+        rows = []
+        for row in perf_data:
+            t = str(row.get(ticker_col, "") or "").strip().upper()
+            if not t:
+                continue
+            price = _v(row, price_col, "Price", "price")
+            change = _v(row, change_col, "Change", "change")
+            vol = _v(row, vol_col, "Volume", "volume")
+            avg_vol = row.get("Average Volume") or row.get("Avg Volume") or _v(row, avg_vol_col, "Average Volume", "Avg Volume", "avg_vol", "Avg Vol")
+            rel_vol = row.get("Relative Volume") or row.get("Rel Volume") or _v(row, rel_vol_col, "Relative Volume", "Rel Volume", "rel_vol", "Rel Vol")
+            if not rel_vol and vol and avg_vol:
+                v_num, a_num = _parse_num(vol), _parse_num(avg_vol)
+                if v_num and a_num and a_num != 0:
+                    rel_vol = f"{v_num / a_num:.2f}"
+            atr_val = _parse_num(_v(row, atr_col, "ATR", "atr")) if atr_col else None
+            price_num = _parse_num(price) if price else None
+            atr_pct = round((atr_val / price_num * 100), 2) if atr_val and price_num and price_num != 0 else None
+            rows.append({
+                "ticker": t,
+                "market_cap": mcap_map.get(t),
+                "price": price,
+                "change": change,
+                "volume": vol,
+                "avg_vol": avg_vol,
+                "rel_vol": rel_vol,
+                "atr_pct": atr_pct,
+            })
+        rows.sort(key=lambda x: (x.get("market_cap") or 0), reverse=True)
+        if rows:
+            cache.put("earnings_this_week", rows, ttl=ttl)
+        return rows
+    except Exception as e:
+        logger.warning("fetch_earnings_this_week failed: %s", e)
+        return []
+
+
 def fetch_earnings_yesterday_today(ttl: int = MEDIUM) -> list[dict]:
     """Earnings yesterday or today. Use Performance view (v=141) - has Avg Vol, Rel Vol, Change, Volume."""
     cached = cache.get("earnings_yesterday_today")
@@ -649,6 +745,136 @@ def fetch_metric_count(url: str, cache_key: str, skip_delay: bool = False) -> in
     except Exception as e:
         logger.warning("fetch_metric_count failed %s: %s", cache_key, e)
         return 0
+
+
+def fetch_sp500_landscape_data(cache_key: str = "sp500_landscape", ttl: int = MEDIUM) -> list[dict]:
+    """Fetch S&P 500 stocks with Revenue, Net Income, Market Cap, Price, 12M Change, Profit Margin.
+    Uses FinViz Overview (P/E, P/S, Market Cap) + ind_sp500 (Price, Perf Year). Derives Revenue, Net Income, Profit Margin."""
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS
+
+        if not is_elite_configured():
+            logger.warning("FinViz Elite not configured - S&P 500 Landscape unavailable")
+            return []
+
+        # 1. Overview: Market Cap, P/E
+        overview_url = FINVIZ_EXPORT_URLS.get("sp500_landscape_overview")
+        if not overview_url:
+            return []
+        time.sleep(_FINVIZ_DELAY_SEC)
+        overview_data = fetch_export_from_url(overview_url, caller="sp500_landscape_overview")
+        if not overview_data:
+            return []
+
+        # 2. Valuation: P/S (for Revenue = Mcap/P/S)
+        valuation_url = FINVIZ_EXPORT_URLS.get("sp500_landscape_valuation")
+        ps_map = {}
+        if valuation_url:
+            time.sleep(_FINVIZ_DELAY_SEC)
+            valuation_data = fetch_export_from_url(valuation_url, caller="sp500_landscape_valuation")
+            if valuation_data:
+                v_keys = list(valuation_data[0].keys())
+                v_ticker_col = _find_csv_col(v_keys, exact="Ticker") or _find_csv_col(v_keys, "ticker") or "Ticker"
+                v_ps_col = _find_csv_col(v_keys, exact="P/S") or _find_csv_col(v_keys, "p/s") or _find_csv_col(v_keys, "price", "sales")
+                for row in valuation_data:
+                    t = str(row.get(v_ticker_col, "") or "").strip().upper()
+                    if t:
+                        ps_raw = row.get(v_ps_col) if v_ps_col else _get_csv_val(row, "P/S", "PS", "Price/Sales")
+                        ps_val = _parse_num(ps_raw)
+                        if ps_val is not None and ps_val > 0:
+                            ps_map[t] = ps_val
+
+        # 3. Performance data: Price, Perf Year (12M change)
+        ind_df = fetch_group_indicators([], cache_key="ind_sp500")
+        if ind_df.empty:
+            return []
+
+        perf_map = {}
+        for _, row in ind_df.iterrows():
+            t = str(row.get("ticker", "")).strip().upper()
+            if not t:
+                continue
+            perf_map[t] = {
+                "price": row.get("close"),
+                "year_chg": row.get("year_chg"),
+            }
+
+        keys = list(overview_data[0].keys())
+        ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+        mcap_col = _find_csv_col(keys, "market", "cap") or _find_csv_col(keys, "marketcap")
+        pe_col = _find_csv_col(keys, "p/e", "pe") or _find_csv_col(keys, "price", "earnings")
+        ps_col = _find_csv_col(keys, "p/s", "ps") or _find_csv_col(keys, "price", "sales")
+        sector_col = _find_csv_col(keys, exact="Sector") or _find_csv_col(keys, "sector")
+
+        def _v(row, col, *alts):
+            if col and row.get(col) not in (None, "", "-"):
+                v = row.get(col)
+                if v is not None and str(v).strip():
+                    return v
+            return _get_csv_val(row, *alts) if alts else ""
+
+        rows = []
+        for row in overview_data:
+            t = str(row.get(ticker_col, "") or "").strip().upper()
+            if not t:
+                continue
+
+            mcap_str = _v(row, mcap_col, "Market Cap", "market_cap", "Market Cap.")
+            market_cap = _parse_num(mcap_str) if mcap_str else None
+            # FinViz Overview export may return Market Cap as raw number in millions (e.g. 4380075 = 4.38T)
+            if market_cap and market_cap > 0 and "B" not in str(mcap_str or "").upper() and "M" not in str(mcap_str or "").upper() and "T" not in str(mcap_str or "").upper():
+                if market_cap >= 1000:
+                    market_cap = market_cap * 1e6
+
+            pe_val = _parse_num(_v(row, pe_col, "P/E", "PE", "Price/Earnings"))
+            ps_val = ps_map.get(t) or _parse_num(_v(row, ps_col, "P/S", "PS", "Price/Sales"))
+
+            revenue = None
+            net_income = None
+            profit_margin = None
+            if market_cap and market_cap > 0:
+                if ps_val is not None and ps_val > 0:
+                    revenue = market_cap / ps_val
+                if pe_val is not None and pe_val > 0:
+                    net_income = market_cap / pe_val
+                elif pe_val is not None and pe_val < 0:
+                    net_income = market_cap / pe_val  # negative P/E = losses
+                if revenue and revenue > 0 and net_income is not None:
+                    profit_margin = (net_income / revenue) * 100
+
+            perf = perf_map.get(t, {})
+            price = perf.get("price")
+            year_chg = perf.get("year_chg")
+            if price is None or (isinstance(price, float) and (pd.isna(price) or price <= 0)):
+                continue
+            if year_chg is None or (isinstance(year_chg, float) and pd.isna(year_chg)):
+                year_chg = 0.0
+
+            sector = str(_v(row, sector_col, "Sector", "sector") or "").strip() or "Unknown"
+            rows.append({
+                "ticker": t,
+                "sector": sector,
+                "revenue": revenue,
+                "profitability": profit_margin,
+                "net_income": net_income,
+                "market_cap": market_cap,
+                "price": float(price),
+                "change_12m": float(year_chg) if not pd.isna(year_chg) else 0.0,
+                "profit_margin": profit_margin,
+            })
+
+        rows.sort(key=lambda x: (x["market_cap"] or 0), reverse=True)
+        if rows:
+            cache.put(cache_key, rows, ttl=ttl)
+        return rows
+    except Exception as e:
+        logger.warning("fetch_sp500_landscape_data failed: %s", e)
+        return []
 
 
 def fetch_stage_indicators(cache_key: str = "ind_stage") -> pd.DataFrame:

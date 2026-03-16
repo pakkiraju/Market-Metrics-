@@ -338,11 +338,60 @@ CHART_WRAP_STYLE = {
     "position": "relative",
 }
 
-# Breadth chart widgets: fit chart height (200px), no extra padding like table widgets
+# Breadth chart widgets: fit chart height (200px), constrain width to widget (no horizontal scroll)
 BREADTH_CHART_BODY_STYLE = {
     "overflow": "hidden",
     "minHeight": 0,
     "height": "220px",
+    "width": "100%",
+    "minWidth": 0,
+    "maxWidth": "100%",
+    "backgroundColor": COLORS["surface"],
+    "position": "relative",
+}
+# Content wrapper for breadth charts: constrain width so chart fits, no overflow
+BREADTH_CHART_WRAP_STYLE = {
+    **CHART_WRAP_STYLE,
+    "overflow": "hidden",
+    "width": "100%",
+    "minWidth": 0,
+    "maxWidth": "100%",
+}
+
+# Macro Monitor widgets (Rate Watch, CPI, Core Inflation): 300px card, no scrollbar
+MACRO_WIDGET_BODY_HEIGHT = 280  # 300px card - 20px header
+MACRO_CHART_HEIGHT = 240  # Plotly chart height (fits in body minus padding/toolbar)
+# Rate Watch probabilities/rate-path: slightly taller chart to avoid cutoff
+RATE_WATCH_CHART_HEIGHT = 260
+RATE_WATCH_CHART_BODY_HEIGHT = 300  # 320px card - 20px header
+RATE_WATCH_CHART_BODY_STYLE = {
+    "overflow": "hidden",
+    "height": f"{RATE_WATCH_CHART_BODY_HEIGHT}px",
+    "minHeight": RATE_WATCH_CHART_BODY_HEIGHT,
+    "maxHeight": RATE_WATCH_CHART_BODY_HEIGHT,
+    "backgroundColor": COLORS["surface"],
+    "position": "relative",
+}
+MACRO_CHART_BODY_STYLE = {
+    "overflow": "hidden",
+    "height": f"{MACRO_WIDGET_BODY_HEIGHT}px",
+    "minHeight": MACRO_WIDGET_BODY_HEIGHT,
+    "maxHeight": MACRO_WIDGET_BODY_HEIGHT,
+    "backgroundColor": COLORS["surface"],
+    "position": "relative",
+}
+
+# RRG chart: fixed height to match chart data (360px), no scrollbar
+RRG_CHART_HEIGHT = SCROLLABLE_BODY_HEIGHT
+# S&P 500 Landscape: chart height leaves room for sector filter (~40px)
+SP500_LANDSCAPE_CHART_HEIGHT = SCROLLABLE_BODY_HEIGHT - 40
+# Stage Analysis: chart height leaves room for summary row (~40px)
+STAGE_CHART_HEIGHT = SCROLLABLE_BODY_HEIGHT - 40
+RRG_CHART_BODY_STYLE = {
+    "overflow": "hidden",
+    "height": f"{RRG_CHART_HEIGHT}px",
+    "minHeight": RRG_CHART_HEIGHT,
+    "maxHeight": RRG_CHART_HEIGHT,
     "backgroundColor": COLORS["surface"],
     "position": "relative",
 }

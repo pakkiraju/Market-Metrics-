@@ -8,6 +8,7 @@ chart modal. Watchlist supports user add/remove.
 
 import math
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 from dash import html, dcc
 import plotly.graph_objects as go
@@ -16,7 +17,7 @@ from src.constants import (
     COLORS, KEY_METRIC_ROWS, INDEX_GROUPS, SECTOR_NAMES,
     STAGE_BAR_COLORS, STAGE_LABELS, FINVIZ_SCREENER_URLS,
     build_metric_screener_url, RRG_BENCHMARK, RRG_COLORS,
-    STOCKBEE_LINKS,
+    STOCKBEE_LINKS, RATE_WATCH_LINKS, GRAPH_CONFIG,
 )
 from src.styles import (
     DASHBOARD_STYLE, HEADER_STYLE, HEADER_LOGO_STYLE,
@@ -29,7 +30,8 @@ from src.styles import (
     section_header_style, SECTION_BODY_STYLE, KEY_METRICS_BODY_STYLE,
     TICKER_GRID_STYLE, ticker_pill_style,
     TABLE_STYLE, TABLE_HEADER_STYLE, TABLE_CELL_STYLE,
-    CHART_WRAP_STYLE, BREADTH_CHART_BODY_STYLE, LOADING_STYLE,
+    CHART_WRAP_STYLE, BREADTH_CHART_BODY_STYLE, BREADTH_CHART_WRAP_STYLE, RRG_CHART_BODY_STYLE, SP500_LANDSCAPE_CHART_HEIGHT, STAGE_CHART_HEIGHT, LOADING_STYLE,
+    MACRO_WIDGET_BODY_HEIGHT, MACRO_CHART_HEIGHT, MACRO_CHART_BODY_STYLE, RATE_WATCH_CHART_HEIGHT, RATE_WATCH_CHART_BODY_STYLE,
     SETTINGS_OVERLAY_STYLE_HIDDEN, SETTINGS_TITLE_STYLE,
     SETTINGS_ITEM_STYLE, TOGGLE_LABEL_STYLE,
     stage_badge_style,
@@ -51,11 +53,11 @@ MARKET_METRICS_WIDGETS = [
     ("watchlist",      "Watchlist",                  False),
     ("sector",         "Sector SPDR ETFs",           False),
     ("rrg",            "RRG Sector Rotation",        False),
+    ("sp500-landscape", "S&P 500 Landscape Bubble Chart", False),
     ("club97",         "97 Club",                    False),
     ("movers",         "StockBee - 9 Million Movers",           False),
     ("weekly",         "StockBee - 20% Weekly Movers",          False),
     ("daily",          "StockBee - 4% Daily Gainers",           False),
-    ("earnings",       "Earnings Yesterday + Today",    False),
     ("leading",        "Leading Industries",         False),
     ("thematics",      "Thematics Tracker",          False),
     ("thematics-sector", "Thematics by Sector (Top YTD)", False),
@@ -67,24 +69,35 @@ MARKET_METRICS_WIDGETS = [
     ("breadth-secondary", "StockBee - Secondary Breadth — Up/Down 25%+ Qtr", False),
     ("breadth-sp500",  "StockBee - S&P 500 — Last 60 Days",    False),
     ("stage",          "Stage Analysis",             False),
+    ("earnings-calendar-week", "Earnings Calendar — This Week", False),
 ]
-# Intraday tab widgets (in_play moved here; earnings duplicated for both tabs)
+# Macro Monitor tab widgets
+MACRO_MONITOR_WIDGETS = [
+    ("rate_watch_probabilities", "Rate Watch — Probabilities", False),
+    ("rate_watch_rate_path", "Rate Watch — Rate Path",        False),
+    ("rate_watch_distribution", "Rate Watch — Distribution",  False),
+    ("rate_watch_rate_ranges", "Rate Watch — Rate Ranges",    False),
+    ("economic_calendar", "Economic Calendar",       False),
+    ("cpi", "Consumer Price Index CPI",              False),
+    ("core_inflation_mom", "Core Inflation Rate MoM", False),
+    ("core_inflation_yoy", "Core Inflation Rate YoY", False),
+]
+# Intraday tab widgets (in_play and earnings here)
 INTRADAY_WIDGETS = [
     ("live_index",     "Market Snapshot",             False),
     ("in_play",        "Stocks In Play",             False),
     ("intraday-earnings", "Earnings Yesterday + Today", False),
     ("top_gainers",    "Top Gainers",                False),
     ("top_losers",     "Top Losers",                 False),
-    ("economic_calendar", "Economic Calendar",       False),
     ("pre_market",     "Pre-market Scanner",         False),
     ("cnbc_premarket", "CNBC Pre-Market Watchlist", False),
 ]
 # Combined for backward compatibility and visibility callback
-WIDGETS = MARKET_METRICS_WIDGETS + INTRADAY_WIDGETS
+WIDGETS = MARKET_METRICS_WIDGETS + MACRO_MONITOR_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "club97", "movers", "weekly", "daily", "earnings", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "economic_calendar", "pre_market", "cnbc_premarket") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "rate_watch_probabilities", "rate_watch_rate_path", "rate_watch_distribution", "rate_watch_rate_ranges", "economic_calendar", "cpi", "core_inflation_mom", "core_inflation_yoy", "pre_market", "cnbc_premarket") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -391,6 +404,7 @@ def build_metrics_bar_chart(groups: list[tuple]) -> go.Figure:
 
     x_range = max(max_extent * 1.1, 50)
     fig.update_layout(
+        autosize=True,
         barmode="relative",
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
@@ -411,7 +425,7 @@ def build_metrics_bar_chart(groups: list[tuple]) -> go.Figure:
             showgrid=False,
         ),
         font=dict(family="Inter", size=8),
-        height=420,
+        height=SCROLLABLE_BODY_HEIGHT,
     )
     return fig
 
@@ -489,6 +503,60 @@ def build_earnings_table(data: list[dict], widget_id: str = None, sort_col: str 
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
     return _build_screener_table(data, widget_id, sort_col, sort_asc)
+
+
+def _fmt_mcap(val) -> str:
+    """Format market cap for display."""
+    if val is None or (isinstance(val, float) and (val != val or val == 0)):
+        return "-"
+    if val >= 1e12:
+        return f"${val/1e12:.2f}T"
+    if val >= 1e9:
+        return f"${val/1e9:.2f}B"
+    if val >= 1e6:
+        return f"${val/1e6:.2f}M"
+    return f"${val:,.0f}"
+
+
+def build_earnings_calendar_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Earnings This Week: Ticker, Market Cap, Price, Avg Vol, Rel Vol, Change, Vol, ATR %. Sorted by market cap by default."""
+    from src.sortable_table import sort_data, SCREENER_SORT_KEYS
+
+    if not data:
+        return html.Div("No earnings this week", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    sort_keys = {**SCREENER_SORT_KEYS}
+    if widget_id and sort_col and sort_col in sort_keys:
+        data = sort_data(data, sort_col, sort_asc, sort_keys)
+    elif not sort_col:
+        data = sort_data(data, "market_cap", False, sort_keys)
+    headers = [
+        ("Ticker", "ticker"), ("Mkt Cap", "market_cap"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
+        ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"),
+    ]
+    rows = []
+    for r in data:
+        chg_val = r.get("change")
+        try:
+            chg_num = float(str(chg_val).replace("%", "")) if chg_val not in (None, "") else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        atr_pct = r.get("atr_pct")
+        atr_str = f"{atr_pct:.2f}%" if atr_pct is not None else ""
+        rows.append([
+            {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}), "style": TABLE_CELL_STYLE},
+            _fmt_mcap(r.get("market_cap")),
+            str(r.get("price", "")),
+            avg_str,
+            str(r.get("rel_vol", "")),
+            {"text": f"{chg_num}%" if chg_val not in (None, "") else "", "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
+            atr_str,
+        ])
+    return _table(headers, rows, col_widths=["65px", "60px", "55px", "65px", "50px", "55px", "65px", "50px"],
+                  widget_id=widget_id, sort_col=sort_col or "market_cap", sort_asc=sort_asc)
 
 
 def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
@@ -782,6 +850,225 @@ def build_economic_calendar_table(data: list[dict]) -> html.Div:
         html.A("Forex Factory", href="https://www.forexfactory.com/calendar", target="_blank", rel="noopener noreferrer",
                style={"fontSize": "8px", "color": COLORS["accent"], "textDecoration": "none", "marginTop": "4px"}),
     ], style={"display": "flex", "flexDirection": "column"})
+
+
+def _build_expected_actual_chart(data: list[dict], y_title: str, empty_msg: str, min_pad: float = 1.0) -> go.Figure:
+    """Bar chart: Expected vs Actual. Shared by CPI, Core MoM, Core YoY."""
+    if not data:
+        fig = go.Figure()
+        fig.add_annotation(
+            text=empty_msg,
+            xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False,
+            font=dict(size=12, color=COLORS["text_muted"]),
+        )
+        fig.update_layout(
+            autosize=True,
+            paper_bgcolor=COLORS["surface"],
+            plot_bgcolor=COLORS["surface"],
+            margin=dict(l=4, r=4, t=4, b=4),
+            height=MACRO_CHART_HEIGHT,
+        )
+        return fig
+
+    months = [r["month"] for r in data]
+    expected = [r.get("expected") for r in data]
+    actual = [r.get("actual") for r in data]
+
+    all_vals = [v for v in expected + actual if v is not None]
+    if all_vals:
+        lo, hi = min(all_vals), max(all_vals)
+        pad = max((hi - lo) * 0.08, min_pad) if hi != lo else min_pad
+        y_min, y_max = lo - pad, hi + pad
+    else:
+        y_min, y_max = None, None
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=months, y=expected, name="Expected", marker_color=COLORS["accent"], width=0.35, offset=-0.175))
+    fig.add_trace(go.Bar(x=months, y=actual, name="Actual", marker_color=COLORS["green"], width=0.35, offset=0.175))
+
+    yaxis_config = dict(
+        title=dict(text=y_title, font=dict(size=9, color=COLORS["text_muted"])),
+        tickfont=dict(size=8, color=COLORS["text_faint"]),
+        gridcolor="rgba(255,255,255,0.05)",
+        zeroline=False,
+    )
+    if y_min is not None and y_max is not None:
+        yaxis_config["range"] = [y_min, y_max]
+        yaxis_config["fixedrange"] = False
+
+    fig.update_layout(
+        autosize=True,
+        barmode="group",
+        paper_bgcolor=COLORS["surface"],
+        plot_bgcolor=COLORS["surface"],
+        margin=dict(l=4, r=4, t=4, b=4),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=9, color=COLORS["text_muted"])),
+        xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
+        yaxis=yaxis_config,
+        font=dict(family="Inter", size=8),
+        height=MACRO_CHART_HEIGHT,
+    )
+    return fig
+
+
+def build_cpi_chart(data: list[dict]) -> go.Figure:
+    """Bar chart: Expected vs Actual CPI YTD."""
+    return _build_expected_actual_chart(data, "CPI Index", "No CPI data available.", min_pad=1.0)
+
+
+def build_core_inflation_mom_chart(data: list[dict]) -> go.Figure:
+    """Bar chart: Expected vs Actual Core Inflation Rate MoM YTD."""
+    return _build_expected_actual_chart(data, "% MoM", "No Core Inflation MoM data available.", min_pad=0.1)
+
+
+def build_core_inflation_yoy_chart(data: list[dict]) -> go.Figure:
+    """Bar chart: Expected vs Actual Core Inflation Rate YoY YTD."""
+    return _build_expected_actual_chart(data, "% YoY", "No Core Inflation YoY data available.", min_pad=0.1)
+
+
+def _rate_watch_link(text: str, currency: str, style=None) -> html.A:
+    """Inline link to Rate Watch external source (CME FedWatch, CentralBank.watch)."""
+    url = RATE_WATCH_LINKS.get(currency, "https://centralbank.watch/")
+    base = {"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"], "textDecoration": "none"}
+    if style:
+        base.update(style)
+    return html.A(text, href=url, target="_blank", rel="noopener noreferrer", style=base)
+
+
+def _build_rate_watch_probability_chart(data: dict, height: int = 220) -> go.Figure:
+    """Stacked bar: Cut (red), Hold (yellow), Hike (green) for next 6 meetings."""
+    meetings = data.get("meetings", [])[:6]
+    if not meetings:
+        fig = go.Figure()
+        fig.add_annotation(text="No meeting data", xref="paper", yref="paper", x=0.5, y=0.5,
+                            showarrow=False, font=dict(size=12, color=COLORS["text_muted"]))
+    else:
+        labels = [m["date_label"] for m in meetings]
+        cut = [m["cut_pct"] for m in meetings]
+        hold = [m["hold_pct"] for m in meetings]
+        hike = [m["hike_pct"] for m in meetings]
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=labels, y=cut, name="Cut", marker_color=COLORS["red"], width=0.6))
+        fig.add_trace(go.Bar(x=labels, y=hold, name="Hold", marker_color=COLORS["yellow"], width=0.6))
+        fig.add_trace(go.Bar(x=labels, y=hike, name="Hike", marker_color=COLORS["green"], width=0.6))
+        fig.update_layout(barmode="stack")
+    fig.update_layout(
+        autosize=True,
+        paper_bgcolor=COLORS["surface"],
+        plot_bgcolor=COLORS["surface"],
+        margin=dict(l=4, r=4, t=24, b=48),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
+                   font=dict(size=9, color=COLORS["text_muted"])),
+        xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
+        yaxis=dict(
+            title=dict(text="Probability %", font=dict(size=9, color=COLORS["text_muted"])),
+            tickfont=dict(size=8, color=COLORS["text_faint"]),
+            gridcolor="rgba(255,255,255,0.05)",
+            zeroline=False,
+            range=[0, 100],
+        ),
+        font=dict(family="Inter", size=8),
+        height=height,
+    )
+    return fig
+
+
+def _build_rate_watch_rate_path_chart(data: dict, height: int = 220) -> go.Figure:
+    """Line chart: Expected rate (orange) vs current rate (yellow dashed) for next 8 meetings."""
+    meetings = data.get("meetings", [])[:8]
+    current = data.get("current_rate") or 0
+    if not meetings:
+        fig = go.Figure()
+        fig.add_annotation(text="No meeting data", xref="paper", yref="paper", x=0.5, y=0.5,
+                            showarrow=False, font=dict(size=12, color=COLORS["text_muted"]))
+    else:
+        labels = [m["date_label"] for m in meetings]
+        exp_rates = [m["exp_rate"] for m in meetings]
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=labels, y=exp_rates, name="Expected Rate", mode="lines+markers",
+                                 line=dict(color=COLORS["orange"], width=2),
+                                 marker=dict(size=6)))
+        fig.add_trace(go.Scatter(x=labels, y=[current] * len(labels), name="Current",
+                                 line=dict(color=COLORS["yellow"], width=1.5, dash="dash")))
+    fig.update_layout(
+        autosize=True,
+        paper_bgcolor=COLORS["surface"],
+        plot_bgcolor=COLORS["surface"],
+        margin=dict(l=4, r=4, t=24, b=48),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
+                   font=dict(size=9, color=COLORS["text_muted"])),
+        xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
+        yaxis=dict(
+            title=dict(text="Rate %", font=dict(size=9, color=COLORS["text_muted"])),
+            tickfont=dict(size=8, color=COLORS["text_faint"]),
+            gridcolor="rgba(255,255,255,0.05)",
+            zeroline=False,
+        ),
+        font=dict(family="Inter", size=8),
+        height=height,
+    )
+    return fig
+
+
+def build_rate_watch_content(currency: str, data: dict, view: str = "probabilities") -> html.Div:
+    """Build Rate Watch widget content for a single sub-view (dropdown and tabs in layout)."""
+    if not data:
+        return html.Div("No data available.", style={"color": COLORS["text_muted"], "padding": "8px"})
+
+    bank_name = data.get("bank_name", "")
+    current_str = data.get("current_rate_str", "")
+    next_date = data.get("next_meeting_date", "")
+    next_days = data.get("next_meeting_days")
+    meetings = data.get("meetings", [])
+
+    chart_height = RATE_WATCH_CHART_HEIGHT if view in ("probabilities", "rate-path") else MACRO_CHART_HEIGHT
+
+    if view == "probabilities":
+        return dcc.Graph(
+            figure=_build_rate_watch_probability_chart(data, height=chart_height),
+            config=GRAPH_CONFIG,
+            style={"height": "100%", "width": "100%"},
+        )
+    if view == "rate-path":
+        return dcc.Graph(
+            figure=_build_rate_watch_rate_path_chart(data, height=chart_height),
+            config=GRAPH_CONFIG,
+            style={"height": "100%", "width": "100%"},
+        )
+    if view == "distribution":
+        headers = [("Meeting", None), ("Days", None), ("Exp.Rate", None), ("Cut %", None), ("Hold %", None), ("Hike %", None)]
+        rows = []
+        for m in meetings:
+            rows.append([
+                {"text": m["date_label"], "style": TABLE_CELL_STYLE},
+                {"text": str(m["days_until"]), "style": TABLE_CELL_STYLE},
+                {"text": f"{m['exp_rate']:.3f}", "style": TABLE_CELL_STYLE},
+                {"text": f"{m['cut_pct']:.1f}", "style": {**TABLE_CELL_STYLE, "color": COLORS["red_light"]}},
+                {"text": f"{m['hold_pct']:.1f}", "style": {**TABLE_CELL_STYLE, "color": COLORS["yellow"]}},
+                {"text": f"{m['hike_pct']:.1f}", "style": {**TABLE_CELL_STYLE, "color": COLORS["green_light"]}},
+            ])
+        prob_table = _table(headers, rows, col_widths=["80px", "45px", "65px", "55px", "55px", "55px"]) if rows else html.Div()
+        return html.Div([prob_table], style={"overflow": "auto", "maxHeight": "230px"})
+
+    if view == "rate-ranges":
+        if currency != "USD" or not meetings:
+            return html.Div(
+                "Rate Range probabilities are only available for the Federal Reserve (USD).",
+                style={"color": COLORS["text_muted"], "fontSize": "10px", "padding": "12px"},
+            )
+        first = meetings[0]
+        rate_ranges = first.get("rate_ranges", [])
+        if not rate_ranges:
+            return html.Div("No rate range data.", style={"color": COLORS["text_muted"], "padding": "8px"})
+        rr_headers = [("Rate Range", None), ("Prob %", None)]
+        rr_rows = [[{"text": r["range"], "style": TABLE_CELL_STYLE}, {"text": f"{r['pct']:.1f}", "style": TABLE_CELL_STYLE}] for r in rate_ranges]
+        rate_range_table = _table(rr_headers, rr_rows, col_widths=["90px", "60px"])
+        return html.Div([rate_range_table], style={"overflow": "auto", "maxHeight": "230px"})
+
+    return html.Div("Unknown view.", style={"color": COLORS["text_muted"], "padding": "8px"})
 
 
 def _parse_vol(val):
@@ -1271,18 +1558,26 @@ def build_stockbee_momentum50_table(data: list[dict], date_label: str = "", widg
 # Stock Market Breadth Monitor
 # -----------------------------------------------------------------------
 
-def _breadth_chart_layout():
-    """Shared layout for breadth charts."""
+def _breadth_chart_layout(dates: list | None = None):
+    """Shared layout for breadth charts. Fixed height to avoid zoom on tab switch.
+    If dates provided, x-axis shows full range (oldest left, newest right) so user sees all data by default.
+    autosize=True so chart fits widget width (no horizontal overflow)."""
+    xaxis = dict(
+        tickfont=dict(size=8, color=COLORS["text_muted"]),
+        showgrid=True, gridcolor="rgba(255,255,255,0.05)",
+    )
+    if dates:
+        n = len(dates)
+        xaxis["range"] = [-0.5, n - 0.5]
+        xaxis["autorange"] = False
     return dict(
+        autosize=True,
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
         margin=dict(l=4, r=4, t=4, b=4),
         showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=8)),
-        xaxis=dict(
-            tickfont=dict(size=8, color=COLORS["text_muted"]),
-            showgrid=True, gridcolor="rgba(255,255,255,0.05)",
-        ),
+        xaxis=xaxis,
         yaxis=dict(
             tickfont=dict(size=8, color=COLORS["text_muted"]),
             showgrid=True, gridcolor="rgba(255,255,255,0.05)",
@@ -1306,7 +1601,7 @@ def build_primary_breadth_chart(history: list[dict]) -> go.Figure:
     fig.add_trace(go.Scatter(x=dates, y=down4, name="Down 4%+", fill="tozeroy",
         line=dict(color=COLORS["red_light"], width=1.5),
         fillcolor=_hex_to_rgba(COLORS["red"], 0.3)))
-    fig.update_layout(**_breadth_chart_layout())
+    fig.update_layout(**_breadth_chart_layout(dates))
     return fig
 
 
@@ -1321,7 +1616,7 @@ def build_breadth_ratios_chart(history: list[dict]) -> go.Figure:
     fig.add_trace(go.Scatter(x=dates, y=r5, name="5-Day Ratio", line=dict(color=COLORS["green_light"], width=2)))
     fig.add_trace(go.Scatter(x=dates, y=r10, name="10-Day Ratio", line=dict(color=COLORS["accent"], width=2)))
     fig.add_hline(y=1.0, line_dash="dot", line_color=COLORS["border_light"], opacity=0.8)
-    fig.update_layout(**_breadth_chart_layout())
+    fig.update_layout(**_breadth_chart_layout(dates))
     return fig
 
 
@@ -1339,7 +1634,7 @@ def build_secondary_breadth_chart(history: list[dict]) -> go.Figure:
     fig.add_trace(go.Scatter(x=dates, y=down25, name="Down 25%+ Qtr", fill="tozeroy",
         line=dict(color=COLORS["red_light"], width=1.5),
         fillcolor=_hex_to_rgba(COLORS["red"], 0.3)))
-    fig.update_layout(**_breadth_chart_layout())
+    fig.update_layout(**_breadth_chart_layout(dates))
     return fig
 
 
@@ -1360,7 +1655,7 @@ def build_sp500_chart(history: list[dict]) -> go.Figure:
     fig.add_trace(go.Scatter(x=dates, y=sp500, name="S&P 500", fill="tozeroy",
         line=dict(color=COLORS["accent"], width=2),
         fillcolor=_hex_to_rgba(COLORS["accent"], 0.15)))
-    layout = dict(**_breadth_chart_layout())
+    layout = dict(**_breadth_chart_layout(dates))
     if y_min is not None and y_max is not None:
         layout["yaxis"] = dict(**layout.get("yaxis", {}), range=[y_min, y_max])
     fig.update_layout(**layout)
@@ -1461,6 +1756,7 @@ def build_stage_chart(counts: dict) -> go.Figure:
         width=0.6,
     ))
     fig.update_layout(
+        autosize=True,
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
         margin=dict(l=4, r=4, t=4, b=4),
@@ -1474,7 +1770,7 @@ def build_stage_chart(counts: dict) -> go.Figure:
             gridcolor="rgba(255,255,255,0.05)",
         ),
         font=dict(family="Inter"),
-        height=280,
+        height=STAGE_CHART_HEIGHT,
     )
     return fig
 
@@ -1515,6 +1811,7 @@ def build_rrg_chart(rrg_data: list[dict]) -> go.Figure:
     fig.add_vline(x=100, line_dash="dot", line_color=COLORS["border_light"], opacity=0.6)
     fig.add_hline(y=100, line_dash="dot", line_color=COLORS["border_light"], opacity=0.6)
     fig.update_layout(
+        autosize=True,
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
         margin=dict(l=4, r=4, t=24, b=4),
@@ -1542,6 +1839,146 @@ def build_rrg_chart(rrg_data: list[dict]) -> go.Figure:
                  font=dict(size=8, color=COLORS["red_light"])),
             dict(x=0.98, y=0.02, xref="paper", yref="paper", text="Improving", showarrow=False,
                  font=dict(size=8, color=COLORS["accent"])),
+        ],
+    )
+    return fig
+
+
+def _fmt_b(val, suffix="B"):
+    """Format billions with suffix."""
+    if val is None or (isinstance(val, float) and (val != val or val == 0)):
+        return "-"
+    if abs(val) >= 1e12:
+        return f"${val/1e12:.1f}T"
+    if abs(val) >= 1e9:
+        return f"${val/1e9:.1f}{suffix}"
+    if abs(val) >= 1e6:
+        return f"${val/1e6:.1f}M"
+    return f"${val:,.0f}"
+
+
+def build_sp500_landscape_chart(data: list[dict], sector_filter: list[str] | None = None) -> go.Figure:
+    """S&P 500 Landscape Bubble Chart: Revenue (X) vs Net Income (Y), size=Market Cap, color=12M Change."""
+    if not data:
+        return go.Figure()
+
+    # Apply sector filter if set
+    if sector_filter and len(sector_filter) > 0:
+        sector_set = set(s.strip() for s in sector_filter if s and str(s).strip())
+        if sector_set:
+            data = [r for r in data if r.get("sector", "").strip() in sector_set]
+
+    # Filter valid points for axes (need revenue for X; net_income can be negative)
+    valid = [
+        r for r in data
+        if r.get("revenue") is not None and r.get("revenue") > 0
+        and r.get("net_income") is not None
+        and r.get("market_cap") and r.get("market_cap") > 0
+    ]
+    if not valid:
+        return go.Figure()
+
+    # Sort by market cap (largest first) for layering
+    valid.sort(key=lambda x: x.get("market_cap") or 0, reverse=True)
+
+    rev_b = [r["revenue"] / 1e9 for r in valid]
+    ni_b = [r["net_income"] / 1e9 for r in valid]
+    mcap = [r["market_cap"] for r in valid]
+    chg12m = [r.get("change_12m") or 0 for r in valid]
+    tickers = [r["ticker"] for r in valid]
+
+    # Bubble size: scale by sqrt(mcap) for visibility (log-like)
+    import math
+    mcap_min, mcap_max = min(mcap), max(mcap)
+    size_min, size_max = 4, 50
+    if mcap_max <= mcap_min:
+        sizes = [20] * len(mcap)
+    else:
+        log_min, log_max = math.log10(max(1e6, mcap_min)), math.log10(max(1e6, mcap_max))
+        sizes = [
+            size_min + (size_max - size_min) * (math.log10(max(1e6, m)) - log_min) / (log_max - log_min)
+            for m in mcap
+        ]
+
+    # Color scale: red (-50%) -> grey (0) -> green (100%)
+    def _color_for_chg(chg):
+        if chg >= 0:
+            t = min(1.0, chg / 100)
+            r, g = int(120 + 100 * (1 - t)), int(200 + 55 * t)
+            return f"rgb({r},{g},94)"
+        t = max(-1.0, chg / -50)
+        r, g = int(239 - 100 * (1 - t)), int(68 + 100 * (1 - t))
+        return f"rgb({r},{g},68)"
+
+    colors = [_color_for_chg(c) for c in chg12m]
+
+    # Hover: all fields
+    def _hover(r):
+        rev = _fmt_b(r.get("revenue"), "B")
+        ni = _fmt_b(r.get("net_income"), "B")
+        mcap_str = _fmt_b(r.get("market_cap"), "B")
+        pm = r.get("profit_margin")
+        pm_str = f"{pm:.1f}%" if pm is not None and not (isinstance(pm, float) and (pm != pm)) else "-"
+        prof = r.get("profitability")
+        prof_str = f"{prof:.1f}%" if prof is not None and not (isinstance(prof, float) and (prof != prof)) else pm_str
+        chg = r.get("change_12m") or 0
+        sector = r.get("sector", "") or "-"
+        return (
+            f"<b>{r['ticker']}</b> ({sector})<br>"
+            f"Revenue: {rev}<br>"
+            f"Net Income: {ni}<br>"
+            f"Market Cap: {mcap_str}<br>"
+            f"Price: ${r.get('price', 0):.2f}<br>"
+            f"12M Change: {chg:+.1f}%<br>"
+            f"Profit Margin: {pm_str}<br>"
+            f"Profitability: {prof_str}"
+        )
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=rev_b, y=ni_b,
+        mode="markers+text",
+        text=[t if m >= (mcap_max * 0.02) else "" for t, m in zip(tickers, mcap)],
+        textposition="top center",
+        textfont=dict(size=9, color=COLORS["text"]),
+        marker=dict(
+            size=sizes,
+            color=colors,
+            line=dict(width=0.5, color=COLORS["border"]),
+            opacity=0.75,
+        ),
+        customdata=[_hover(r) for r in valid],
+        hovertemplate="%{customdata}<extra></extra>",
+        hoverlabel=dict(bgcolor=COLORS["surface2"], font=dict(size=10)),
+    ))
+
+    fig.update_layout(
+        autosize=True,
+        paper_bgcolor=COLORS["surface"],
+        plot_bgcolor=COLORS["surface"],
+        margin=dict(l=50, r=20, t=24, b=60),
+        showlegend=False,
+        xaxis=dict(
+            type="log",
+            title=dict(text="Trailing 12-Month Revenue (B$)", font=dict(size=9, color=COLORS["text_muted"])),
+            tickfont=dict(size=8, color=COLORS["text_muted"]),
+            showgrid=True, gridcolor="rgba(255,255,255,0.05)",
+            zeroline=False,
+            fixedrange=False,
+        ),
+        yaxis=dict(
+            title=dict(text="Trailing 12-Month Net Income (B$)", font=dict(size=9, color=COLORS["text_muted"])),
+            tickfont=dict(size=8, color=COLORS["text_muted"]),
+            showgrid=True, gridcolor="rgba(255,255,255,0.05)",
+            zeroline=True, zerolinecolor=COLORS["border_light"], zerolinewidth=1,
+            fixedrange=False,
+        ),
+        font=dict(family="Inter"),
+        height=SP500_LANDSCAPE_CHART_HEIGHT,
+        annotations=[
+            dict(x=0.02, y=0.02, xref="paper", yref="paper", showarrow=False,
+                 text="12M Change: -50% (red) → 0% → 100% (green)<br>Size: Market Cap ($1B → $1T)",
+                 font=dict(size=8, color=COLORS["text_muted"]), align="left"),
         ],
     )
     return fig
@@ -1698,15 +2135,17 @@ def build_tv_modal() -> html.Div:
 # -----------------------------------------------------------------------
 
 def build_header() -> html.Div:
-    now = datetime.now(ET)
+    now = datetime.now(ZoneInfo("America/New_York"))
     date_str = now.strftime("%A, %B %d, %Y")
+    time_str = now.strftime("%I:%M:%S %p")
+    date_time_str = f"{date_str} · {time_str}"
 
     return html.Div([
         html.Div([
             html.Span("Pradly Portal", style=HEADER_LOGO_STYLE),
         ], style={"display": "flex", "alignItems": "center", "gap": "8px"}),
         html.Div([
-            html.Span(date_str, id="header-date", style=HEADER_DATE_STYLE),
+            html.Span(date_time_str, id="header-date", style=HEADER_DATE_STYLE),
         ], style={"display": "flex", "alignItems": "center", "gap": "12px"}),
         html.Div([
             html.Button("Refresh", id="btn-refresh", style=REFRESH_BTN_STYLE),
@@ -1741,16 +2180,21 @@ def _build_toggle_item(wid: str, name: str) -> html.Div:
 def build_settings_drawer() -> html.Div:
     """Settings drawer with tab-specific sections. Content shown based on active tab."""
     market_toggles = [_build_toggle_item(wid, name) for wid, name, _ in MARKET_METRICS_WIDGETS]
+    macro_toggles = [_build_toggle_item(wid, name) for wid, name, _ in MACRO_MONITOR_WIDGETS]
     intraday_toggles = [_build_toggle_item(wid, name) for wid, name, _ in INTRADAY_WIDGETS]
 
     return html.Div([
         html.Div("Widget Settings", style=SETTINGS_TITLE_STYLE),
         html.Div([
+            html.Div("Macro Monitor", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
+            *macro_toggles,
+        ], id="settings-macro-monitor"),
+        html.Div([
             html.Div("Market Metrics", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
             *market_toggles,
         ], id="settings-market-metrics"),
         html.Div([
-            html.Div("Intraday", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
+            html.Div("Intraday Inspector", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
             *intraday_toggles,
         ], id="settings-intraday"),
     ], id="settings-drawer", style=SETTINGS_OVERLAY_STYLE_HIDDEN)
@@ -1798,7 +2242,10 @@ def build_layout() -> html.Div:
         dcc.Interval(id="interval-refresh", interval=3600_000, n_intervals=0),
         dcc.Interval(id="interval-live-snapshot", interval=300_000, n_intervals=0),
         dcc.Interval(id="market-hours-check", interval=60_000, n_intervals=0),
+        dcc.Interval(id="interval-header-clock", interval=1000, n_intervals=0),
+        dcc.Interval(id="interval-chart-resize", interval=500, n_intervals=0, max_intervals=1),
         dcc.Store(id="watchlist-store", data=_initial_watchlist()),
+        dcc.Store(id="chart-resize-trigger"),
 
         build_header(),
         build_settings_drawer(),
@@ -1813,6 +2260,169 @@ def build_layout() -> html.Div:
                 "padding": "0 12px",
             },
             children=[
+                dcc.Tab(
+                    label="Macro Monitor",
+                    value="macro-monitor",
+                    style={
+                        "backgroundColor": COLORS["surface2"],
+                        "color": COLORS["text_muted"],
+                        "border": f"1px solid {COLORS['border']}",
+                        "padding": "6px 16px",
+                        "fontSize": "11px",
+                        "fontWeight": 600,
+                    },
+                    selected_style={
+                        "backgroundColor": COLORS["surface"],
+                        "color": COLORS["accent"],
+                        "borderBottom": "none",
+                        "borderTop": f"2px solid {COLORS['accent']}",
+                    },
+                    children=[
+                        html.Div([
+                            dcc.Store(id="rate-watch-currency-store", data="USD"),
+                            html.Div([
+                                _widget("rate_watch_probabilities", "Rate Watch — Probabilities",
+                                        html.Div([
+                                            html.Div([
+                                                html.Label("Currency: ", style={"fontSize": "10px", "marginRight": "6px"}),
+                                                dcc.Dropdown(
+                                                    id="rate-watch-probabilities-currency",
+                                                    options=[{"label": c, "value": c} for c in ["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"]],
+                                                    value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
+                                                ),
+                                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
+                                            _loading_wrap("rate_watch_probabilities-content", [loading], style={**CHART_WRAP_STYLE, "height": "270px", "overflow": "hidden"}),
+                                        ]),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_probabilities", True),
+                                        card_style_override={**WIDGET_STYLE, "maxHeight": "320px"},
+                                        body_style=RATE_WATCH_CHART_BODY_STYLE,
+                                        extra_header=html.Span([
+                                            html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
+                                                  id="rate-watch-probabilities-link", target="_blank", rel="noopener noreferrer",
+                                                  style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                         "textDecoration": "none", "marginLeft": "8px"}),
+                                        ])),
+                                _widget("rate_watch_rate_path", "Rate Watch — Rate Path",
+                                        html.Div([
+                                            html.Div([
+                                                html.Label("Currency: ", style={"fontSize": "10px", "marginRight": "6px"}),
+                                                dcc.Dropdown(
+                                                    id="rate-watch-rate-path-currency",
+                                                    options=[{"label": c, "value": c} for c in ["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"]],
+                                                    value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
+                                                ),
+                                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
+                                            _loading_wrap("rate_watch_rate_path-content", [loading], style={**CHART_WRAP_STYLE, "height": "270px", "overflow": "hidden"}),
+                                        ]),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_rate_path", True),
+                                        card_style_override={**WIDGET_STYLE, "maxHeight": "320px"},
+                                        body_style=RATE_WATCH_CHART_BODY_STYLE,
+                                        extra_header=html.Span([
+                                            html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
+                                                  id="rate-watch-rate-path-link", target="_blank", rel="noopener noreferrer",
+                                                  style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                         "textDecoration": "none", "marginLeft": "8px"}),
+                                        ])),
+                                _widget("rate_watch_distribution", "Rate Watch — Distribution",
+                                        html.Div([
+                                            html.Div([
+                                                html.Label("Currency: ", style={"fontSize": "10px", "marginRight": "6px"}),
+                                                dcc.Dropdown(
+                                                    id="rate-watch-distribution-currency",
+                                                    options=[{"label": c, "value": c} for c in ["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"]],
+                                                    value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
+                                                ),
+                                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
+                                            _loading_wrap("rate_watch_distribution-content", [loading], style={**CHART_WRAP_STYLE, "height": "250px", "overflow": "hidden"}),
+                                        ]),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_distribution", True),
+                                        card_style_override={**WIDGET_STYLE, "maxHeight": "300px"},
+                                        body_style=MACRO_CHART_BODY_STYLE,
+                                        extra_header=html.Span([
+                                            html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
+                                                  id="rate-watch-distribution-link", target="_blank", rel="noopener noreferrer",
+                                                  style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                         "textDecoration": "none", "marginLeft": "8px"}),
+                                        ])),
+                                _widget("rate_watch_rate_ranges", "Rate Watch — Rate Ranges",
+                                        html.Div([
+                                            html.Div([
+                                                html.Label("Currency: ", style={"fontSize": "10px", "marginRight": "6px"}),
+                                                dcc.Dropdown(
+                                                    id="rate-watch-rate-ranges-currency",
+                                                    options=[{"label": c, "value": c} for c in ["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"]],
+                                                    value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
+                                                ),
+                                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
+                                            _loading_wrap("rate_watch_rate_ranges-content", [loading], style={**CHART_WRAP_STYLE, "height": "250px", "overflow": "hidden"}),
+                                        ]),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_rate_ranges", True),
+                                        card_style_override={**WIDGET_STYLE, "maxHeight": "300px"},
+                                        body_style=MACRO_CHART_BODY_STYLE,
+                                        extra_header=html.Span([
+                                            html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
+                                                  id="rate-watch-rate-ranges-link", target="_blank", rel="noopener noreferrer",
+                                                  style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                         "textDecoration": "none", "marginLeft": "8px"}),
+                                        ])),
+                                _widget("economic_calendar", "Economic Calendar — Today",
+                                        _loading_wrap("economic_calendar-content"),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("economic_calendar", True),
+                                        card_style_override={
+                                            **WIDGET_STYLE,
+                                            "maxHeight": "300px",
+                                        },
+                                        extra_header=html.Span([
+                                            html.A("Forex Factory", href="https://www.forexfactory.com/calendar",
+                                                   target="_blank", rel="noopener noreferrer",
+                                                   style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
+                                                          "textDecoration": "none", "marginLeft": "8px"}),
+                                        ])),
+                                _widget("cpi", "Consumer Price Index CPI",
+                                        _loading_wrap("cpi-content", [loading], style={**CHART_WRAP_STYLE, "height": f"{MACRO_WIDGET_BODY_HEIGHT}px", "overflow": "hidden"}),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("cpi", True),
+                                        card_style_override={
+                                            **WIDGET_STYLE,
+                                            "maxHeight": "300px",
+                                        },
+                                        body_style=MACRO_CHART_BODY_STYLE,
+                                        extra_header=html.Span([
+                                            _finviz_link("FinViz", "cpi", {"marginLeft": "8px"}),
+                                        ])),
+                                _widget("core_inflation_mom", "Core Inflation Rate MoM",
+                                        _loading_wrap("core_inflation_mom-content", [loading], style={**CHART_WRAP_STYLE, "height": f"{MACRO_WIDGET_BODY_HEIGHT}px", "overflow": "hidden"}),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("core_inflation_mom", True),
+                                        card_style_override={
+                                            **WIDGET_STYLE,
+                                            "maxHeight": "300px",
+                                        },
+                                        body_style=MACRO_CHART_BODY_STYLE,
+                                        extra_header=html.Span([
+                                            _finviz_link("FinViz", "core_inflation_mom", {"marginLeft": "8px"}),
+                                        ])),
+                                _widget("core_inflation_yoy", "Core Inflation Rate YoY",
+                                        _loading_wrap("core_inflation_yoy-content", [loading], style={**CHART_WRAP_STYLE, "height": f"{MACRO_WIDGET_BODY_HEIGHT}px", "overflow": "hidden"}),
+                                        variant="teal",
+                                        initial_hidden=not DEFAULT_VISIBILITY.get("core_inflation_yoy", True),
+                                        card_style_override={
+                                            **WIDGET_STYLE,
+                                            "maxHeight": "300px",
+                                        },
+                                        body_style=MACRO_CHART_BODY_STYLE,
+                                        extra_header=html.Span([
+                                            _finviz_link("FinViz", "core_inflation_yoy", {"marginLeft": "8px"}),
+                                        ])),
+                            ], style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "8px", "marginBottom": "4px"}),
+                        ], style=CONTENT_AREA_STYLE),
+                    ],
+                ),
                 dcc.Tab(
                     label="Market Metrics",
                     value="market-metrics",
@@ -1842,14 +2452,16 @@ def build_layout() -> html.Div:
                         card_style_override=WIDGET_KEY_METRICS_STYLE),
                 _widget("chart2", "NQ100, SPY500 & DJIA Metrics",
                         _loading_wrap("chart2-content", [loading],
-                                      style=CHART_WRAP_STYLE),
+                                      style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                         variant="teal", primary=True,
-                        initial_hidden=not DEFAULT_VISIBILITY.get("chart2", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("chart2", True),
+                        body_style=RRG_CHART_BODY_STYLE),
                 _widget("chart3", "RUS2000 & $1B+ Stocks",
                         _loading_wrap("chart3-content", [loading],
-                                      style=CHART_WRAP_STYLE),
+                                      style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                         variant="teal", primary=True,
-                        initial_hidden=not DEFAULT_VISIBILITY.get("chart3", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("chart3", True),
+                        body_style=RRG_CHART_BODY_STYLE),
             ], id="row-primary", style=PRIMARY_ROW_STYLE),
 
             # ---- STOCKBEE ROW (under Key Metrics): Breadth | Momentum50 ----
@@ -1877,25 +2489,25 @@ def build_layout() -> html.Div:
             # ---- BREADTH CHARTS ROW (Stockbee-style) ----
             html.Div([
                 _widget("breadth-primary", "StockBee - Primary Breadth — Up/Down 4%+ Today",
-                        _loading_wrap("breadth-primary-content", [loading], style=CHART_WRAP_STYLE),
+                        _loading_wrap("breadth-primary-content", [loading], style=BREADTH_CHART_WRAP_STYLE),
                         variant="green",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-primary", True),
                         body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
                 _widget("breadth-ratios", "StockBee - Breadth Ratios — 5-Day & 10-Day",
-                        _loading_wrap("breadth-ratios-content", [loading], style=CHART_WRAP_STYLE),
+                        _loading_wrap("breadth-ratios-content", [loading], style=BREADTH_CHART_WRAP_STYLE),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-ratios", True),
                         body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
                 _widget("breadth-secondary", "StockBee - Secondary Breadth — Up/Down 25%+ Qtr",
-                        _loading_wrap("breadth-secondary-content", [loading], style=CHART_WRAP_STYLE),
+                        _loading_wrap("breadth-secondary-content", [loading], style=BREADTH_CHART_WRAP_STYLE),
                         variant="purple",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-secondary", True),
                         body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
                 _widget("breadth-sp500", "StockBee - S&P 500 — Last 60 Days",
-                        _loading_wrap("breadth-sp500-content", [loading], style=CHART_WRAP_STYLE),
+                        _loading_wrap("breadth-sp500-content", [loading], style=BREADTH_CHART_WRAP_STYLE),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-sp500", True),
                         body_style=BREADTH_CHART_BODY_STYLE,
@@ -1949,13 +2561,37 @@ def build_layout() -> html.Div:
                         html.Div([
                             dcc.Store(id="rrg-figure-store"),
                             dcc.Loading(
-                                html.Div(id="rrg-content", children=[loading], style=CHART_WRAP_STYLE),
+                                html.Div(id="rrg-content", children=[loading], style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                                 type="circle", color=COLORS["accent"], style={"minHeight": "40px"},
                             ),
-                        ], style={"minHeight": f"{SCROLLABLE_BODY_HEIGHT}px"}),
+                        ], style={"height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                         variant="teal",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("rrg", True)),
-            ], id="row-sector", style=HALF_ROW_STYLE),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("rrg", True),
+                        body_style=RRG_CHART_BODY_STYLE),
+                _widget("sp500-landscape", "S&P 500 Landscape Bubble Chart",
+                        html.Div([
+                            dcc.Store(id="sp500-landscape-data-store"),
+                            html.Div([
+                                html.Label("Sector filter:", style={"fontSize": "10px", "color": COLORS["text_muted"], "marginRight": "6px"}),
+                                dcc.Dropdown(
+                                    id="sp500-landscape-sector-filter",
+                                    options=[],
+                                    value=[],
+                                    multi=True,
+                                    placeholder="All sectors",
+                                    clearable=True,
+                                    style={"minWidth": "180px", "fontSize": "10px"},
+                                ),
+                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px", "flexWrap": "wrap"}),
+                            dcc.Loading(
+                                html.Div(id="sp500-landscape-content", children=[loading], style={**CHART_WRAP_STYLE, "height": f"{SP500_LANDSCAPE_CHART_HEIGHT}px", "overflow": "hidden"}),
+                                type="circle", color=COLORS["accent"], style={"minHeight": "40px"},
+                            ),
+                        ], style={"height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden", "display": "flex", "flexDirection": "column"}),
+                        variant="teal",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("sp500-landscape", True),
+                        body_style=RRG_CHART_BODY_STYLE),
+            ], id="row-sector", style=THIRD_ROW_STYLE),
 
             # ---- MIDDLE 4 ----
             html.Div([
@@ -2007,16 +2643,22 @@ def build_layout() -> html.Div:
                         extra_header=html.Span([
                             _finviz_link("FinViz", "leading", {"marginLeft": "8px"}),
                         ])),
-                _widget("earnings", "Earnings Yesterday + Today",
-                        _sortable_table_wrap("earnings"),
-                        variant="orange",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("earnings", True),
-                        extra_header=html.Span([
-                            _finviz_link("FinViz", "earnings_yesterday_today", {"marginLeft": "8px"}),
-                        ])),
                 _widget("stage", "Stage Analysis",
-                        _loading_wrap("stage-content", [loading]),
-                        initial_hidden=not DEFAULT_VISIBILITY.get("stage", True)),
+                        _loading_wrap("stage-content", [loading],
+                                      style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("stage", True),
+                        body_style=RRG_CHART_BODY_STYLE),
+                _widget("earnings-calendar-week", "Earnings Calendar — This Week",
+                        html.Div([
+                            dcc.Store(id="earnings-calendar-week-data-store"),
+                            dcc.Store(id="earnings-calendar-week-sort-store", data={"col": "market_cap", "asc": False}),
+                            _loading_wrap("earnings-calendar-week-content"),
+                        ]),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("earnings-calendar-week", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "earnings_this_week", {"marginLeft": "8px"}),
+                        ])),
             ], id="row-bottom", style=THIRD_ROW_STYLE),
 
             # ---- THEMATICS ROW ----
@@ -2047,18 +2689,19 @@ def build_layout() -> html.Div:
                         html.Div([
                             dcc.Store(id="thematics-rrg-figure-store"),
                             dcc.Loading(
-                                html.Div(id="thematics-rrg-content", children=[loading], style=CHART_WRAP_STYLE),
+                                html.Div(id="thematics-rrg-content", children=[loading], style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                                 type="circle", color=COLORS["accent"], style={"minHeight": "40px"},
                             ),
-                        ], style={"minHeight": f"{SCROLLABLE_BODY_HEIGHT}px"}),
+                        ], style={"height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                         variant="teal",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("thematics-rrg", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("thematics-rrg", True),
+                        body_style=RRG_CHART_BODY_STYLE),
             ], id="row-thematics", style=THIRD_ROW_STYLE),
         ], style=CONTENT_AREA_STYLE),
                     ],
                 ),
                 dcc.Tab(
-                    label="Intraday",
+                    label="Intraday Inspector",
                     value="intraday",
                     style={
                         "backgroundColor": COLORS["surface2"],
@@ -2127,20 +2770,6 @@ def build_layout() -> html.Div:
                                     },
                                     extra_header=html.Span([
                                         _finviz_link("FinViz", "thematics", {"marginLeft": "8px"}),
-                                    ])),
-                            _widget("economic_calendar", "Economic Calendar — Today",
-                                    _loading_wrap("economic_calendar-content"),
-                                    variant="teal",
-                                    initial_hidden=not DEFAULT_VISIBILITY.get("economic_calendar", True),
-                                    card_style_override={
-                                        **WIDGET_STYLE,
-                                        "maxHeight": "300px",
-                                    },
-                                    extra_header=html.Span([
-                                        html.A("Forex Factory", href="https://www.forexfactory.com/calendar",
-                                               target="_blank", rel="noopener noreferrer",
-                                               style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
-                                                      "textDecoration": "none", "marginLeft": "8px"}),
                                     ])),
                         ], style=THIRD_ROW_STYLE),
                         html.Div([

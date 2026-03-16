@@ -5,12 +5,13 @@ TradingView modal, watchlist management.
 import logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dash import html, dcc, Input, Output, State, callback, no_update, ctx, ALL
 import plotly.graph_objects as go
 
 from src import cache
-from src.constants import COLORS
+from src.constants import COLORS, RATE_WATCH_LINKS, GRAPH_CONFIG, GRAPH_CONFIG_ZOOM
 from src.calculations import (
     compute_all_key_metrics,
     compute_sector_data,
@@ -41,6 +42,7 @@ from src.layout import (
     build_metrics_bar_chart,
     build_sector_table,
     build_rrg_chart,
+    build_sp500_landscape_chart,
     build_stockbee_momentum50_table,
     build_stockbee_breadth,
     build_primary_breadth_chart,
@@ -52,6 +54,7 @@ from src.layout import (
     build_20pct_weekly_table,
     build_4pct_daily_table,
     build_earnings_table,
+    build_earnings_calendar_table,
     build_stocks_in_play_table,
     build_pre_market_scanner_table,
     build_leading_industries_table,
@@ -60,6 +63,10 @@ from src.layout import (
     build_top_gainers_table,
     build_top_losers_table,
     build_economic_calendar_table,
+    build_cpi_chart,
+    build_core_inflation_mom_chart,
+    build_core_inflation_yoy_chart,
+    build_rate_watch_content,
     build_stage_chart,
     build_stage_summary,
     build_ticker_grid,
@@ -91,7 +98,6 @@ WIDGET_CACHE_KEYS = {
     "movers": ["9m_movers"],
     "weekly": ["20pct_weekly"],
     "daily": ["4pct_daily"],
-    "earnings": ["earnings_yesterday_today"],
     "in_play": ["stocks_in_play"],
     "intraday-earnings": ["earnings_yesterday_today"],
     "pre_market": ["pre_market_scanner"],
@@ -105,6 +111,17 @@ WIDGET_CACHE_KEYS = {
     "stage": ["stage_analysis"],
     "thematics-rrg": ["thematics_rrg_data"],
     "economic_calendar": ["economic_calendar_today"],
+    "cpi": ["cpi_ytd"],
+    "core_inflation_mom": ["core_inflation_mom_ytd"],
+    "core_inflation_yoy": ["core_inflation_yoy_ytd"],
+    "rate_watch_probabilities": ["rate_watch_USD", "rate_watch_EUR", "rate_watch_GBP", "rate_watch_JPY",
+                                 "rate_watch_CAD", "rate_watch_CHF", "rate_watch_AUD", "rate_watch_NZD"],
+    "rate_watch_rate_path": ["rate_watch_USD", "rate_watch_EUR", "rate_watch_GBP", "rate_watch_JPY",
+                             "rate_watch_CAD", "rate_watch_CHF", "rate_watch_AUD", "rate_watch_NZD"],
+    "rate_watch_distribution": ["rate_watch_USD", "rate_watch_EUR", "rate_watch_GBP", "rate_watch_JPY",
+                                "rate_watch_CAD", "rate_watch_CHF", "rate_watch_AUD", "rate_watch_NZD"],
+    "rate_watch_rate_ranges": ["rate_watch_USD", "rate_watch_EUR", "rate_watch_GBP", "rate_watch_JPY",
+                               "rate_watch_CAD", "rate_watch_CHF", "rate_watch_AUD", "rate_watch_NZD"],
     "qulla": ["qulla_episodic_v2", "qulla_parabolic_v2", "qulla_breakouts_v2"],
     "minervini": ["minervini_table"],
     "oneil": ["oneil_table"],
@@ -116,6 +133,8 @@ WIDGET_CACHE_KEYS = {
     "breadth-secondary": ["stockbee_breadth_history"],
     "breadth-sp500": ["stockbee_breadth_history"],
     "rrg": ["rrg_data"],
+    "sp500-landscape": ["sp500_landscape"],
+    "earnings-calendar-week": ["earnings_this_week"],
 }
 
 
@@ -181,6 +200,51 @@ def register_callbacks(app):
         return REFRESH_INTERVAL_CLOSED if _is_market_closed() else REFRESH_INTERVAL_OPEN
 
     # ------------------------------------------------------------------
+    # 0b. Header date/time: update NY time every minute
+    # ------------------------------------------------------------------
+    @app.callback(
+        Output("header-date", "children"),
+        Input("interval-header-clock", "n_intervals"),
+        prevent_initial_call=False,
+    )
+    def update_header_datetime(n):
+        now = datetime.now(ZoneInfo("America/New_York"))
+        date_str = now.strftime("%A, %B %d, %Y")
+        time_str = now.strftime("%I:%M:%S %p")
+        return f"{date_str} · {time_str}"
+
+    # ------------------------------------------------------------------
+    # 0c. Chart resize on tab switch / initial load (fixes zoomed-in charts)
+    # ------------------------------------------------------------------
+    app.clientside_callback(
+        """
+        function(tabValue, nResize, settingsDisplay) {
+            function doResize() {
+                var graphs = document.querySelectorAll('.js-plotly-plot');
+                if (window.Plotly && window.Plotly.Plots) {
+                    for (var i = 0; i < graphs.length; i++) {
+                        try {
+                            window.Plotly.Plots.resize(graphs[i]);
+                        } catch (e) {}
+                    }
+                }
+                window.dispatchEvent(new Event('resize'));
+            }
+            setTimeout(doResize, 400);
+            setTimeout(doResize, 900);
+            setTimeout(doResize, 1500);
+            return Date.now();
+        }
+        """,
+        Output("chart-resize-trigger", "data"),
+        [
+            Input("main-tabs", "value"),
+            Input("interval-chart-resize", "n_intervals"),
+            Input("settings-drawer", "style"),
+        ],
+    )
+
+    # ------------------------------------------------------------------
     # 1. Settings drawer toggle
     # ------------------------------------------------------------------
     @app.callback(
@@ -199,6 +263,7 @@ def register_callbacks(app):
     # ------------------------------------------------------------------
     @app.callback(
         [
+            Output("settings-macro-monitor", "style"),
             Output("settings-market-metrics", "style"),
             Output("settings-intraday", "style"),
         ],
@@ -206,9 +271,11 @@ def register_callbacks(app):
         prevent_initial_call=False,
     )
     def settings_tab_content(active_tab):
+        if active_tab == "macro-monitor":
+            return {"display": "block"}, {"display": "none"}, {"display": "none"}
         if active_tab == "intraday":
-            return {"display": "none"}, {"display": "block"}
-        return {"display": "block"}, {"display": "none"}
+            return {"display": "none"}, {"display": "none"}, {"display": "block"}
+        return {"display": "none"}, {"display": "block"}, {"display": "none"}
 
     # ------------------------------------------------------------------
     # 2. Widget visibility: ALL widgets toggleable
@@ -396,7 +463,7 @@ def register_callbacks(app):
             ])
             chart2 = dcc.Graph(
                 figure=chart2_fig,
-                config={"displayModeBar": False},
+                config=GRAPH_CONFIG,
                 style={"height": "100%", "width": "100%"},
             )
             chart3_fig = build_metrics_bar_chart([
@@ -405,7 +472,7 @@ def register_callbacks(app):
             ])
             chart3 = dcc.Graph(
                 figure=chart3_fig,
-                config={"displayModeBar": False},
+                config=GRAPH_CONFIG,
                 style={"height": "100%", "width": "100%"},
             )
             return [key_metrics_table, chart2, chart3, _now_str()]
@@ -487,6 +554,29 @@ def register_callbacks(app):
             return build_sector_table(sector_data, "sector", "chg", False), sector_data
         except Exception as e:
             logger.exception("Sector data failed: %s", e)
+            return _err_div(e), []
+
+    @app.callback(
+        [
+            Output("earnings-calendar-week-content", "children"),
+            Output("earnings-calendar-week-data-store", "data"),
+        ],
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-earnings-calendar-week", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_earnings_calendar_week(n_intervals, n_clicks, btn_w):
+        if btn_w:
+            _invalidate_widget_cache("earnings-calendar-week")
+        try:
+            from src.data_fetcher import fetch_earnings_this_week
+            data = fetch_earnings_this_week()
+            return build_earnings_calendar_table(data, "earnings-calendar-week", "market_cap", False), data
+        except Exception as e:
+            logger.exception("Earnings Calendar Week failed: %s", e)
             return _err_div(e), []
 
     @app.callback(
@@ -583,12 +673,12 @@ def register_callbacks(app):
             fig2 = build_breadth_ratios_chart(history)
             fig3 = build_secondary_breadth_chart(history)
             fig4 = build_sp500_chart(history)
-            graph_cfg = {"displayModeBar": False}
+            chart_style = {"height": "200px", "width": "100%", "minWidth": 0, "overflow": "hidden"}
             return [
-                dcc.Graph(figure=fig1, config=graph_cfg, style={"height": "100%", "width": "100%"}),
-                dcc.Graph(figure=fig2, config=graph_cfg, style={"height": "100%", "width": "100%"}),
-                dcc.Graph(figure=fig3, config=graph_cfg, style={"height": "100%", "width": "100%"}),
-                dcc.Graph(figure=fig4, config=graph_cfg, style={"height": "100%", "width": "100%"}),
+                dcc.Graph(figure=fig1, config=GRAPH_CONFIG_ZOOM, style=chart_style),
+                dcc.Graph(figure=fig2, config=GRAPH_CONFIG_ZOOM, style=chart_style),
+                dcc.Graph(figure=fig3, config=GRAPH_CONFIG_ZOOM, style=chart_style),
+                dcc.Graph(figure=fig4, config=GRAPH_CONFIG_ZOOM, style=chart_style),
             ]
         except Exception as e:
             logger.exception("Breadth charts failed: %s", e)
@@ -616,7 +706,7 @@ def register_callbacks(app):
             graph = dcc.Graph(
                 id="rrg-graph",
                 figure=fig,
-                config={"displayModeBar": False},
+                config=GRAPH_CONFIG,
                 style={"height": "100%", "width": "100%"},
             )
             return fig.to_dict(), graph
@@ -624,7 +714,61 @@ def register_callbacks(app):
             logger.exception("RRG failed: %s", e)
             return None, _err_div(e)
 
-    _GROUP_D_WIDGETS = ["club97", "movers", "weekly", "daily", "earnings", "in_play", "intraday-earnings", "pre_market"]
+    @app.callback(
+        [
+            Output("sp500-landscape-data-store", "data"),
+            Output("sp500-landscape-sector-filter", "options"),
+            Output("sp500-landscape-content", "children"),
+        ],
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-sp500-landscape", "n_clicks"),
+            Input("sp500-landscape-sector-filter", "value"),
+        ],
+        State("sp500-landscape-data-store", "data"),
+        prevent_initial_call=False,
+    )
+    def refresh_sp500_landscape(n_intervals, n_clicks, btn_w, sector_filter, stored_data):
+        from src.data_fetcher import fetch_sp500_landscape_data
+
+        triggered = ctx.triggered_id if ctx.triggered else None
+        is_filter_change = triggered == "sp500-landscape-sector-filter"
+
+        if is_filter_change:
+            data = stored_data or []
+            if not data:
+                return no_update, no_update, html.Div("No data. Refresh to load.", style={
+                    "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+                })
+            fig = build_sp500_landscape_chart(data, sector_filter=sector_filter)
+            return no_update, no_update, dcc.Graph(
+                figure=fig,
+                config=GRAPH_CONFIG_ZOOM,
+                style={"height": "100%", "width": "100%"},
+            )
+
+        if btn_w:
+            _invalidate_widget_cache("sp500-landscape")
+        try:
+            data = fetch_sp500_landscape_data()
+            if not data:
+                return [], [], html.Div("No S&P 500 data. FinViz Elite required.", style={
+                    "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+                })
+            sectors = sorted(set((str(r.get("sector", "") or "Unknown").strip() or "Unknown") for r in data))
+            options = [{"label": s, "value": s} for s in sectors]
+            fig = build_sp500_landscape_chart(data, sector_filter=sector_filter)
+            return data, options, dcc.Graph(
+                figure=fig,
+                config=GRAPH_CONFIG_ZOOM,
+                style={"height": "100%", "width": "100%"},
+            )
+        except Exception as e:
+            logger.exception("S&P 500 Landscape failed: %s", e)
+            return no_update, no_update, _err_div(e)
+
+    _GROUP_D_WIDGETS = ["club97", "movers", "weekly", "daily", "in_play", "intraday-earnings", "pre_market"]
 
     @app.callback(
         [
@@ -637,8 +781,6 @@ def register_callbacks(app):
             Output("weekly-data-store", "data"),
             Output("daily-content", "children"),
             Output("daily-data-store", "data"),
-            Output("earnings-content", "children"),
-            Output("earnings-data-store", "data"),
             Output("in_play-content", "children"),
             Output("in_play-data-store", "data"),
             Output("intraday-earnings-content", "children"),
@@ -665,7 +807,7 @@ def register_callbacks(app):
             """Build output list; use no_update for widgets we didn't refresh when single_widget is set."""
             if not single_widget:
                 return list(vals)
-            out = [no_update] * 17
+            out = [no_update] * 15
             idx = _GROUP_D_WIDGETS.index(single_widget) if single_widget in _GROUP_D_WIDGETS else -1
             if idx == 0:
                 out[0], out[1], out[2] = vals[0], vals[1], vals[2]
@@ -681,8 +823,6 @@ def register_callbacks(app):
                 out[11], out[12] = vals[11], vals[12]
             elif idx == 6:
                 out[13], out[14] = vals[13], vals[14]
-            elif idx == 7:
-                out[15], out[16] = vals[15], vals[16]
             else:
                 return list(vals)
             return out
@@ -707,22 +847,22 @@ def register_callbacks(app):
                 d = compute_4pct_daily([])
                 return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update,
                     build_4pct_daily_table(d, "daily", "chg", False), d, no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update)
-            if single_widget in ("earnings", "intraday-earnings"):
+                    no_update, no_update)
+            if single_widget == "intraday-earnings":
                 d = compute_earnings_yesterday_today([])
-                et = build_earnings_table(d, "earnings", "change", False)
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    et, d, no_update, no_update, et, d, no_update, no_update)
+                et = build_earnings_table(d, "intraday-earnings", "change", False)
+                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
+                    no_update, no_update, et, d, no_update, no_update, no_update)
             if single_widget == "in_play":
                 d = compute_stocks_in_play([])
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    no_update, no_update, build_stocks_in_play_table(d, "in_play", "change", False), d,
+                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
+                    build_stocks_in_play_table(d, "in_play", "change", False), d,
                     no_update, no_update, no_update, no_update)
             if single_widget == "pre_market":
                 d = compute_pre_market_scanner([])
                 gap = next((c for c in (d[0].keys() if d else []) if "gap" in c.lower() and "url" not in c.lower()), "Gap")
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update, no_update, no_update,
+                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
+                    no_update, no_update, no_update, no_update,
                     build_pre_market_scanner_table(d, "pre_market", gap, False), d)
 
             # Full refresh
@@ -735,7 +875,7 @@ def register_callbacks(app):
             daily_data = compute_4pct_daily([])
             daily_table = build_4pct_daily_table(daily_data, "daily", "chg", False)
             earnings_data = compute_earnings_yesterday_today([])
-            earnings_table = build_earnings_table(earnings_data, "earnings", "change", False)
+            earnings_table = build_earnings_table(earnings_data, "intraday-earnings", "change", False)
             in_play_data = compute_stocks_in_play([])
             in_play_table = build_stocks_in_play_table(in_play_data, "in_play", "change", False)
             pre_market_data = compute_pre_market_scanner([])
@@ -745,7 +885,6 @@ def register_callbacks(app):
                 club97_table, club97_data, {"col": "change", "asc": False},
                 movers_table, movers_data,
                 weekly_table, weekly_data, daily_table, daily_data,
-                earnings_table, earnings_data,
                 in_play_table, in_play_data,
                 earnings_table, earnings_data,
                 pre_market_table, pre_market_data,
@@ -753,6 +892,100 @@ def register_callbacks(app):
         except Exception as e:
             logger.exception("Group D failed: %s", e)
             return [_err_div(e), [], no_update, _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
+
+    # Rate Watch currency: dropdowns -> store (no cycle). Sync dropdowns via clientside only.
+    @app.callback(
+        Output("rate-watch-currency-store", "data"),
+        [
+            Input("rate-watch-probabilities-currency", "value"),
+            Input("rate-watch-rate-path-currency", "value"),
+            Input("rate-watch-distribution-currency", "value"),
+            Input("rate-watch-rate-ranges-currency", "value"),
+        ],
+        prevent_initial_call=False,
+    )
+    def sync_rate_watch_currency_store(p1, p2, p3, p4):
+        triggered = ctx.triggered
+        if not triggered:
+            return "USD"
+        tid = triggered[0].get("prop_id", "")
+        if "probabilities" in tid:
+            return p1 or "USD"
+        if "rate-path" in tid:
+            return p2 or "USD"
+        if "distribution" in tid:
+            return p3 or "USD"
+        if "rate-ranges" in tid:
+            return p4 or "USD"
+        return "USD"
+
+    # Clientside sync: when any dropdown changes, update the other 3 (avoids store->dropdown cycle)
+    app.clientside_callback(
+        """
+        function(p1, p2, p3, p4) {
+            var triggered = dash_clientside.callback_context.triggered;
+            if (!triggered || triggered.length === 0) return dash_clientside.no_update;
+            var tid = triggered[0].prop_id;
+            var ccy = "USD";
+            if (tid.indexOf("probabilities") >= 0) ccy = p1 || "USD";
+            else if (tid.indexOf("rate-path") >= 0) ccy = p2 || "USD";
+            else if (tid.indexOf("distribution") >= 0) ccy = p3 || "USD";
+            else if (tid.indexOf("rate-ranges") >= 0) ccy = p4 || "USD";
+            if (p1 === ccy && p2 === ccy && p3 === ccy && p4 === ccy) return dash_clientside.no_update;
+            var no = dash_clientside.no_update;
+            if (tid.indexOf("probabilities") >= 0) return [no, ccy, ccy, ccy];
+            if (tid.indexOf("rate-path") >= 0) return [ccy, no, ccy, ccy];
+            if (tid.indexOf("distribution") >= 0) return [ccy, ccy, no, ccy];
+            return [ccy, ccy, ccy, no];
+        }
+        """,
+        [
+            Output("rate-watch-probabilities-currency", "value"),
+            Output("rate-watch-rate-path-currency", "value"),
+            Output("rate-watch-distribution-currency", "value"),
+            Output("rate-watch-rate-ranges-currency", "value"),
+        ],
+        [
+            Input("rate-watch-probabilities-currency", "value"),
+            Input("rate-watch-rate-path-currency", "value"),
+            Input("rate-watch-distribution-currency", "value"),
+            Input("rate-watch-rate-ranges-currency", "value"),
+        ],
+    )
+
+    def _make_rate_watch_callback(widget_id: str, view: str):
+        """Factory for Rate Watch widget callbacks."""
+        @app.callback(
+            [
+                Output(f"{widget_id}-content", "children"),
+                Output(f"rate-watch-{view.replace('_', '-')}-link", "href"),
+            ],
+            [
+                Input("interval-refresh", "n_intervals"),
+                Input("btn-refresh", "n_clicks"),
+                Input(f"btn-refresh-{widget_id}", "n_clicks"),
+                Input("rate-watch-currency-store", "data"),
+            ],
+            prevent_initial_call=False,
+        )
+        def _cb(n_intervals, n_clicks, btn_widget, currency):
+            if btn_widget:
+                _invalidate_widget_cache(widget_id)
+            currency = currency or "USD"
+            try:
+                from src.rate_watch_data import fetch_rate_watch_data
+                data = fetch_rate_watch_data(currency)
+                content = build_rate_watch_content(currency, data, view.replace("_", "-"))
+                link = RATE_WATCH_LINKS.get(currency, "https://centralbank.watch/")
+                return content, link
+            except Exception as e:
+                logger.exception("Rate Watch %s failed: %s", widget_id, e)
+                return _err_div(e), RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/")
+
+    _make_rate_watch_callback("rate_watch_probabilities", "probabilities")
+    _make_rate_watch_callback("rate_watch_rate_path", "rate_path")
+    _make_rate_watch_callback("rate_watch_distribution", "distribution")
+    _make_rate_watch_callback("rate_watch_rate_ranges", "rate_ranges")
 
     @app.callback(
         Output("economic_calendar-content", "children"),
@@ -773,6 +1006,74 @@ def register_callbacks(app):
             return build_economic_calendar_table(data)
         except Exception as e:
             logger.exception("Economic Calendar failed: %s", e)
+            return _err_div(e)
+
+    @app.callback(
+        Output("cpi-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-cpi", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_cpi(n_intervals, n_clicks, btn_widget):
+        """Consumer Price Index CPI — Expected vs Actual YTD. Scraped from FinViz Elite."""
+        if btn_widget:
+            _invalidate_widget_cache("cpi")
+        try:
+            from src.cpi_data import fetch_cpi_ytd
+            data = fetch_cpi_ytd()
+            fig = build_cpi_chart(data)
+            return dcc.Graph(
+                figure=fig,
+                config=GRAPH_CONFIG,
+                style={"height": "100%", "width": "100%"},
+            )
+        except Exception as e:
+            logger.exception("CPI widget failed: %s", e)
+            return _err_div(e)
+
+    @app.callback(
+        Output("core_inflation_mom-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-core_inflation_mom", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_core_inflation_mom(n_intervals, n_clicks, btn_widget):
+        if btn_widget:
+            _invalidate_widget_cache("core_inflation_mom")
+        try:
+            from src.cpi_data import fetch_core_inflation_mom_ytd
+            data = fetch_core_inflation_mom_ytd()
+            fig = build_core_inflation_mom_chart(data)
+            return dcc.Graph(figure=fig, config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"})
+        except Exception as e:
+            logger.exception("Core Inflation MoM failed: %s", e)
+            return _err_div(e)
+
+    @app.callback(
+        Output("core_inflation_yoy-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-core_inflation_yoy", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_core_inflation_yoy(n_intervals, n_clicks, btn_widget):
+        if btn_widget:
+            _invalidate_widget_cache("core_inflation_yoy")
+        try:
+            from src.cpi_data import fetch_core_inflation_yoy_ytd
+            data = fetch_core_inflation_yoy_ytd()
+            fig = build_core_inflation_yoy_chart(data)
+            return dcc.Graph(figure=fig, config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"})
+        except Exception as e:
+            logger.exception("Core Inflation YoY failed: %s", e)
             return _err_div(e)
 
     @app.callback(
@@ -894,8 +1195,10 @@ def register_callbacks(app):
                 c = r.get("counts", {})
                 sc = html.Div([
                     build_stage_summary(c),
-                    dcc.Graph(figure=build_stage_chart(c), config={"displayModeBar": False}, style={"height": "100%", "width": "100%"}),
-                ], style=CHART_WRAP_STYLE)
+                    html.Div([
+                        dcc.Graph(figure=build_stage_chart(c), config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"}),
+                    ], style={**CHART_WRAP_STYLE, "flex": 1, "minHeight": 0, "display": "flex", "flexDirection": "column"}),
+                ], style={**CHART_WRAP_STYLE, "display": "flex", "flexDirection": "column", "height": "100%"})
                 return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, sc)
 
             leading_data = compute_leading_industries([], {})
@@ -911,8 +1214,10 @@ def register_callbacks(app):
             counts = stage_result.get("counts", {})
             stage_content = html.Div([
                 build_stage_summary(counts),
-                dcc.Graph(figure=build_stage_chart(counts), config={"displayModeBar": False}, style={"height": "100%", "width": "100%"}),
-            ], style=CHART_WRAP_STYLE)
+                html.Div([
+                    dcc.Graph(figure=build_stage_chart(counts), config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"}),
+                ], style={**CHART_WRAP_STYLE, "flex": 1, "minHeight": 0, "display": "flex", "flexDirection": "column"}),
+            ], style={**CHART_WRAP_STYLE, "display": "flex", "flexDirection": "column", "height": "100%"})
             return [leading_table, leading_data, thematics_table, thematics_data, thematics_sector_table, thematics_sector_data, top_gainers_table, top_losers_table, stage_content]
         except Exception as e:
             logger.exception("Group E (Leading/Thematics/Stage) failed: %s", e)
@@ -939,7 +1244,7 @@ def register_callbacks(app):
             graph = dcc.Graph(
                 id="thematics-rrg-graph",
                 figure=fig,
-                config={"displayModeBar": False},
+                config=GRAPH_CONFIG,
                 style={"height": "100%", "width": "100%"},
             )
             return fig.to_dict(), graph
@@ -960,9 +1265,9 @@ def register_callbacks(app):
         "movers": (build_9m_movers_table, "movers-content", {}),
         "weekly": (build_20pct_weekly_table, "weekly-content", {}),
         "daily": (build_4pct_daily_table, "daily-content", {}),
-        "earnings": (build_earnings_table, "earnings-content", {}),
         "in_play": (build_stocks_in_play_table, "in_play-content", {}),
         "intraday-earnings": (build_earnings_table, "intraday-earnings-content", {}),
+        "earnings-calendar-week": (build_earnings_calendar_table, "earnings-calendar-week-content", {}),
         "pre_market": (build_pre_market_scanner_table, "pre_market-content", {}),
         "leading": (build_leading_industries_table, "leading-content", {}),
         "thematics": (build_thematics_table, "thematics-content", {}),

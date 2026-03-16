@@ -1,5 +1,9 @@
 """Color tokens, stage definitions, and shared constants."""
 
+# ---------- Graph config (responsive for tab-switch resize fix) ----------
+GRAPH_CONFIG = {"displayModeBar": False, "responsive": True}
+GRAPH_CONFIG_ZOOM = {"displayModeBar": False, "scrollZoom": True, "responsive": True}
+
 # ---------- Dark theme palette (matches old base.css) ----------
 COLORS = {
     "bg": "#0a0e17",
@@ -209,6 +213,8 @@ FINVIZ_SCREENER_URLS = {
     "leading": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1,tad_0_rsi:14:rsi:d|abveq:::|value:::60&o=-change",
     # Earnings Yesterday + Today
     "earnings_yesterday_today": "https://elite.finviz.com/screener.ashx?v=111&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=change",
+    # Earnings This Week (Market Metrics)
+    "earnings_this_week": "https://elite.finviz.com/screener.ashx?v=111&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-marketcap",
     # Stocks In Play: news yesterday|today, avg vol 1000+, price $1+, rel vol 2+
     "stocks_in_play": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa,news_date_yesterday|today,sh_avgvol_o1000,sh_price_o1,sh_relvol_o2&o=-change",
     # Pre-market Scanner: USA, avg vol 1000+, price $1+, rel vol 1+, up 3%
@@ -219,6 +225,23 @@ FINVIZ_SCREENER_URLS = {
     "thematics": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1",
     # Economic Calendar
     "economic_calendar": "https://elite.finviz.com/calendar/economic",
+    # CPI (Consumer Price Index)
+    "cpi": "https://elite.finviz.com/calendar/economic/detail/UNITEDSTACONPRIINDCP",
+    # Core Inflation Rate MoM / YoY
+    "core_inflation_mom": "https://elite.finviz.com/calendar/economic/detail/USACIRM",
+    "core_inflation_yoy": "https://elite.finviz.com/calendar/economic/detail/USACORECPIRATE",
+}
+
+# Rate Watch — external links per central bank
+RATE_WATCH_LINKS = {
+    "USD": "https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html",
+    "EUR": "https://centralbank.watch/european-central-bank",
+    "GBP": "https://centralbank.watch/bank-of-england",
+    "JPY": "https://centralbank.watch/bank-of-japan",
+    "CAD": "https://centralbank.watch/bank-of-canada",
+    "CHF": "https://centralbank.watch/swiss-national-bank",
+    "AUD": "https://centralbank.watch/reserve-bank-of-australia",
+    "NZD": "https://centralbank.watch/reserve-bank-of-new-zealand",
 }
 
 # Stockbee (Pradeep Bonde) — external links
@@ -238,6 +261,9 @@ FINVIZ_EXPORT_URLS = {
     "4pct_daily": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change&c=1,47,61,62,63,64,65",
     "earnings_yesterday_today": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=change",
     "earnings_yesterday_today_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change",
+    # Earnings This Week: Overview for Market Cap; Performance for Avg Vol, Rel Vol
+    "earnings_this_week_overview": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-marketcap",
+    "earnings_this_week_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-marketcap&c=1,47,61,62,63,64,65",
     # Stocks in Play: c=1,137,47,61,62,63,64,65 = Ticker,News/Link,ATR,AvgVol,RelVol,Price,Change,Volume
     "stocks_in_play": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,news_date_yesterday|today,sh_avgvol_o1000,sh_price_o1,sh_relvol_o2&o=-change&c=1,137,47,61,62,63,64,65",
     # Pre-market Scanner: USA, avg vol 1000+, price $1+, rel vol 1+, up 3%. Columns: Ticker, Gap, Avg Volume, Rel Volume, Volume, Price, Change, News Time, News Title, Daily Digest, News URL
@@ -275,6 +301,9 @@ FINVIZ_EXPORT_URLS = {
     "ind_rut": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_rut&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
     # Stage analysis: export.ashx, USA universe. v=171 Technical has 20/50/200-Day SMA (Relative), EMA10.
     "ind_stage": "https://elite.finviz.com/export.ashx?v=171&f=geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,41,42,47,50,51,52,55,56,61,62,63,64,65",
+    # S&P 500 Landscape: Overview (Market Cap, P/E) + Valuation (P/S) for Revenue/Net Income derivation
+    "sp500_landscape_overview": "https://elite.finviz.com/export.ashx?v=111&f=geo_usa,idx_sp500&o=-marketcap",
+    "sp500_landscape_valuation": "https://elite.finviz.com/export.ashx?v=121&f=geo_usa,idx_sp500&o=-marketcap",
 }
 
 # ---------- Sector SPDR tickers ----------

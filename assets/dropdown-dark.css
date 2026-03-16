@@ -1,0 +1,77 @@
+/* Dropdown dark theme — load last (zz- prefix) to override Dash defaults */
+
+:root {
+    --Dash-Fill-Inverse-Strong: #1a2235;
+    --Dash-Stroke-Strong: #1e2a3a;
+    --Dash-Fill-Interactive-Strong: #06b6d4;
+    --Dash-Text-Strong: #e2e8f0;
+    --Dash-Text-Weak: #8892a4;
+    --Dash-Text-Disabled: #4a5568;
+    --Dash-Fill-Interactive-Weak: rgba(6, 182, 212, 0.15);
+    --Dash-Fill-Disabled: #1e2a3a;
+    --Dash-Shading-Strong: rgba(0, 0, 0, 0.5);
+    --Dash-Shading-Weak: rgba(0, 0, 0, 0.2);
+    --Dash-Spacing: 4px;
+}
+
+/* Force dark styling on dropdown trigger and content */
+button.dash-dropdown,
+.dash-dropdown-wrapper button.dash-dropdown,
+.dash-dropdown-trigger {
+    background: #1a2235 !important;
+    border: 1px solid #2a3a52 !important;
+    color: #e2e8f0 !important;
+}
+
+button.dash-dropdown:hover,
+.dash-dropdown-wrapper button.dash-dropdown:hover {
+    background: #243049 !important;
+    border-color: #2a3a52 !important;
+}
+
+button.dash-dropdown:focus,
+.dash-dropdown-wrapper button.dash-dropdown:focus {
+    border-color: #06b6d4 !important;
+    outline: 1px solid #06b6d4 !important;
+}
+
+.dash-dropdown-content,
+[data-radix-popper-content-wrapper] .dash-dropdown-content {
+    background: #1a2235 !important;
+    border: 1px solid #2a3a52 !important;
+    color: #e2e8f0 !important;
+}
+
+.dash-dropdown-placeholder {
+    color: #4a5568 !important;
+}
+
+.dash-dropdown-value,
+.dash-dropdown-value-item {
+    color: #e2e8f0 !important;
+}
+
+.dash-dropdown-option {
+    color: #e2e8f0 !important;
+}
+
+.dash-dropdown-option:hover {
+    background: rgba(6, 182, 212, 0.15) !important;
+}
+
+.dash-dropdown-search-container,
+.dash-dropdown-search {
+    background: #1a2235 !important;
+    border-color: #2a3a52 !important;
+    color: #e2e8f0 !important;
+}
+
+.dash-dropdown-value-count {
+    background: rgba(6, 182, 212, 0.2) !important;
+    color: #8892a4 !important;
+}
+
+.dash-dropdown-trigger-icon {
+    color: #8892a4 !important;
+    fill: #8892a4 !important;
+}

@@ -205,6 +205,8 @@ def fetch_stockbee_breadth_history(days: int = 60, cache_key: str = "stockbee_br
             if "error" not in data and "history" in data:
                 hist = data["history"][:days]
                 if hist:
+                    # Chronological order (oldest first) for charts: oldest left, newest right
+                    hist = list(reversed(hist))
                     cache.put(cache_key, hist, ttl=ttl)
                     return hist
     except Exception as e:
