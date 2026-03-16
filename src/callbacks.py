@@ -371,11 +371,8 @@ def register_callbacks(app):
             return no_update
         # Only remove on actual click (n_clicks > 0). Prevents false triggers when
         # table re-renders and component count changes (add/remove rows).
-        try:
-            idx = current_list.index(ticker)
-            if idx >= len(n_clicks_list) or not (n_clicks_list[idx] or 0):
-                return no_update
-        except (ValueError, IndexError, TypeError):
+        triggered = ctx.triggered[0] if ctx.triggered else {}
+        if not triggered.get("value") or (isinstance(triggered.get("value"), (int, float)) and triggered["value"] < 1):
             return no_update
         # Use file as source, return new list (never mutate)
         current = _load_watchlist_from_file()
@@ -466,11 +463,16 @@ def register_callbacks(app):
                 "padding": "8px",
             }), [], view_store
         try:
-            from src.data_fetcher import fetch_watchlist_quotes
-            data = fetch_watchlist_quotes(wl_data)
+            from src.data_fetcher import fetch_tickers_bulk_csv
+            cache_key = f"watchlist_quotes_{','.join(sorted(wl_data))}"
+            data = fetch_tickers_bulk_csv(wl_data, cache_key=cache_key)
             if not data:
                 # Fallback: show tickers with placeholder when Finviz returns no data
                 data = [{"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"} for t in wl_data]
+            else:
+                # Preserve watchlist order; bulk may return different order
+                by_ticker = {r["ticker"]: r for r in data}
+                data = [by_ticker.get(t.upper(), {"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"}) for t in wl_data]
             return build_watchlist_table(data, "watchlist", "change", False, show_remove=True), data, view_store
         except Exception as e:
             logger.exception("Watchlist fetch failed: %s", e)
