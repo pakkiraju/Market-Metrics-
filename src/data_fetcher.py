@@ -877,6 +877,59 @@ def fetch_sp500_landscape_data(cache_key: str = "sp500_landscape", ttl: int = ME
         return []
 
 
+def fetch_watchlist_sector_options() -> list[dict]:
+    """Return dropdown options for watchlist sector selector: My Watchlist first, then sectors from S&P 500 data."""
+    from src.constants import SECTOR_NAMES
+
+    options = [{"label": "My Watchlist", "value": "watchlist"}]
+    try:
+        data = fetch_sp500_landscape_data()
+        sectors = sorted(set((str(r.get("sector", "") or "").strip() or "Unknown") for r in data if r.get("sector")))
+        for s in sectors:
+            if s and s != "Unknown":
+                options.append({"label": s, "value": s})
+    except Exception:
+        # Fallback to standard sector names if landscape fetch fails
+        for name in sorted(SECTOR_NAMES.values()):
+            if name != "S&P Equal Weight":
+                options.append({"label": name, "value": name})
+    return options
+
+
+# Map display names to possible FinViz sector values (FinViz may use different labels)
+_SECTOR_NAME_ALIASES = {
+    "Communication Svcs": ["Communication Svcs", "Communication Services"],
+    "Financials": ["Financials", "Financial Services"],
+    "Consumer Defensive": ["Consumer Defensive", "Consumer Staples"],
+}
+
+
+def fetch_stocks_by_sector(sector_name: str, ttl: int = MEDIUM) -> list[dict]:
+    """Fetch S&P 500 stocks in a given sector with quotes. Returns list of dicts for watchlist table."""
+    if not sector_name or not str(sector_name).strip():
+        return []
+    sector_name = str(sector_name).strip()
+    cache_key = f"watchlist_sector_{sector_name.replace(' ', '_').replace('/', '_')}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        data = fetch_sp500_landscape_data()
+        sector_matches = {sector_name}
+        sector_matches.update(_SECTOR_NAME_ALIASES.get(sector_name, []))
+        tickers = [
+            str(r.get("ticker", "") or "").strip().upper()
+            for r in data
+            if str(r.get("sector", "") or "").strip() in sector_matches
+        ]
+        if not tickers:
+            return []
+        return fetch_tickers_bulk_csv(tickers[:100], cache_key=cache_key, ttl=ttl)
+    except Exception as e:
+        logger.warning("fetch_stocks_by_sector failed: %s", e)
+        return []
+
+
 def fetch_stage_indicators(cache_key: str = "ind_stage") -> pd.DataFrame:
     """Fetch stage analysis data from single export URL (geo_usa, avgvol 1000+, price $1+). Returns DataFrame with close, ema10, sma20, sma50, week_chg, month_chg."""
     cached = cache.get(cache_key)

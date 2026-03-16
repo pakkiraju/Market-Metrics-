@@ -389,38 +389,92 @@ def register_callbacks(app):
         return new_list
 
     # ------------------------------------------------------------------
-    # 6. Watchlist: fetch Finviz data and render table
+    # 5b. Watchlist: populate sector dropdown options
+    # ------------------------------------------------------------------
+    @app.callback(
+        Output("watchlist-sector-dropdown", "options"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("main-tabs", "value"),
+        ],
+        prevent_initial_call=False,
+    )
+    def update_watchlist_sector_options(n_intervals, tab_value):
+        if tab_value != "market-metrics":
+            return no_update
+        try:
+            from src.data_fetcher import fetch_watchlist_sector_options
+            return fetch_watchlist_sector_options()
+        except Exception:
+            return no_update
+
+    # ------------------------------------------------------------------
+    # 5c. Watchlist: hide add-ticker row when viewing a sector
+    # ------------------------------------------------------------------
+    @app.callback(
+        Output("watchlist-add-row", "style"),
+        Input("watchlist-sector-dropdown", "value"),
+        prevent_initial_call=False,
+    )
+    def toggle_watchlist_add_row(sector_value):
+        is_sector = sector_value and str(sector_value).strip() != "watchlist"
+        base = {"gap": "4px", "padding": "4px 4px 2px 4px", "alignItems": "center"}
+        if is_sector:
+            return {**base, "display": "none"}
+        return {**base, "display": "flex"}
+
+    # ------------------------------------------------------------------
+    # 6. Watchlist: fetch Finviz data and render table (custom watchlist or sector)
     # ------------------------------------------------------------------
     @app.callback(
         [
             Output("watchlist-content", "children"),
             Output("watchlist-data-store", "data"),
+            Output("watchlist-view-store", "data"),
         ],
         [
             Input("watchlist-store", "data"),
+            Input("watchlist-sector-dropdown", "value"),
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-watchlist", "n_clicks"),
         ],
     )
-    def render_watchlist(wl_data, n_intervals, n_clicks, btn_w):
+    def render_watchlist(wl_data, sector_value, n_intervals, n_clicks, btn_w):
+        is_sector_view = sector_value and str(sector_value).strip() != "watchlist"
+        view_store = sector_value if sector_value else "watchlist"
+        if is_sector_view:
+            if btn_w:
+                cache.invalidate(f"watchlist_sector_{sector_value.replace(' ', '_').replace('/', '_')}")
+            try:
+                from src.data_fetcher import fetch_stocks_by_sector
+                data = fetch_stocks_by_sector(sector_value)
+                if not data:
+                    return html.Div(f"No stocks found for {sector_value}.", style={
+                        "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+                    }), [], view_store
+                return build_watchlist_table(data, "watchlist", "change", False, show_remove=False), data, view_store
+            except Exception as e:
+                logger.exception("Watchlist sector fetch failed: %s", e)
+                return _err_div(e), [], view_store
+        # Custom watchlist view
         if btn_w and wl_data:
             cache.invalidate(f"watchlist_quotes_{','.join(sorted(wl_data))}")
         if not wl_data:
             return html.Div("No tickers in watchlist. Add some above.", style={
                 "color": COLORS["text_muted"], "fontSize": "9px",
                 "padding": "8px",
-            }), []
+            }), [], view_store
         try:
             from src.data_fetcher import fetch_watchlist_quotes
             data = fetch_watchlist_quotes(wl_data)
             if not data:
                 # Fallback: show tickers with placeholder when Finviz returns no data
                 data = [{"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"} for t in wl_data]
-            return build_watchlist_table(data, "watchlist", "change", False), data
+            return build_watchlist_table(data, "watchlist", "change", False, show_remove=True), data, view_store
         except Exception as e:
             logger.exception("Watchlist fetch failed: %s", e)
-            return _err_div(e), []
+            return _err_div(e), [], view_store
 
     # ==================================================================
     #  PARALLEL WIDGET LOADING
@@ -1280,7 +1334,8 @@ def register_callbacks(app):
         [Output(f"{w}-sort-store", "data", allow_duplicate=True) for w in SORTABLE_WIDGETS],
         Input({"type": "sort-header", "widget": ALL, "column": ALL}, "n_clicks"),
         [State(f"{w}-data-store", "data") for w in SORTABLE_WIDGETS] +
-        [State(f"{w}-sort-store", "data") for w in SORTABLE_WIDGETS],
+        [State(f"{w}-sort-store", "data") for w in SORTABLE_WIDGETS] +
+        [State("watchlist-view-store", "data")],
         prevent_initial_call=True,
     )
     def sort_table(n_clicks_list, *stores):
@@ -1294,6 +1349,7 @@ def register_callbacks(app):
         col = ctx.triggered_id.get("column")
         if not wid or wid not in SORTABLE_WIDGETS or not col:
             return [no_update] * len(SORTABLE_WIDGETS) * 2
+        watchlist_view = stores[-1] if len(stores) > len(SORTABLE_WIDGETS) * 2 else "watchlist"
         builder, content_id, extra = SORTABLE_WIDGETS[wid]
         data_idx = list(SORTABLE_WIDGETS.keys()).index(wid)
         sort_idx = len(SORTABLE_WIDGETS) + data_idx
@@ -1316,6 +1372,9 @@ def register_callbacks(app):
             raw = stores[data_idx]
             date_label = raw.get("date_label", "") if isinstance(raw, dict) else ""
             table = build_stockbee_momentum50_table(data, date_label=date_label, widget_id=wid, sort_col=col, sort_asc=new_asc)
+        elif wid == "watchlist":
+            show_remove = not watchlist_view or str(watchlist_view).strip() == "watchlist"
+            table = build_watchlist_table(data, wid, col, new_asc, show_remove=show_remove)
         else:
             builder, _, _ = SORTABLE_WIDGETS[wid]
             table = builder(data, wid, col, new_asc)
