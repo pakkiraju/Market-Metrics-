@@ -1166,8 +1166,8 @@ def build_qullamaggie_table(data: list[dict], widget_id: str = None, sort_col: s
                   widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
 
 
-def build_watchlist_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
-    """Watchlist: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR %, Remove."""
+def build_watchlist_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True, show_remove: bool = True) -> html.Table:
+    """Watchlist: Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR %, Remove (optional)."""
     from src.sortable_table import sort_data, SCREENER_SORT_KEYS
 
     if not data:
@@ -1178,8 +1178,10 @@ def build_watchlist_table(data: list[dict], widget_id: str = None, sort_col: str
         data = sort_data(data, sort_col, sort_asc, SCREENER_SORT_KEYS)
     headers = [
         ("Ticker", "ticker"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
-        ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"), ("", None),
+        ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"),
     ]
+    if show_remove:
+        headers.append(("", None))
     rows = []
     for r in data:
         chg_val = r.get("change")
@@ -1189,22 +1191,7 @@ def build_watchlist_table(data: list[dict], widget_id: str = None, sort_col: str
             chg_num = 0
         vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
         t = r["ticker"]
-        remove_btn = html.Button(
-            "×",
-            id={"type": "wl-remove", "ticker": t},
-            n_clicks=0,
-            style={
-                "background": "transparent",
-                "border": "none",
-                "color": COLORS["red_light"],
-                "cursor": "pointer",
-                "fontSize": "12px",
-                "fontWeight": 700,
-                "padding": "0 4px",
-                "lineHeight": 1,
-            },
-        )
-        rows.append([
+        row_cells = [
             {"text": _clickable_ticker(t, {"fontWeight": 700}),
              "style": TABLE_CELL_STYLE},
             str(r.get("price", "")),
@@ -1214,12 +1201,32 @@ def build_watchlist_table(data: list[dict], widget_id: str = None, sort_col: str
              "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
             vol_str,
             f"{r.get('atr_pct', 0):.2f}%" if r.get("atr_pct") is not None else "",
-            {"text": remove_btn, "style": {**TABLE_CELL_STYLE, "width": "24px", "padding": "2px"}},
-        ])
+        ]
+        if show_remove:
+            remove_btn = html.Button(
+                "×",
+                id={"type": "wl-remove", "ticker": t},
+                n_clicks=0,
+                style={
+                    "background": "transparent",
+                    "border": "none",
+                    "color": COLORS["red_light"],
+                    "cursor": "pointer",
+                    "fontSize": "12px",
+                    "fontWeight": 700,
+                    "padding": "0 4px",
+                    "lineHeight": 1,
+                },
+            )
+            row_cells.append({"text": remove_btn, "style": {**TABLE_CELL_STYLE, "width": "24px", "padding": "2px"}})
+        rows.append(row_cells)
+    col_widths = ["70px", "55px", "65px", "55px", "55px", "65px", "55px"]
+    if show_remove:
+        col_widths.append("28px")
     return _table(
         headers,
         rows,
-        col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px", "28px"],
+        col_widths=col_widths,
         widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc,
     )
 
@@ -2040,36 +2047,49 @@ def build_watchlist_body() -> html.Div:
     return html.Div([
         dcc.Store(id="watchlist-data-store"),
         dcc.Store(id="watchlist-sort-store", data={"col": "change", "asc": False}),
+        dcc.Store(id="watchlist-view-store", data="watchlist"),
         html.Div([
-            dcc.Input(
-                id="watchlist-input",
-                type="text",
-                placeholder="Add ticker (e.g. AAPL or AMD, aapl, GOOGL)",
-                debounce=True,
-                style={
-                    "backgroundColor": COLORS["surface2"],
-                    "border": f"1px solid {COLORS['border']}",
-                    "color": COLORS["text"],
-                    "padding": "3px 6px",
-                    "borderRadius": "3px",
-                    "fontSize": "10px",
-                    "width": "120px",
-                    "outline": "none",
-                },
+            html.Label("View:", style={"fontSize": "10px", "color": COLORS["text_muted"], "marginRight": "6px"}),
+            dcc.Dropdown(
+                id="watchlist-sector-dropdown",
+                options=[{"label": "My Watchlist", "value": "watchlist"}],
+                value="watchlist",
+                clearable=False,
+                style={"minWidth": "160px", "fontSize": "10px"},
             ),
-            html.Button("Add", id="btn-watchlist-add", style={
-                "backgroundColor": COLORS["green_cell"],
-                "border": f"1px solid {COLORS['green_strong']}",
-                "color": COLORS["green_light"],
-                "padding": "3px 8px",
-                "borderRadius": "3px",
-                "cursor": "pointer",
-                "fontSize": "10px",
-                "fontWeight": 600,
+            html.Div([
+                dcc.Input(
+                    id="watchlist-input",
+                    type="text",
+                    placeholder="Add ticker (e.g. AAPL or AMD, aapl, GOOGL)",
+                    debounce=True,
+                    style={
+                        "backgroundColor": COLORS["surface2"],
+                        "border": f"1px solid {COLORS['border']}",
+                        "color": COLORS["text"],
+                        "padding": "3px 6px",
+                        "borderRadius": "3px",
+                        "fontSize": "10px",
+                        "width": "120px",
+                        "outline": "none",
+                    },
+                ),
+                html.Button("Add", id="btn-watchlist-add", style={
+                    "backgroundColor": COLORS["green_cell"],
+                    "border": f"1px solid {COLORS['green_strong']}",
+                    "color": COLORS["green_light"],
+                    "padding": "3px 8px",
+                    "borderRadius": "3px",
+                    "cursor": "pointer",
+                    "fontSize": "10px",
+                    "fontWeight": 600,
+                }),
+            ], id="watchlist-add-row", style={
+                "display": "flex", "gap": "4px", "alignItems": "center",
             }),
         ], style={
-            "display": "flex", "gap": "4px", "padding": "4px 4px 2px 4px",
-            "alignItems": "center",
+            "display": "flex", "alignItems": "center", "padding": "4px 4px 2px 4px",
+            "gap": "8px", "flexWrap": "wrap",
         }),
         html.Div(id="watchlist-content"),
     ])
