@@ -371,3 +371,4 @@ Market Metrics Dashboard/
 - **Core Inflation MoM / YoY** — Core Inflation Rate Expected vs Actual YTD bar charts (FinViz Elite)
 - **S&P 500 Landscape** — Bubble chart of S&P 500 constituents by sector and valuation
 - **Top Gainers / Top Losers** — Intraday tab widgets showing top 12 gainers and losers
+- **Watchlist** — Sector dropdown to quickly view any S&P 500 sector (My Watchlist at top); bulk fetch for faster loading; delete button fix for reliable removal

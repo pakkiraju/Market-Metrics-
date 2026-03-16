@@ -626,8 +626,8 @@ def fetch_earnings_this_week(ttl: int = MEDIUM) -> list[dict]:
         return cached
 
     try:
-        from src.finviz_elite import fetch_export_from_url, is_elite_configured
-        from src.constants import FINVIZ_EXPORT_URLS
+        from src.finviz_elite import fetch_export_from_url, fetch_elite_by_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS, FINVIZ_SCREENER_URLS
 
         if not is_elite_configured():
             return []
@@ -638,7 +638,12 @@ def fetch_earnings_this_week(ttl: int = MEDIUM) -> list[dict]:
         time.sleep(_FINVIZ_DELAY_SEC)
         overview_data = fetch_export_from_url(url_overview, caller="earnings_this_week_overview")
         if not overview_data:
-            return []
+            # Fallback: use HTML screener when export.ashx redirects to login (some auth configs)
+            url_screener = FINVIZ_SCREENER_URLS.get("earnings_this_week")
+            if url_screener:
+                overview_data = fetch_elite_by_url(url_screener)
+            if not overview_data:
+                return []
         mcap_map = {}
         o_keys = list(overview_data[0].keys())
         o_ticker = _find_csv_col(o_keys, exact="Ticker") or _find_csv_col(o_keys, "ticker") or "Ticker"
@@ -661,7 +666,12 @@ def fetch_earnings_this_week(ttl: int = MEDIUM) -> list[dict]:
         time.sleep(_FINVIZ_DELAY_SEC)
         perf_data = fetch_export_from_url(url_perf, caller="earnings_this_week_perf")
         if not perf_data:
-            return []
+            # Fallback: use HTML screener when export.ashx redirects to login
+            url_screener_perf = FINVIZ_SCREENER_URLS.get("earnings_this_week_perf")
+            if url_screener_perf:
+                perf_data = fetch_elite_by_url(url_screener_perf)
+            if not perf_data:
+                return []
 
         keys = list(perf_data[0].keys())
         ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"

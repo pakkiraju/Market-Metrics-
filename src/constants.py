@@ -213,8 +213,9 @@ FINVIZ_SCREENER_URLS = {
     "leading": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1,tad_0_rsi:14:rsi:d|abveq:::|value:::60&o=-change",
     # Earnings Yesterday + Today
     "earnings_yesterday_today": "https://elite.finviz.com/screener.ashx?v=111&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=change",
-    # Earnings This Week (Market Metrics)
-    "earnings_this_week": "https://elite.finviz.com/screener.ashx?v=111&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-marketcap",
+    # Earnings This Week (Market Metrics). Overview (v=111) for mcap; Performance (v=141) for avg vol, rel vol.
+    "earnings_this_week": "https://elite.finviz.com/screener.ashx?v=111&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
+    "earnings_this_week_perf": "https://elite.finviz.com/screener.ashx?v=141&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
     # Stocks In Play: news yesterday|today, avg vol 1000+, price $1+, rel vol 2+
     "stocks_in_play": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa,news_date_yesterday|today,sh_avgvol_o1000,sh_price_o1,sh_relvol_o2&o=-change",
     # Pre-market Scanner: USA, avg vol 1000+, price $1+, rel vol 1+, up 3%
@@ -261,9 +262,9 @@ FINVIZ_EXPORT_URLS = {
     "4pct_daily": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change&c=1,47,61,62,63,64,65",
     "earnings_yesterday_today": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=change",
     "earnings_yesterday_today_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change",
-    # Earnings This Week: Overview for Market Cap; Performance for Avg Vol, Rel Vol
-    "earnings_this_week_overview": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-marketcap",
-    "earnings_this_week_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-marketcap&c=1,47,61,62,63,64,65",
+    # Earnings This Week: Overview for Market Cap; Performance for Avg Vol, Rel Vol. ft=4 for earnings date filter.
+    "earnings_this_week_overview": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
+    "earnings_this_week_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
     # Stocks in Play: c=1,137,47,61,62,63,64,65 = Ticker,News/Link,ATR,AvgVol,RelVol,Price,Change,Volume
     "stocks_in_play": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,news_date_yesterday|today,sh_avgvol_o1000,sh_price_o1,sh_relvol_o2&o=-change&c=1,137,47,61,62,63,64,65",
     # Pre-market Scanner: USA, avg vol 1000+, price $1+, rel vol 1+, up 3%. Columns: Ticker, Gap, Avg Volume, Rel Volume, Volume, Price, Change, News Time, News Title, Daily Digest, News URL
