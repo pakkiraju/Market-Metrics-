@@ -11,7 +11,7 @@ from dash import html, dcc, Input, Output, State, callback, no_update, ctx, ALL
 import plotly.graph_objects as go
 
 from src import cache
-from src.constants import COLORS, RATE_WATCH_LINKS
+from src.constants import COLORS, RATE_WATCH_LINKS, GRAPH_CONFIG, GRAPH_CONFIG_ZOOM
 from src.calculations import (
     compute_all_key_metrics,
     compute_sector_data,
@@ -212,6 +212,37 @@ def register_callbacks(app):
         date_str = now.strftime("%A, %B %d, %Y")
         time_str = now.strftime("%I:%M:%S %p")
         return f"{date_str} · {time_str}"
+
+    # ------------------------------------------------------------------
+    # 0c. Chart resize on tab switch / initial load (fixes zoomed-in charts)
+    # ------------------------------------------------------------------
+    app.clientside_callback(
+        """
+        function(tabValue, nResize, settingsDisplay) {
+            function doResize() {
+                var graphs = document.querySelectorAll('.js-plotly-plot');
+                if (window.Plotly && window.Plotly.Plots) {
+                    for (var i = 0; i < graphs.length; i++) {
+                        try {
+                            window.Plotly.Plots.resize(graphs[i]);
+                        } catch (e) {}
+                    }
+                }
+                window.dispatchEvent(new Event('resize'));
+            }
+            setTimeout(doResize, 400);
+            setTimeout(doResize, 900);
+            setTimeout(doResize, 1500);
+            return Date.now();
+        }
+        """,
+        Output("chart-resize-trigger", "data"),
+        [
+            Input("main-tabs", "value"),
+            Input("interval-chart-resize", "n_intervals"),
+            Input("settings-drawer", "style"),
+        ],
+    )
 
     # ------------------------------------------------------------------
     # 1. Settings drawer toggle
@@ -432,7 +463,7 @@ def register_callbacks(app):
             ])
             chart2 = dcc.Graph(
                 figure=chart2_fig,
-                config={"displayModeBar": False},
+                config=GRAPH_CONFIG,
                 style={"height": "100%", "width": "100%"},
             )
             chart3_fig = build_metrics_bar_chart([
@@ -441,7 +472,7 @@ def register_callbacks(app):
             ])
             chart3 = dcc.Graph(
                 figure=chart3_fig,
-                config={"displayModeBar": False},
+                config=GRAPH_CONFIG,
                 style={"height": "100%", "width": "100%"},
             )
             return [key_metrics_table, chart2, chart3, _now_str()]
@@ -642,12 +673,12 @@ def register_callbacks(app):
             fig2 = build_breadth_ratios_chart(history)
             fig3 = build_secondary_breadth_chart(history)
             fig4 = build_sp500_chart(history)
-            graph_cfg = {"displayModeBar": False}
+            chart_style = {"height": "200px", "width": "100%"}
             return [
-                dcc.Graph(figure=fig1, config=graph_cfg, style={"height": "100%", "width": "100%"}),
-                dcc.Graph(figure=fig2, config=graph_cfg, style={"height": "100%", "width": "100%"}),
-                dcc.Graph(figure=fig3, config=graph_cfg, style={"height": "100%", "width": "100%"}),
-                dcc.Graph(figure=fig4, config=graph_cfg, style={"height": "100%", "width": "100%"}),
+                dcc.Graph(figure=fig1, config=GRAPH_CONFIG, style=chart_style),
+                dcc.Graph(figure=fig2, config=GRAPH_CONFIG, style=chart_style),
+                dcc.Graph(figure=fig3, config=GRAPH_CONFIG, style=chart_style),
+                dcc.Graph(figure=fig4, config=GRAPH_CONFIG, style=chart_style),
             ]
         except Exception as e:
             logger.exception("Breadth charts failed: %s", e)
@@ -675,7 +706,7 @@ def register_callbacks(app):
             graph = dcc.Graph(
                 id="rrg-graph",
                 figure=fig,
-                config={"displayModeBar": False},
+                config=GRAPH_CONFIG,
                 style={"height": "100%", "width": "100%"},
             )
             return fig.to_dict(), graph
@@ -713,7 +744,7 @@ def register_callbacks(app):
             fig = build_sp500_landscape_chart(data, sector_filter=sector_filter)
             return no_update, no_update, dcc.Graph(
                 figure=fig,
-                config={"displayModeBar": False, "scrollZoom": True},
+                config=GRAPH_CONFIG_ZOOM,
                 style={"height": "100%", "width": "100%"},
             )
 
@@ -730,7 +761,7 @@ def register_callbacks(app):
             fig = build_sp500_landscape_chart(data, sector_filter=sector_filter)
             return data, options, dcc.Graph(
                 figure=fig,
-                config={"displayModeBar": False, "scrollZoom": True},
+                config=GRAPH_CONFIG_ZOOM,
                 style={"height": "100%", "width": "100%"},
             )
         except Exception as e:
@@ -862,7 +893,7 @@ def register_callbacks(app):
             logger.exception("Group D failed: %s", e)
             return [_err_div(e), [], no_update, _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
 
-    # Sync Rate Watch currency: when any dropdown changes, update store; when store changes, sync all 4 dropdowns
+    # Rate Watch currency: dropdowns -> store (no cycle). Sync dropdowns via clientside only.
     @app.callback(
         Output("rate-watch-currency-store", "data"),
         [
@@ -888,19 +919,39 @@ def register_callbacks(app):
             return p4 or "USD"
         return "USD"
 
-    @app.callback(
+    # Clientside sync: when any dropdown changes, update the other 3 (avoids store->dropdown cycle)
+    app.clientside_callback(
+        """
+        function(p1, p2, p3, p4) {
+            var triggered = dash_clientside.callback_context.triggered;
+            if (!triggered || triggered.length === 0) return dash_clientside.no_update;
+            var tid = triggered[0].prop_id;
+            var ccy = "USD";
+            if (tid.indexOf("probabilities") >= 0) ccy = p1 || "USD";
+            else if (tid.indexOf("rate-path") >= 0) ccy = p2 || "USD";
+            else if (tid.indexOf("distribution") >= 0) ccy = p3 || "USD";
+            else if (tid.indexOf("rate-ranges") >= 0) ccy = p4 || "USD";
+            if (p1 === ccy && p2 === ccy && p3 === ccy && p4 === ccy) return dash_clientside.no_update;
+            var no = dash_clientside.no_update;
+            if (tid.indexOf("probabilities") >= 0) return [no, ccy, ccy, ccy];
+            if (tid.indexOf("rate-path") >= 0) return [ccy, no, ccy, ccy];
+            if (tid.indexOf("distribution") >= 0) return [ccy, ccy, no, ccy];
+            return [ccy, ccy, ccy, no];
+        }
+        """,
         [
             Output("rate-watch-probabilities-currency", "value"),
             Output("rate-watch-rate-path-currency", "value"),
             Output("rate-watch-distribution-currency", "value"),
             Output("rate-watch-rate-ranges-currency", "value"),
         ],
-        Input("rate-watch-currency-store", "data"),
-        prevent_initial_call=False,
+        [
+            Input("rate-watch-probabilities-currency", "value"),
+            Input("rate-watch-rate-path-currency", "value"),
+            Input("rate-watch-distribution-currency", "value"),
+            Input("rate-watch-rate-ranges-currency", "value"),
+        ],
     )
-    def sync_rate_watch_dropdowns(currency):
-        ccy = currency or "USD"
-        return ccy, ccy, ccy, ccy
 
     def _make_rate_watch_callback(widget_id: str, view: str):
         """Factory for Rate Watch widget callbacks."""
@@ -976,7 +1027,7 @@ def register_callbacks(app):
             fig = build_cpi_chart(data)
             return dcc.Graph(
                 figure=fig,
-                config={"displayModeBar": False},
+                config=GRAPH_CONFIG,
                 style={"height": "100%", "width": "100%"},
             )
         except Exception as e:
@@ -999,7 +1050,7 @@ def register_callbacks(app):
             from src.cpi_data import fetch_core_inflation_mom_ytd
             data = fetch_core_inflation_mom_ytd()
             fig = build_core_inflation_mom_chart(data)
-            return dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "100%", "width": "100%"})
+            return dcc.Graph(figure=fig, config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"})
         except Exception as e:
             logger.exception("Core Inflation MoM failed: %s", e)
             return _err_div(e)
@@ -1020,7 +1071,7 @@ def register_callbacks(app):
             from src.cpi_data import fetch_core_inflation_yoy_ytd
             data = fetch_core_inflation_yoy_ytd()
             fig = build_core_inflation_yoy_chart(data)
-            return dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "100%", "width": "100%"})
+            return dcc.Graph(figure=fig, config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"})
         except Exception as e:
             logger.exception("Core Inflation YoY failed: %s", e)
             return _err_div(e)
@@ -1144,7 +1195,7 @@ def register_callbacks(app):
                 c = r.get("counts", {})
                 sc = html.Div([
                     build_stage_summary(c),
-                    dcc.Graph(figure=build_stage_chart(c), config={"displayModeBar": False}, style={"height": "100%", "width": "100%"}),
+                    dcc.Graph(figure=build_stage_chart(c), config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"}),
                 ], style=CHART_WRAP_STYLE)
                 return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, sc)
 
@@ -1161,7 +1212,7 @@ def register_callbacks(app):
             counts = stage_result.get("counts", {})
             stage_content = html.Div([
                 build_stage_summary(counts),
-                dcc.Graph(figure=build_stage_chart(counts), config={"displayModeBar": False}, style={"height": "100%", "width": "100%"}),
+                dcc.Graph(figure=build_stage_chart(counts), config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"}),
             ], style=CHART_WRAP_STYLE)
             return [leading_table, leading_data, thematics_table, thematics_data, thematics_sector_table, thematics_sector_data, top_gainers_table, top_losers_table, stage_content]
         except Exception as e:
@@ -1189,7 +1240,7 @@ def register_callbacks(app):
             graph = dcc.Graph(
                 id="thematics-rrg-graph",
                 figure=fig,
-                config={"displayModeBar": False},
+                config=GRAPH_CONFIG,
                 style={"height": "100%", "width": "100%"},
             )
             return fig.to_dict(), graph

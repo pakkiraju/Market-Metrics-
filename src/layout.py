@@ -17,7 +17,7 @@ from src.constants import (
     COLORS, KEY_METRIC_ROWS, INDEX_GROUPS, SECTOR_NAMES,
     STAGE_BAR_COLORS, STAGE_LABELS, FINVIZ_SCREENER_URLS,
     build_metric_screener_url, RRG_BENCHMARK, RRG_COLORS,
-    STOCKBEE_LINKS, RATE_WATCH_LINKS,
+    STOCKBEE_LINKS, RATE_WATCH_LINKS, GRAPH_CONFIG,
 )
 from src.styles import (
     DASHBOARD_STYLE, HEADER_STYLE, HEADER_LOGO_STYLE,
@@ -30,7 +30,7 @@ from src.styles import (
     section_header_style, SECTION_BODY_STYLE, KEY_METRICS_BODY_STYLE,
     TICKER_GRID_STYLE, ticker_pill_style,
     TABLE_STYLE, TABLE_HEADER_STYLE, TABLE_CELL_STYLE,
-    CHART_WRAP_STYLE, BREADTH_CHART_BODY_STYLE, LOADING_STYLE,
+    CHART_WRAP_STYLE, BREADTH_CHART_BODY_STYLE, RRG_CHART_BODY_STYLE, SP500_LANDSCAPE_CHART_HEIGHT, LOADING_STYLE,
     SETTINGS_OVERLAY_STYLE_HIDDEN, SETTINGS_TITLE_STYLE,
     SETTINGS_ITEM_STYLE, TOGGLE_LABEL_STYLE,
     stage_badge_style,
@@ -403,6 +403,7 @@ def build_metrics_bar_chart(groups: list[tuple]) -> go.Figure:
 
     x_range = max(max_extent * 1.1, 50)
     fig.update_layout(
+        autosize=True,
         barmode="relative",
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
@@ -423,7 +424,7 @@ def build_metrics_bar_chart(groups: list[tuple]) -> go.Figure:
             showgrid=False,
         ),
         font=dict(family="Inter", size=8),
-        height=420,
+        height=SCROLLABLE_BODY_HEIGHT,
     )
     return fig
 
@@ -860,6 +861,7 @@ def _build_expected_actual_chart(data: list[dict], y_title: str, empty_msg: str,
             font=dict(size=12, color=COLORS["text_muted"]),
         )
         fig.update_layout(
+            autosize=True,
             paper_bgcolor=COLORS["surface"],
             plot_bgcolor=COLORS["surface"],
             margin=dict(l=4, r=4, t=4, b=4),
@@ -874,7 +876,7 @@ def _build_expected_actual_chart(data: list[dict], y_title: str, empty_msg: str,
     all_vals = [v for v in expected + actual if v is not None]
     if all_vals:
         lo, hi = min(all_vals), max(all_vals)
-        pad = max((hi - lo) * 0.08, min_pad)
+        pad = max((hi - lo) * 0.08, min_pad) if hi != lo else min_pad
         y_min, y_max = lo - pad, hi + pad
     else:
         y_min, y_max = None, None
@@ -882,7 +884,19 @@ def _build_expected_actual_chart(data: list[dict], y_title: str, empty_msg: str,
     fig = go.Figure()
     fig.add_trace(go.Bar(x=months, y=expected, name="Expected", marker_color=COLORS["accent"], width=0.35, offset=-0.175))
     fig.add_trace(go.Bar(x=months, y=actual, name="Actual", marker_color=COLORS["green"], width=0.35, offset=0.175))
+
+    yaxis_config = dict(
+        title=dict(text=y_title, font=dict(size=9, color=COLORS["text_muted"])),
+        tickfont=dict(size=8, color=COLORS["text_faint"]),
+        gridcolor="rgba(255,255,255,0.05)",
+        zeroline=False,
+    )
+    if y_min is not None and y_max is not None:
+        yaxis_config["range"] = [y_min, y_max]
+        yaxis_config["fixedrange"] = False
+
     fig.update_layout(
+        autosize=True,
         barmode="group",
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
@@ -890,13 +904,7 @@ def _build_expected_actual_chart(data: list[dict], y_title: str, empty_msg: str,
         showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=9, color=COLORS["text_muted"])),
         xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
-        yaxis=dict(
-            title=dict(text=y_title, font=dict(size=9, color=COLORS["text_muted"])),
-            tickfont=dict(size=8, color=COLORS["text_faint"]),
-            gridcolor="rgba(255,255,255,0.05)",
-            zeroline=False,
-            range=[y_min, y_max] if y_min is not None else None,
-        ),
+        yaxis=yaxis_config,
         font=dict(family="Inter", size=8),
         height=280,
     )
@@ -945,6 +953,7 @@ def _build_rate_watch_probability_chart(data: dict, height: int = 220) -> go.Fig
         fig.add_trace(go.Bar(x=labels, y=hike, name="Hike", marker_color=COLORS["green"], width=0.6))
         fig.update_layout(barmode="stack")
     fig.update_layout(
+        autosize=True,
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
         margin=dict(l=4, r=4, t=24, b=4),
@@ -982,23 +991,24 @@ def _build_rate_watch_rate_path_chart(data: dict, height: int = 220) -> go.Figur
                                  marker=dict(size=6)))
         fig.add_trace(go.Scatter(x=labels, y=[current] * len(labels), name="Current",
                                  line=dict(color=COLORS["yellow"], width=1.5, dash="dash")))
-        fig.update_layout(
-            paper_bgcolor=COLORS["surface"],
-            plot_bgcolor=COLORS["surface"],
-            margin=dict(l=4, r=4, t=24, b=4),
-            showlegend=True,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
-                       font=dict(size=9, color=COLORS["text_muted"])),
-            xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
-            yaxis=dict(
-                title=dict(text="Rate %", font=dict(size=9, color=COLORS["text_muted"])),
-                tickfont=dict(size=8, color=COLORS["text_faint"]),
-                gridcolor="rgba(255,255,255,0.05)",
-                zeroline=False,
-            ),
-            font=dict(family="Inter", size=8),
-            height=height,
-        )
+    fig.update_layout(
+        autosize=True,
+        paper_bgcolor=COLORS["surface"],
+        plot_bgcolor=COLORS["surface"],
+        margin=dict(l=4, r=4, t=24, b=4),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
+                   font=dict(size=9, color=COLORS["text_muted"])),
+        xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
+        yaxis=dict(
+            title=dict(text="Rate %", font=dict(size=9, color=COLORS["text_muted"])),
+            tickfont=dict(size=8, color=COLORS["text_faint"]),
+            gridcolor="rgba(255,255,255,0.05)",
+            zeroline=False,
+        ),
+        font=dict(family="Inter", size=8),
+        height=height,
+    )
     return fig
 
 
@@ -1018,13 +1028,13 @@ def build_rate_watch_content(currency: str, data: dict, view: str = "probabiliti
     if view == "probabilities":
         return dcc.Graph(
             figure=_build_rate_watch_probability_chart(data, height=chart_height),
-            config={"displayModeBar": False},
+            config=GRAPH_CONFIG,
             style={"height": "100%", "width": "100%"},
         )
     if view == "rate-path":
         return dcc.Graph(
             figure=_build_rate_watch_rate_path_chart(data, height=chart_height),
-            config={"displayModeBar": False},
+            config=GRAPH_CONFIG,
             style={"height": "100%", "width": "100%"},
         )
     if view == "distribution":
@@ -1548,8 +1558,9 @@ def build_stockbee_momentum50_table(data: list[dict], date_label: str = "", widg
 # -----------------------------------------------------------------------
 
 def _breadth_chart_layout():
-    """Shared layout for breadth charts."""
+    """Shared layout for breadth charts. Fixed height to avoid zoom on tab switch."""
     return dict(
+        autosize=False,
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
         margin=dict(l=4, r=4, t=4, b=4),
@@ -1737,6 +1748,7 @@ def build_stage_chart(counts: dict) -> go.Figure:
         width=0.6,
     ))
     fig.update_layout(
+        autosize=True,
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
         margin=dict(l=4, r=4, t=4, b=4),
@@ -1791,6 +1803,7 @@ def build_rrg_chart(rrg_data: list[dict]) -> go.Figure:
     fig.add_vline(x=100, line_dash="dot", line_color=COLORS["border_light"], opacity=0.6)
     fig.add_hline(y=100, line_dash="dot", line_color=COLORS["border_light"], opacity=0.6)
     fig.update_layout(
+        autosize=True,
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
         margin=dict(l=4, r=4, t=24, b=4),
@@ -1932,6 +1945,7 @@ def build_sp500_landscape_chart(data: list[dict], sector_filter: list[str] | Non
     ))
 
     fig.update_layout(
+        autosize=True,
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
         margin=dict(l=50, r=20, t=24, b=60),
@@ -1952,7 +1966,7 @@ def build_sp500_landscape_chart(data: list[dict], sector_filter: list[str] | Non
             fixedrange=False,
         ),
         font=dict(family="Inter"),
-        height=SCROLLABLE_BODY_HEIGHT,
+        height=SP500_LANDSCAPE_CHART_HEIGHT,
         annotations=[
             dict(x=0.02, y=0.02, xref="paper", yref="paper", showarrow=False,
                  text="12M Change: -50% (red) → 0% → 100% (green)<br>Size: Market Cap ($1B → $1T)",
@@ -2221,7 +2235,9 @@ def build_layout() -> html.Div:
         dcc.Interval(id="interval-live-snapshot", interval=300_000, n_intervals=0),
         dcc.Interval(id="market-hours-check", interval=60_000, n_intervals=0),
         dcc.Interval(id="interval-header-clock", interval=1000, n_intervals=0),
+        dcc.Interval(id="interval-chart-resize", interval=500, n_intervals=0, max_intervals=1),
         dcc.Store(id="watchlist-store", data=_initial_watchlist()),
+        dcc.Store(id="chart-resize-trigger"),
 
         build_header(),
         build_settings_drawer(),
@@ -2421,14 +2437,16 @@ def build_layout() -> html.Div:
                         card_style_override=WIDGET_KEY_METRICS_STYLE),
                 _widget("chart2", "NQ100, SPY500 & DJIA Metrics",
                         _loading_wrap("chart2-content", [loading],
-                                      style=CHART_WRAP_STYLE),
+                                      style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                         variant="teal", primary=True,
-                        initial_hidden=not DEFAULT_VISIBILITY.get("chart2", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("chart2", True),
+                        body_style=RRG_CHART_BODY_STYLE),
                 _widget("chart3", "RUS2000 & $1B+ Stocks",
                         _loading_wrap("chart3-content", [loading],
-                                      style=CHART_WRAP_STYLE),
+                                      style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                         variant="teal", primary=True,
-                        initial_hidden=not DEFAULT_VISIBILITY.get("chart3", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("chart3", True),
+                        body_style=RRG_CHART_BODY_STYLE),
             ], id="row-primary", style=PRIMARY_ROW_STYLE),
 
             # ---- STOCKBEE ROW (under Key Metrics): Breadth | Momentum50 ----
@@ -2528,12 +2546,13 @@ def build_layout() -> html.Div:
                         html.Div([
                             dcc.Store(id="rrg-figure-store"),
                             dcc.Loading(
-                                html.Div(id="rrg-content", children=[loading], style=CHART_WRAP_STYLE),
+                                html.Div(id="rrg-content", children=[loading], style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                                 type="circle", color=COLORS["accent"], style={"minHeight": "40px"},
                             ),
-                        ], style={"minHeight": f"{SCROLLABLE_BODY_HEIGHT}px"}),
+                        ], style={"height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                         variant="teal",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("rrg", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("rrg", True),
+                        body_style=RRG_CHART_BODY_STYLE),
                 _widget("sp500-landscape", "S&P 500 Landscape Bubble Chart",
                         html.Div([
                             dcc.Store(id="sp500-landscape-data-store"),
@@ -2550,12 +2569,13 @@ def build_layout() -> html.Div:
                                 ),
                             ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px", "flexWrap": "wrap"}),
                             dcc.Loading(
-                                html.Div(id="sp500-landscape-content", children=[loading], style=CHART_WRAP_STYLE),
+                                html.Div(id="sp500-landscape-content", children=[loading], style={**CHART_WRAP_STYLE, "height": f"{SP500_LANDSCAPE_CHART_HEIGHT}px", "overflow": "hidden"}),
                                 type="circle", color=COLORS["accent"], style={"minHeight": "40px"},
                             ),
-                        ], style={"minHeight": f"{SCROLLABLE_BODY_HEIGHT}px", "display": "flex", "flexDirection": "column"}),
+                        ], style={"height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden", "display": "flex", "flexDirection": "column"}),
                         variant="teal",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("sp500-landscape", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("sp500-landscape", True),
+                        body_style=RRG_CHART_BODY_STYLE),
             ], id="row-sector", style=THIRD_ROW_STYLE),
 
             # ---- MIDDLE 4 ----
@@ -2652,12 +2672,13 @@ def build_layout() -> html.Div:
                         html.Div([
                             dcc.Store(id="thematics-rrg-figure-store"),
                             dcc.Loading(
-                                html.Div(id="thematics-rrg-content", children=[loading], style=CHART_WRAP_STYLE),
+                                html.Div(id="thematics-rrg-content", children=[loading], style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                                 type="circle", color=COLORS["accent"], style={"minHeight": "40px"},
                             ),
-                        ], style={"minHeight": f"{SCROLLABLE_BODY_HEIGHT}px"}),
+                        ], style={"height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                         variant="teal",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("thematics-rrg", True)),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("thematics-rrg", True),
+                        body_style=RRG_CHART_BODY_STYLE),
             ], id="row-thematics", style=THIRD_ROW_STYLE),
         ], style=CONTENT_AREA_STYLE),
                     ],

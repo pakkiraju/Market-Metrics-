@@ -347,6 +347,19 @@ BREADTH_CHART_BODY_STYLE = {
     "position": "relative",
 }
 
+# RRG chart: fixed height to match chart data (360px), no scrollbar
+RRG_CHART_HEIGHT = SCROLLABLE_BODY_HEIGHT
+# S&P 500 Landscape: chart height leaves room for sector filter (~40px)
+SP500_LANDSCAPE_CHART_HEIGHT = SCROLLABLE_BODY_HEIGHT - 40
+RRG_CHART_BODY_STYLE = {
+    "overflow": "hidden",
+    "height": f"{RRG_CHART_HEIGHT}px",
+    "minHeight": RRG_CHART_HEIGHT,
+    "maxHeight": RRG_CHART_HEIGHT,
+    "backgroundColor": COLORS["surface"],
+    "position": "relative",
+}
+
 # ---------- Loading spinner ----------
 LOADING_STYLE = {
     "display": "flex",

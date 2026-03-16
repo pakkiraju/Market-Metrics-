@@ -1,5 +1,9 @@
 """Color tokens, stage definitions, and shared constants."""
 
+# ---------- Graph config (responsive for tab-switch resize fix) ----------
+GRAPH_CONFIG = {"displayModeBar": False, "responsive": True}
+GRAPH_CONFIG_ZOOM = {"displayModeBar": False, "scrollZoom": True, "responsive": True}
+
 # ---------- Dark theme palette (matches old base.css) ----------
 COLORS = {
     "bg": "#0a0e17",
