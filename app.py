@@ -77,6 +77,43 @@ app.index_string = f"""<!DOCTYPE html>
             opacity: 0.75;
             text-decoration: underline;
         }}
+
+        /* Dropdown dark theme — easier on eyes */
+        :root {{
+            --Dash-Fill-Inverse-Strong: {COLORS['surface2']};
+            --Dash-Stroke-Strong: {COLORS['border']};
+            --Dash-Fill-Interactive-Strong: {COLORS['accent']};
+            --Dash-Text-Strong: {COLORS['text']};
+            --Dash-Text-Weak: {COLORS['text_muted']};
+            --Dash-Text-Disabled: {COLORS['text_faint']};
+            --Dash-Fill-Interactive-Weak: rgba(6, 182, 212, 0.15);
+            --Dash-Fill-Disabled: {COLORS['border']};
+            --Dash-Shading-Strong: rgba(0, 0, 0, 0.5);
+            --Dash-Shading-Weak: rgba(0, 0, 0, 0.2);
+            --Dash-Spacing: 4px;
+        }}
+        .dash-dropdown,
+        .dash-dropdown-content,
+        .dash-dropdown-search-container {{
+            background: {COLORS['surface2']} !important;
+            border-color: {COLORS['border_light']} !important;
+            color: {COLORS['text']} !important;
+        }}
+        .dash-dropdown:focus,
+        .dash-dropdown-search-container:focus-within {{
+            border-color: {COLORS['accent']} !important;
+            outline-color: {COLORS['accent']} !important;
+        }}
+        .dash-dropdown-placeholder {{
+            color: {COLORS['text_faint']} !important;
+        }}
+        .dash-dropdown-option:hover {{
+            background: rgba(6, 182, 212, 0.12) !important;
+        }}
+        .dash-dropdown-value-count {{
+            background: rgba(6, 182, 212, 0.2) !important;
+            color: {COLORS['text_muted']} !important;
+        }}
     </style>
 </head>
 <body>
@@ -140,6 +177,47 @@ app.index_string = f"""<!DOCTYPE html>
                 if (iframe) iframe.src = '';
             }}
         }});
+
+        /* Inject dropdown dark theme after Dash components load (overrides async-loaded CSS) */
+        function injectDropdownDarkTheme() {{
+            var id = 'dropdown-dark-override';
+            if (document.getElementById(id)) return;
+            var s = document.createElement('style');
+            s.id = id;
+            s.textContent = `
+                button.dash-dropdown, .dash-dropdown-trigger {{
+                    background: {COLORS['surface2']} !important;
+                    border: 1px solid {COLORS['border_light']} !important;
+                    color: {COLORS['text']} !important;
+                }}
+                button.dash-dropdown:hover, .dash-dropdown-trigger:hover {{
+                    background: {COLORS['surface3']} !important;
+                }}
+                button.dash-dropdown:focus, .dash-dropdown-trigger:focus {{
+                    border-color: {COLORS['accent']} !important;
+                    outline: 1px solid {COLORS['accent']} !important;
+                }}
+                .dash-dropdown-content, [data-radix-popper-content-wrapper] {{
+                    background: {COLORS['surface2']} !important;
+                    border: 1px solid {COLORS['border_light']} !important;
+                    color: {COLORS['text']} !important;
+                }}
+                .dash-dropdown-placeholder {{ color: {COLORS['text_faint']} !important; }}
+                .dash-dropdown-value, .dash-dropdown-value-item, .dash-dropdown-option {{ color: {COLORS['text']} !important; }}
+                .dash-dropdown-option:hover {{ background: rgba(6,182,212,0.15) !important; }}
+                .dash-dropdown-search-container, .dash-dropdown-search {{
+                    background: {COLORS['surface2']} !important;
+                    border-color: {COLORS['border_light']} !important;
+                    color: {COLORS['text']} !important;
+                }}
+                .dash-dropdown-value-count {{ background: rgba(6,182,212,0.2) !important; color: {COLORS['text_muted']} !important; }}
+                .dash-dropdown-trigger-icon {{ color: {COLORS['text_muted']} !important; fill: {COLORS['text_muted']} !important; }}
+            `;
+            document.head.appendChild(s);
+        }}
+        injectDropdownDarkTheme();
+        setTimeout(injectDropdownDarkTheme, 500);
+        setTimeout(injectDropdownDarkTheme, 2000);
     </script>
 </body>
 </html>"""
