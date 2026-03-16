@@ -1,6 +1,6 @@
 # Market Metrics Dashboard
 
-A Bloomberg-terminal-style dashboard for stock market analysis, built with Plotly Dash. Aggregates data from FinViz Elite, Stockbee (Pradeep Bonde), CNBC Market Insider, and Yahoo Finance into a single dark-themed interface.
+A Bloomberg-terminal-style dashboard for stock market analysis, built with Plotly Dash. Aggregates data from FinViz Elite, Stockbee (Pradeep Bonde), CNBC Market Insider, Yahoo Finance, Forex Factory, and rateprobability.com into a single dark-themed interface.
 
 ## Requirements
 
@@ -29,7 +29,61 @@ python app.py
 
 ## Widget Reference
 
-The dashboard has two tabs: **Market Metrics** (swing/position) and **Intraday** (day trading). Each widget can be toggled on/off via the Settings gear icon.
+The dashboard has three tabs: **Macro Monitor**, **Market Metrics** (swing/position), and **Intraday** (day trading). Each widget can be toggled on/off via the Settings gear icon.
+
+---
+
+### Macro Monitor Tab
+
+Central bank rates, inflation data, and economic calendar.
+
+---
+
+#### Rate Watch — Probabilities
+
+Stacked bar chart of **Cut** (red), **Hold** (yellow), and **Hike** (green) probabilities for the next 6 central bank meetings. Currency dropdown supports USD, EUR, GBP, JPY, CAD, CHF, AUD, NZD. Data from rateprobability.com and CentralBank.watch.
+
+---
+
+#### Rate Watch — Rate Path
+
+Line chart of **Expected Rate** vs **Current** rate for the next 8 meetings. Shows projected policy rate path per central bank.
+
+---
+
+#### Rate Watch — Distribution
+
+Table of meeting dates, days until, expected rate, and Cut/Hold/Hike probabilities. Same currency selector as above.
+
+---
+
+#### Rate Watch — Rate Ranges
+
+Fed-specific rate range probabilities (e.g., 4.25–4.50%, 4.50–4.75%). USD only.
+
+---
+
+#### Economic Calendar — Today
+
+Today’s economic events from **Forex Factory** (nfs.faireconomy.media). Columns: time, country, impact, title, forecast, actual, previous. No API key required.
+
+---
+
+#### Consumer Price Index CPI
+
+Bar chart of **Expected vs Actual** CPI YTD. Scraped from FinViz Elite economic calendar detail. Links to FinViz Elite.
+
+---
+
+#### Core Inflation Rate MoM
+
+Bar chart of **Expected vs Actual** Core Inflation Rate (month-over-month) YTD. FinViz Elite.
+
+---
+
+#### Core Inflation Rate YoY
+
+Bar chart of **Expected vs Actual** Core Inflation Rate (year-over-year) YTD. FinViz Elite.
 
 ---
 
@@ -147,6 +201,12 @@ Quadrants: Improving (top-right), Leading (bottom-right), Weakening (bottom-left
 
 ---
 
+#### S&P 500 Landscape Bubble Chart
+
+Bubble chart of S&P 500 constituents by sector. Bubble size = market cap; color = valuation. Sector filter to focus on specific industries. Data from FinViz Elite export.
+
+---
+
 #### 97 Club
 
 Stocks in the **$1B+ USA** universe with avg vol 1K+ and price $1+. Simple broad screener.
@@ -237,6 +297,18 @@ Same as the Market Metrics version: earnings reporters from yesterday or today.
 
 ---
 
+#### Top Gainers
+
+Top 12 gainers by day change from the $1B+ USA universe (thematics data). Sorted by % change.
+
+---
+
+#### Top Losers
+
+Top 12 losers by day change from the $1B+ USA universe (thematics data). Sorted by % change.
+
+---
+
 #### Pre-market Scanner
 
 Pre-market movers **up 3%** or **down 3%**. USA, avg vol 1K+, price $1+, rel vol ≥ 1x. Merges +3% and -3% lists.
@@ -279,6 +351,23 @@ Market Metrics Dashboard/
     ├── stockbee.py      # Stockbee API / Sheets
     ├── cnbc_premarket.py # CNBC premarket scraper
     ├── finviz_elite.py   # FinViz Elite API
+    ├── rate_watch_data.py # Central bank rate probabilities (rateprobability.com)
+    ├── cpi_data.py      # CPI, Core Inflation (FinViz Elite)
+    ├── economic_calendar.py # Forex Factory calendar
     ├── cache.py         # Cache layer
     └── sortable_table.py # Sortable table component
 ```
+
+---
+
+## Changelog
+
+### [Unreleased]
+
+- **Macro Monitor tab** — New tab for central bank rates, inflation, and economic calendar
+- **Rate Watch** — Four widgets: Probabilities (stacked bar), Rate Path (line), Distribution (table), Rate Ranges (Fed-only). Supports USD, EUR, GBP, JPY, CAD, CHF, AUD, NZD. Data from rateprobability.com and CentralBank.watch
+- **Economic Calendar** — Today’s events from Forex Factory (no API key)
+- **CPI** — Consumer Price Index Expected vs Actual YTD bar chart (FinViz Elite)
+- **Core Inflation MoM / YoY** — Core Inflation Rate Expected vs Actual YTD bar charts (FinViz Elite)
+- **S&P 500 Landscape** — Bubble chart of S&P 500 constituents by sector and valuation
+- **Top Gainers / Top Losers** — Intraday tab widgets showing top 12 gainers and losers
