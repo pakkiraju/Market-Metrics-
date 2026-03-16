@@ -31,6 +31,7 @@ from src.styles import (
     TICKER_GRID_STYLE, ticker_pill_style,
     TABLE_STYLE, TABLE_HEADER_STYLE, TABLE_CELL_STYLE,
     CHART_WRAP_STYLE, BREADTH_CHART_BODY_STYLE, BREADTH_CHART_WRAP_STYLE, RRG_CHART_BODY_STYLE, SP500_LANDSCAPE_CHART_HEIGHT, STAGE_CHART_HEIGHT, LOADING_STYLE,
+    MACRO_WIDGET_BODY_HEIGHT, MACRO_CHART_HEIGHT, MACRO_CHART_BODY_STYLE, RATE_WATCH_CHART_HEIGHT, RATE_WATCH_CHART_BODY_STYLE,
     SETTINGS_OVERLAY_STYLE_HIDDEN, SETTINGS_TITLE_STYLE,
     SETTINGS_ITEM_STYLE, TOGGLE_LABEL_STYLE,
     stage_badge_style,
@@ -865,7 +866,7 @@ def _build_expected_actual_chart(data: list[dict], y_title: str, empty_msg: str,
             paper_bgcolor=COLORS["surface"],
             plot_bgcolor=COLORS["surface"],
             margin=dict(l=4, r=4, t=4, b=4),
-            height=280,
+            height=MACRO_CHART_HEIGHT,
         )
         return fig
 
@@ -906,7 +907,7 @@ def _build_expected_actual_chart(data: list[dict], y_title: str, empty_msg: str,
         xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
         yaxis=yaxis_config,
         font=dict(family="Inter", size=8),
-        height=280,
+        height=MACRO_CHART_HEIGHT,
     )
     return fig
 
@@ -956,7 +957,7 @@ def _build_rate_watch_probability_chart(data: dict, height: int = 220) -> go.Fig
         autosize=True,
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
-        margin=dict(l=4, r=4, t=24, b=4),
+        margin=dict(l=4, r=4, t=24, b=48),
         showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
                    font=dict(size=9, color=COLORS["text_muted"])),
@@ -995,7 +996,7 @@ def _build_rate_watch_rate_path_chart(data: dict, height: int = 220) -> go.Figur
         autosize=True,
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
-        margin=dict(l=4, r=4, t=24, b=4),
+        margin=dict(l=4, r=4, t=24, b=48),
         showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
                    font=dict(size=9, color=COLORS["text_muted"])),
@@ -1023,7 +1024,7 @@ def build_rate_watch_content(currency: str, data: dict, view: str = "probabiliti
     next_days = data.get("next_meeting_days")
     meetings = data.get("meetings", [])
 
-    chart_height = 200
+    chart_height = RATE_WATCH_CHART_HEIGHT if view in ("probabilities", "rate-path") else MACRO_CHART_HEIGHT
 
     if view == "probabilities":
         return dcc.Graph(
@@ -1050,7 +1051,7 @@ def build_rate_watch_content(currency: str, data: dict, view: str = "probabiliti
                 {"text": f"{m['hike_pct']:.1f}", "style": {**TABLE_CELL_STYLE, "color": COLORS["green_light"]}},
             ])
         prob_table = _table(headers, rows, col_widths=["80px", "45px", "65px", "55px", "55px", "55px"]) if rows else html.Div()
-        return html.Div([prob_table], style={"overflow": "auto", "maxHeight": "220px"})
+        return html.Div([prob_table], style={"overflow": "auto", "maxHeight": "230px"})
 
     if view == "rate-ranges":
         if currency != "USD" or not meetings:
@@ -1065,7 +1066,7 @@ def build_rate_watch_content(currency: str, data: dict, view: str = "probabiliti
         rr_headers = [("Rate Range", None), ("Prob %", None)]
         rr_rows = [[{"text": r["range"], "style": TABLE_CELL_STYLE}, {"text": f"{r['pct']:.1f}", "style": TABLE_CELL_STYLE}] for r in rate_ranges]
         rate_range_table = _table(rr_headers, rr_rows, col_widths=["90px", "60px"])
-        return html.Div([rate_range_table], style={"overflow": "auto", "maxHeight": "220px"})
+        return html.Div([rate_range_table], style={"overflow": "auto", "maxHeight": "230px"})
 
     return html.Div("Unknown view.", style={"color": COLORS["text_muted"], "padding": "8px"})
 
@@ -2290,11 +2291,12 @@ def build_layout() -> html.Div:
                                                     value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
                                                 ),
                                             ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
-                                            _loading_wrap("rate_watch_probabilities-content", [loading], style={**CHART_WRAP_STYLE, "minHeight": "220px"}),
+                                            _loading_wrap("rate_watch_probabilities-content", [loading], style={**CHART_WRAP_STYLE, "height": "270px", "overflow": "hidden"}),
                                         ]),
                                         variant="teal",
                                         initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_probabilities", True),
-                                        card_style_override={**WIDGET_STYLE, "maxHeight": "300px"},
+                                        card_style_override={**WIDGET_STYLE, "maxHeight": "320px"},
+                                        body_style=RATE_WATCH_CHART_BODY_STYLE,
                                         extra_header=html.Span([
                                             html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
                                                   id="rate-watch-probabilities-link", target="_blank", rel="noopener noreferrer",
@@ -2311,11 +2313,12 @@ def build_layout() -> html.Div:
                                                     value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
                                                 ),
                                             ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
-                                            _loading_wrap("rate_watch_rate_path-content", [loading], style={**CHART_WRAP_STYLE, "minHeight": "220px"}),
+                                            _loading_wrap("rate_watch_rate_path-content", [loading], style={**CHART_WRAP_STYLE, "height": "270px", "overflow": "hidden"}),
                                         ]),
                                         variant="teal",
                                         initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_rate_path", True),
-                                        card_style_override={**WIDGET_STYLE, "maxHeight": "300px"},
+                                        card_style_override={**WIDGET_STYLE, "maxHeight": "320px"},
+                                        body_style=RATE_WATCH_CHART_BODY_STYLE,
                                         extra_header=html.Span([
                                             html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
                                                   id="rate-watch-rate-path-link", target="_blank", rel="noopener noreferrer",
@@ -2332,11 +2335,12 @@ def build_layout() -> html.Div:
                                                     value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
                                                 ),
                                             ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
-                                            _loading_wrap("rate_watch_distribution-content", [loading], style={**CHART_WRAP_STYLE, "minHeight": "220px"}),
+                                            _loading_wrap("rate_watch_distribution-content", [loading], style={**CHART_WRAP_STYLE, "height": "250px", "overflow": "hidden"}),
                                         ]),
                                         variant="teal",
                                         initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_distribution", True),
                                         card_style_override={**WIDGET_STYLE, "maxHeight": "300px"},
+                                        body_style=MACRO_CHART_BODY_STYLE,
                                         extra_header=html.Span([
                                             html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
                                                   id="rate-watch-distribution-link", target="_blank", rel="noopener noreferrer",
@@ -2353,11 +2357,12 @@ def build_layout() -> html.Div:
                                                     value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
                                                 ),
                                             ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
-                                            _loading_wrap("rate_watch_rate_ranges-content", [loading], style={**CHART_WRAP_STYLE, "minHeight": "220px"}),
+                                            _loading_wrap("rate_watch_rate_ranges-content", [loading], style={**CHART_WRAP_STYLE, "height": "250px", "overflow": "hidden"}),
                                         ]),
                                         variant="teal",
                                         initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_rate_ranges", True),
                                         card_style_override={**WIDGET_STYLE, "maxHeight": "300px"},
+                                        body_style=MACRO_CHART_BODY_STYLE,
                                         extra_header=html.Span([
                                             html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
                                                   id="rate-watch-rate-ranges-link", target="_blank", rel="noopener noreferrer",
@@ -2379,35 +2384,38 @@ def build_layout() -> html.Div:
                                                           "textDecoration": "none", "marginLeft": "8px"}),
                                         ])),
                                 _widget("cpi", "Consumer Price Index CPI",
-                                        _loading_wrap("cpi-content", [loading], style=CHART_WRAP_STYLE),
+                                        _loading_wrap("cpi-content", [loading], style={**CHART_WRAP_STYLE, "height": f"{MACRO_WIDGET_BODY_HEIGHT}px", "overflow": "hidden"}),
                                         variant="teal",
                                         initial_hidden=not DEFAULT_VISIBILITY.get("cpi", True),
                                         card_style_override={
                                             **WIDGET_STYLE,
                                             "maxHeight": "300px",
                                         },
+                                        body_style=MACRO_CHART_BODY_STYLE,
                                         extra_header=html.Span([
                                             _finviz_link("FinViz", "cpi", {"marginLeft": "8px"}),
                                         ])),
                                 _widget("core_inflation_mom", "Core Inflation Rate MoM",
-                                        _loading_wrap("core_inflation_mom-content", [loading], style=CHART_WRAP_STYLE),
+                                        _loading_wrap("core_inflation_mom-content", [loading], style={**CHART_WRAP_STYLE, "height": f"{MACRO_WIDGET_BODY_HEIGHT}px", "overflow": "hidden"}),
                                         variant="teal",
                                         initial_hidden=not DEFAULT_VISIBILITY.get("core_inflation_mom", True),
                                         card_style_override={
                                             **WIDGET_STYLE,
                                             "maxHeight": "300px",
                                         },
+                                        body_style=MACRO_CHART_BODY_STYLE,
                                         extra_header=html.Span([
                                             _finviz_link("FinViz", "core_inflation_mom", {"marginLeft": "8px"}),
                                         ])),
                                 _widget("core_inflation_yoy", "Core Inflation Rate YoY",
-                                        _loading_wrap("core_inflation_yoy-content", [loading], style=CHART_WRAP_STYLE),
+                                        _loading_wrap("core_inflation_yoy-content", [loading], style={**CHART_WRAP_STYLE, "height": f"{MACRO_WIDGET_BODY_HEIGHT}px", "overflow": "hidden"}),
                                         variant="teal",
                                         initial_hidden=not DEFAULT_VISIBILITY.get("core_inflation_yoy", True),
                                         card_style_override={
                                             **WIDGET_STYLE,
                                             "maxHeight": "300px",
                                         },
+                                        body_style=MACRO_CHART_BODY_STYLE,
                                         extra_header=html.Span([
                                             _finviz_link("FinViz", "core_inflation_yoy", {"marginLeft": "8px"}),
                                         ])),
