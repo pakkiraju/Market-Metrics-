@@ -338,19 +338,32 @@ CHART_WRAP_STYLE = {
     "position": "relative",
 }
 
-# Breadth chart widgets: fit chart height (200px), no extra padding like table widgets
+# Breadth chart widgets: fit chart height (200px), constrain width to widget (no horizontal scroll)
 BREADTH_CHART_BODY_STYLE = {
     "overflow": "hidden",
     "minHeight": 0,
     "height": "220px",
+    "width": "100%",
+    "minWidth": 0,
+    "maxWidth": "100%",
     "backgroundColor": COLORS["surface"],
     "position": "relative",
+}
+# Content wrapper for breadth charts: constrain width so chart fits, no overflow
+BREADTH_CHART_WRAP_STYLE = {
+    **CHART_WRAP_STYLE,
+    "overflow": "hidden",
+    "width": "100%",
+    "minWidth": 0,
+    "maxWidth": "100%",
 }
 
 # RRG chart: fixed height to match chart data (360px), no scrollbar
 RRG_CHART_HEIGHT = SCROLLABLE_BODY_HEIGHT
 # S&P 500 Landscape: chart height leaves room for sector filter (~40px)
 SP500_LANDSCAPE_CHART_HEIGHT = SCROLLABLE_BODY_HEIGHT - 40
+# Stage Analysis: chart height leaves room for summary row (~40px)
+STAGE_CHART_HEIGHT = SCROLLABLE_BODY_HEIGHT - 40
 RRG_CHART_BODY_STYLE = {
     "overflow": "hidden",
     "height": f"{RRG_CHART_HEIGHT}px",

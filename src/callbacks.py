@@ -673,12 +673,12 @@ def register_callbacks(app):
             fig2 = build_breadth_ratios_chart(history)
             fig3 = build_secondary_breadth_chart(history)
             fig4 = build_sp500_chart(history)
-            chart_style = {"height": "200px", "width": "100%"}
+            chart_style = {"height": "200px", "width": "100%", "minWidth": 0, "overflow": "hidden"}
             return [
-                dcc.Graph(figure=fig1, config=GRAPH_CONFIG, style=chart_style),
-                dcc.Graph(figure=fig2, config=GRAPH_CONFIG, style=chart_style),
-                dcc.Graph(figure=fig3, config=GRAPH_CONFIG, style=chart_style),
-                dcc.Graph(figure=fig4, config=GRAPH_CONFIG, style=chart_style),
+                dcc.Graph(figure=fig1, config=GRAPH_CONFIG_ZOOM, style=chart_style),
+                dcc.Graph(figure=fig2, config=GRAPH_CONFIG_ZOOM, style=chart_style),
+                dcc.Graph(figure=fig3, config=GRAPH_CONFIG_ZOOM, style=chart_style),
+                dcc.Graph(figure=fig4, config=GRAPH_CONFIG_ZOOM, style=chart_style),
             ]
         except Exception as e:
             logger.exception("Breadth charts failed: %s", e)
@@ -1195,8 +1195,10 @@ def register_callbacks(app):
                 c = r.get("counts", {})
                 sc = html.Div([
                     build_stage_summary(c),
-                    dcc.Graph(figure=build_stage_chart(c), config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"}),
-                ], style=CHART_WRAP_STYLE)
+                    html.Div([
+                        dcc.Graph(figure=build_stage_chart(c), config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"}),
+                    ], style={**CHART_WRAP_STYLE, "flex": 1, "minHeight": 0, "display": "flex", "flexDirection": "column"}),
+                ], style={**CHART_WRAP_STYLE, "display": "flex", "flexDirection": "column", "height": "100%"})
                 return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, sc)
 
             leading_data = compute_leading_industries([], {})
@@ -1212,8 +1214,10 @@ def register_callbacks(app):
             counts = stage_result.get("counts", {})
             stage_content = html.Div([
                 build_stage_summary(counts),
-                dcc.Graph(figure=build_stage_chart(counts), config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"}),
-            ], style=CHART_WRAP_STYLE)
+                html.Div([
+                    dcc.Graph(figure=build_stage_chart(counts), config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"}),
+                ], style={**CHART_WRAP_STYLE, "flex": 1, "minHeight": 0, "display": "flex", "flexDirection": "column"}),
+            ], style={**CHART_WRAP_STYLE, "display": "flex", "flexDirection": "column", "height": "100%"})
             return [leading_table, leading_data, thematics_table, thematics_data, thematics_sector_table, thematics_sector_data, top_gainers_table, top_losers_table, stage_content]
         except Exception as e:
             logger.exception("Group E (Leading/Thematics/Stage) failed: %s", e)

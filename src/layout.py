@@ -30,7 +30,7 @@ from src.styles import (
     section_header_style, SECTION_BODY_STYLE, KEY_METRICS_BODY_STYLE,
     TICKER_GRID_STYLE, ticker_pill_style,
     TABLE_STYLE, TABLE_HEADER_STYLE, TABLE_CELL_STYLE,
-    CHART_WRAP_STYLE, BREADTH_CHART_BODY_STYLE, RRG_CHART_BODY_STYLE, SP500_LANDSCAPE_CHART_HEIGHT, LOADING_STYLE,
+    CHART_WRAP_STYLE, BREADTH_CHART_BODY_STYLE, BREADTH_CHART_WRAP_STYLE, RRG_CHART_BODY_STYLE, SP500_LANDSCAPE_CHART_HEIGHT, STAGE_CHART_HEIGHT, LOADING_STYLE,
     SETTINGS_OVERLAY_STYLE_HIDDEN, SETTINGS_TITLE_STYLE,
     SETTINGS_ITEM_STYLE, TOGGLE_LABEL_STYLE,
     stage_badge_style,
@@ -1557,19 +1557,26 @@ def build_stockbee_momentum50_table(data: list[dict], date_label: str = "", widg
 # Stock Market Breadth Monitor
 # -----------------------------------------------------------------------
 
-def _breadth_chart_layout():
-    """Shared layout for breadth charts. Fixed height to avoid zoom on tab switch."""
+def _breadth_chart_layout(dates: list | None = None):
+    """Shared layout for breadth charts. Fixed height to avoid zoom on tab switch.
+    If dates provided, x-axis shows full range (oldest left, newest right) so user sees all data by default.
+    autosize=True so chart fits widget width (no horizontal overflow)."""
+    xaxis = dict(
+        tickfont=dict(size=8, color=COLORS["text_muted"]),
+        showgrid=True, gridcolor="rgba(255,255,255,0.05)",
+    )
+    if dates:
+        n = len(dates)
+        xaxis["range"] = [-0.5, n - 0.5]
+        xaxis["autorange"] = False
     return dict(
-        autosize=False,
+        autosize=True,
         paper_bgcolor=COLORS["surface"],
         plot_bgcolor=COLORS["surface"],
         margin=dict(l=4, r=4, t=4, b=4),
         showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=8)),
-        xaxis=dict(
-            tickfont=dict(size=8, color=COLORS["text_muted"]),
-            showgrid=True, gridcolor="rgba(255,255,255,0.05)",
-        ),
+        xaxis=xaxis,
         yaxis=dict(
             tickfont=dict(size=8, color=COLORS["text_muted"]),
             showgrid=True, gridcolor="rgba(255,255,255,0.05)",
@@ -1593,7 +1600,7 @@ def build_primary_breadth_chart(history: list[dict]) -> go.Figure:
     fig.add_trace(go.Scatter(x=dates, y=down4, name="Down 4%+", fill="tozeroy",
         line=dict(color=COLORS["red_light"], width=1.5),
         fillcolor=_hex_to_rgba(COLORS["red"], 0.3)))
-    fig.update_layout(**_breadth_chart_layout())
+    fig.update_layout(**_breadth_chart_layout(dates))
     return fig
 
 
@@ -1608,7 +1615,7 @@ def build_breadth_ratios_chart(history: list[dict]) -> go.Figure:
     fig.add_trace(go.Scatter(x=dates, y=r5, name="5-Day Ratio", line=dict(color=COLORS["green_light"], width=2)))
     fig.add_trace(go.Scatter(x=dates, y=r10, name="10-Day Ratio", line=dict(color=COLORS["accent"], width=2)))
     fig.add_hline(y=1.0, line_dash="dot", line_color=COLORS["border_light"], opacity=0.8)
-    fig.update_layout(**_breadth_chart_layout())
+    fig.update_layout(**_breadth_chart_layout(dates))
     return fig
 
 
@@ -1626,7 +1633,7 @@ def build_secondary_breadth_chart(history: list[dict]) -> go.Figure:
     fig.add_trace(go.Scatter(x=dates, y=down25, name="Down 25%+ Qtr", fill="tozeroy",
         line=dict(color=COLORS["red_light"], width=1.5),
         fillcolor=_hex_to_rgba(COLORS["red"], 0.3)))
-    fig.update_layout(**_breadth_chart_layout())
+    fig.update_layout(**_breadth_chart_layout(dates))
     return fig
 
 
@@ -1647,7 +1654,7 @@ def build_sp500_chart(history: list[dict]) -> go.Figure:
     fig.add_trace(go.Scatter(x=dates, y=sp500, name="S&P 500", fill="tozeroy",
         line=dict(color=COLORS["accent"], width=2),
         fillcolor=_hex_to_rgba(COLORS["accent"], 0.15)))
-    layout = dict(**_breadth_chart_layout())
+    layout = dict(**_breadth_chart_layout(dates))
     if y_min is not None and y_max is not None:
         layout["yaxis"] = dict(**layout.get("yaxis", {}), range=[y_min, y_max])
     fig.update_layout(**layout)
@@ -1762,7 +1769,7 @@ def build_stage_chart(counts: dict) -> go.Figure:
             gridcolor="rgba(255,255,255,0.05)",
         ),
         font=dict(family="Inter"),
-        height=280,
+        height=STAGE_CHART_HEIGHT,
     )
     return fig
 
@@ -2474,25 +2481,25 @@ def build_layout() -> html.Div:
             # ---- BREADTH CHARTS ROW (Stockbee-style) ----
             html.Div([
                 _widget("breadth-primary", "StockBee - Primary Breadth — Up/Down 4%+ Today",
-                        _loading_wrap("breadth-primary-content", [loading], style=CHART_WRAP_STYLE),
+                        _loading_wrap("breadth-primary-content", [loading], style=BREADTH_CHART_WRAP_STYLE),
                         variant="green",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-primary", True),
                         body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
                 _widget("breadth-ratios", "StockBee - Breadth Ratios — 5-Day & 10-Day",
-                        _loading_wrap("breadth-ratios-content", [loading], style=CHART_WRAP_STYLE),
+                        _loading_wrap("breadth-ratios-content", [loading], style=BREADTH_CHART_WRAP_STYLE),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-ratios", True),
                         body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
                 _widget("breadth-secondary", "StockBee - Secondary Breadth — Up/Down 25%+ Qtr",
-                        _loading_wrap("breadth-secondary-content", [loading], style=CHART_WRAP_STYLE),
+                        _loading_wrap("breadth-secondary-content", [loading], style=BREADTH_CHART_WRAP_STYLE),
                         variant="purple",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-secondary", True),
                         body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
                 _widget("breadth-sp500", "StockBee - S&P 500 — Last 60 Days",
-                        _loading_wrap("breadth-sp500-content", [loading], style=CHART_WRAP_STYLE),
+                        _loading_wrap("breadth-sp500-content", [loading], style=BREADTH_CHART_WRAP_STYLE),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-sp500", True),
                         body_style=BREADTH_CHART_BODY_STYLE,
@@ -2629,8 +2636,10 @@ def build_layout() -> html.Div:
                             _finviz_link("FinViz", "leading", {"marginLeft": "8px"}),
                         ])),
                 _widget("stage", "Stage Analysis",
-                        _loading_wrap("stage-content", [loading]),
-                        initial_hidden=not DEFAULT_VISIBILITY.get("stage", True)),
+                        _loading_wrap("stage-content", [loading],
+                                      style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("stage", True),
+                        body_style=RRG_CHART_BODY_STYLE),
                 _widget("earnings-calendar-week", "Earnings Calendar — This Week",
                         html.Div([
                             dcc.Store(id="earnings-calendar-week-data-store"),
