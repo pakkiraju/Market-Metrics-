@@ -35,6 +35,7 @@ app = Dash(
     title="Pradly Portal",
     update_title="Loading...",
     suppress_callback_exceptions=True,
+    serve_locally=True,
 )
 
 app.index_string = f"""<!DOCTYPE html>
@@ -149,7 +150,15 @@ register_callbacks(app)
 
 @app.server.after_request
 def _disable_browser_cache(response):
-    """Prevent browser from caching any responses."""
+    """Prevent browser from caching app responses. Skip Dash/Plotly static assets so they load reliably."""
+    try:
+        from flask import request
+        path = request.path
+    except Exception:
+        path = ""
+    # Let Dash component suites (plotly.js, etc.) use default caching so they load within timeout
+    if "/_dash-component-suites/" in path or (path or "").startswith("/assets/"):
+        return response
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
