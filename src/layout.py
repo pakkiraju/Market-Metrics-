@@ -17,7 +17,7 @@ from src.constants import (
     COLORS, KEY_METRIC_ROWS, INDEX_GROUPS, SECTOR_NAMES,
     STAGE_BAR_COLORS, STAGE_LABELS, FINVIZ_SCREENER_URLS,
     build_metric_screener_url, RRG_BENCHMARK, RRG_COLORS,
-    STOCKBEE_LINKS, RATE_WATCH_LINKS, GRAPH_CONFIG,
+    STOCKBEE_LINKS, GRAPH_CONFIG,
 )
 from src.styles import (
     DASHBOARD_STYLE, HEADER_STYLE, HEADER_LOGO_STYLE,
@@ -31,14 +31,26 @@ from src.styles import (
     TICKER_GRID_STYLE, ticker_pill_style,
     TABLE_STYLE, TABLE_HEADER_STYLE, TABLE_CELL_STYLE,
     CHART_WRAP_STYLE, BREADTH_CHART_BODY_STYLE, BREADTH_CHART_WRAP_STYLE, RRG_CHART_BODY_STYLE, SP500_LANDSCAPE_CHART_HEIGHT, STAGE_CHART_HEIGHT, LOADING_STYLE,
-    MACRO_WIDGET_BODY_HEIGHT, MACRO_CHART_HEIGHT, MACRO_CHART_BODY_STYLE, RATE_WATCH_CHART_HEIGHT, RATE_WATCH_CHART_BODY_STYLE,
     SETTINGS_OVERLAY_STYLE_HIDDEN, SETTINGS_TITLE_STYLE,
     SETTINGS_ITEM_STYLE, TOGGLE_LABEL_STYLE,
     stage_badge_style,
 )
 from src.constants import pct_color, chg_color
+from src.macro_monitor_layout import build_macro_monitor_tab
 
 ET = timezone(timedelta(hours=-5))
+
+# Sidebar-only navigation: no dcc.Tabs (Dash would render a tab strip above content).
+_TAB_PANE_HIDE = {"display": "none"}
+_TAB_PANE_SHOW = {
+    "display": "flex",
+    "flexDirection": "column",
+    "flex": "1",
+    "minHeight": "0",
+    "minWidth": "0",
+    "overflow": "auto",
+    "backgroundColor": COLORS["bg"],
+}
 
 # Widget registry: (id_suffix, display_name, is_primary_size)
 # is_primary_size only controls sizing (full-size vs max-height), NOT toggleability
@@ -47,17 +59,10 @@ MARKET_METRICS_WIDGETS = [
     ("key-metrics",    "Key Metrics",                True),
     ("chart2",         "NQ100, SPY500 & DJIA Metrics", True),
     ("chart3",         "RUS2000 & $1B+ Stocks", True),
-    ("qulla",          "Qullamaggie",                False),
-    ("minervini",      "Minervini",                  False),
-    ("oneil",          "O'Neil",                     False),
     ("watchlist",      "Watchlist",                  False),
     ("sector",         "Sector SPDR ETFs",           False),
     ("rrg",            "RRG Sector Rotation",        False),
     ("sp500-landscape", "S&P 500 Landscape Bubble Chart", False),
-    ("club97",         "97 Club",                    False),
-    ("movers",         "StockBee - 9 Million Movers",           False),
-    ("weekly",         "StockBee - 20% Weekly Movers",          False),
-    ("daily",          "StockBee - 4% Daily Gainers",           False),
     ("leading",        "Leading Industries",         False),
     ("thematics",      "Thematics Tracker",          False),
     ("thematics-sector", "Thematics by Sector (Top YTD)", False),
@@ -69,18 +74,17 @@ MARKET_METRICS_WIDGETS = [
     ("breadth-secondary", "StockBee - Secondary Breadth — Up/Down 25%+ Qtr", False),
     ("breadth-sp500",  "StockBee - S&P 500 — Last 60 Days",    False),
     ("stage",          "Stage Analysis",             False),
-    ("earnings-calendar-week", "Earnings Calendar — This Week", False),
 ]
-# Macro Monitor tab widgets
-MACRO_MONITOR_WIDGETS = [
-    ("rate_watch_probabilities", "Rate Watch — Probabilities", False),
-    ("rate_watch_rate_path", "Rate Watch — Rate Path",        False),
-    ("rate_watch_distribution", "Rate Watch — Distribution",  False),
-    ("rate_watch_rate_ranges", "Rate Watch — Rate Ranges",    False),
-    ("economic_calendar", "Economic Calendar",       False),
-    ("cpi", "Consumer Price Index CPI",              False),
-    ("core_inflation_mom", "Core Inflation Rate MoM", False),
-    ("core_inflation_yoy", "Core Inflation Rate YoY", False),
+# Super Scanners tab — FinViz / StockBee screeners (moved from Market Metrics)
+SUPER_SCANNERS_WIDGETS = [
+    ("qulla",          "Qullamaggie",                False),
+    ("minervini",      "Minervini",                  False),
+    ("oneil",          "O'Neil",                     False),
+    ("club97",         "97 Club",                    False),
+    ("movers",         "StockBee - 9 Million Movers",           False),
+    ("weekly",         "StockBee - 20% Weekly Movers",          False),
+    ("daily",          "StockBee - 4% Daily Gainers",           False),
+    ("earnings-calendar-week", "Earnings Calendar — This Week", False),
 ]
 # Intraday tab widgets (in_play and earnings here)
 INTRADAY_WIDGETS = [
@@ -93,11 +97,11 @@ INTRADAY_WIDGETS = [
     ("cnbc_premarket", "CNBC Pre-Market Watchlist", False),
 ]
 # Combined for backward compatibility and visibility callback
-WIDGETS = MARKET_METRICS_WIDGETS + MACRO_MONITOR_WIDGETS + INTRADAY_WIDGETS
+WIDGETS = MARKET_METRICS_WIDGETS + SUPER_SCANNERS_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "rate_watch_probabilities", "rate_watch_rate_path", "rate_watch_distribution", "rate_watch_rate_ranges", "economic_calendar", "cpi", "core_inflation_mom", "core_inflation_yoy", "pre_market", "cnbc_premarket") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "pre_market", "cnbc_premarket") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -819,258 +823,6 @@ def build_top_losers_table(data: list[dict]) -> html.Div:
     return _table(headers, rows, col_widths=["70px", "55px"])
 
 
-def build_economic_calendar_table(data: list[dict]) -> html.Div:
-    """Today's economic calendar — scraped from Forex Factory. Time, Country, Impact, Event, Forecast, Actual, Prior."""
-    if not data:
-        return html.Div([
-            "No events today. ",
-            html.A("Forex Factory", href="https://www.forexfactory.com/calendar", target="_blank", rel="noopener noreferrer",
-                   style={"color": COLORS["accent"], "textDecoration": "underline", "fontSize": "9px"}),
-        ], style={"color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px"})
-
-    headers = [("Time", None), ("Ccy", None), ("Impact", None), ("Event", None), ("Forecast", None), ("Actual", None), ("Prior", None)]
-    rows = []
-    impact_colors = {"High": COLORS["red_light"], "Medium": COLORS["green_light"], "Low": COLORS["text_muted"]}
-    for r in data:
-        impact = r.get("impact", "")
-        impact_style = {"color": impact_colors.get(impact, COLORS["text_muted"])} if impact else {}
-        rows.append([
-            {"text": r.get("time", ""), "style": TABLE_CELL_STYLE},
-            {"text": r.get("country", ""), "style": TABLE_CELL_STYLE},
-            {"text": impact, "style": {**TABLE_CELL_STYLE, **impact_style, "fontWeight": 600}},
-            {"text": (r.get("title", "") or "")[:50] + ("..." if len(r.get("title", "") or "") > 50 else ""),
-             "style": {**TABLE_CELL_STYLE, "textAlign": "left", "maxWidth": "180px"}},
-            {"text": (r.get("forecast") or "-")[:12], "style": TABLE_CELL_STYLE},
-            {"text": (r.get("actual") or "-")[:12], "style": TABLE_CELL_STYLE},
-            {"text": (r.get("previous") or "-")[:12], "style": TABLE_CELL_STYLE},
-        ])
-    table = _table(headers, rows, col_widths=["55px", "40px", "50px", "1fr", "60px", "60px", "60px"])
-    return html.Div([
-        table,
-        html.A("Forex Factory", href="https://www.forexfactory.com/calendar", target="_blank", rel="noopener noreferrer",
-               style={"fontSize": "8px", "color": COLORS["accent"], "textDecoration": "none", "marginTop": "4px"}),
-    ], style={"display": "flex", "flexDirection": "column"})
-
-
-def _build_expected_actual_chart(data: list[dict], y_title: str, empty_msg: str, min_pad: float = 1.0) -> go.Figure:
-    """Bar chart: Expected vs Actual. Shared by CPI, Core MoM, Core YoY."""
-    if not data:
-        fig = go.Figure()
-        fig.add_annotation(
-            text=empty_msg,
-            xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False,
-            font=dict(size=12, color=COLORS["text_muted"]),
-        )
-        fig.update_layout(
-            autosize=True,
-            paper_bgcolor=COLORS["surface"],
-            plot_bgcolor=COLORS["surface"],
-            margin=dict(l=4, r=4, t=4, b=4),
-            height=MACRO_CHART_HEIGHT,
-        )
-        return fig
-
-    months = [r["month"] for r in data]
-    expected = [r.get("expected") for r in data]
-    actual = [r.get("actual") for r in data]
-
-    all_vals = [v for v in expected + actual if v is not None]
-    if all_vals:
-        lo, hi = min(all_vals), max(all_vals)
-        pad = max((hi - lo) * 0.08, min_pad) if hi != lo else min_pad
-        y_min, y_max = lo - pad, hi + pad
-    else:
-        y_min, y_max = None, None
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=months, y=expected, name="Expected", marker_color=COLORS["accent"], width=0.35, offset=-0.175))
-    fig.add_trace(go.Bar(x=months, y=actual, name="Actual", marker_color=COLORS["green"], width=0.35, offset=0.175))
-
-    yaxis_config = dict(
-        title=dict(text=y_title, font=dict(size=9, color=COLORS["text_muted"])),
-        tickfont=dict(size=8, color=COLORS["text_faint"]),
-        gridcolor="rgba(255,255,255,0.05)",
-        zeroline=False,
-    )
-    if y_min is not None and y_max is not None:
-        yaxis_config["range"] = [y_min, y_max]
-        yaxis_config["fixedrange"] = False
-
-    fig.update_layout(
-        autosize=True,
-        barmode="group",
-        paper_bgcolor=COLORS["surface"],
-        plot_bgcolor=COLORS["surface"],
-        margin=dict(l=4, r=4, t=4, b=4),
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=9, color=COLORS["text_muted"])),
-        xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
-        yaxis=yaxis_config,
-        font=dict(family="Inter", size=8),
-        height=MACRO_CHART_HEIGHT,
-    )
-    return fig
-
-
-def build_cpi_chart(data: list[dict]) -> go.Figure:
-    """Bar chart: Expected vs Actual CPI YTD."""
-    return _build_expected_actual_chart(data, "CPI Index", "No CPI data available.", min_pad=1.0)
-
-
-def build_core_inflation_mom_chart(data: list[dict]) -> go.Figure:
-    """Bar chart: Expected vs Actual Core Inflation Rate MoM YTD."""
-    return _build_expected_actual_chart(data, "% MoM", "No Core Inflation MoM data available.", min_pad=0.1)
-
-
-def build_core_inflation_yoy_chart(data: list[dict]) -> go.Figure:
-    """Bar chart: Expected vs Actual Core Inflation Rate YoY YTD."""
-    return _build_expected_actual_chart(data, "% YoY", "No Core Inflation YoY data available.", min_pad=0.1)
-
-
-def _rate_watch_link(text: str, currency: str, style=None) -> html.A:
-    """Inline link to Rate Watch external source (CME FedWatch, CentralBank.watch)."""
-    url = RATE_WATCH_LINKS.get(currency, "https://centralbank.watch/")
-    base = {"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"], "textDecoration": "none"}
-    if style:
-        base.update(style)
-    return html.A(text, href=url, target="_blank", rel="noopener noreferrer", style=base)
-
-
-def _build_rate_watch_probability_chart(data: dict, height: int = 220) -> go.Figure:
-    """Stacked bar: Cut (red), Hold (yellow), Hike (green) for next 6 meetings."""
-    meetings = data.get("meetings", [])[:6]
-    if not meetings:
-        fig = go.Figure()
-        fig.add_annotation(text="No meeting data", xref="paper", yref="paper", x=0.5, y=0.5,
-                            showarrow=False, font=dict(size=12, color=COLORS["text_muted"]))
-    else:
-        labels = [m["date_label"] for m in meetings]
-        cut = [m["cut_pct"] for m in meetings]
-        hold = [m["hold_pct"] for m in meetings]
-        hike = [m["hike_pct"] for m in meetings]
-        fig = go.Figure()
-        fig.add_trace(go.Bar(x=labels, y=cut, name="Cut", marker_color=COLORS["red"], width=0.6))
-        fig.add_trace(go.Bar(x=labels, y=hold, name="Hold", marker_color=COLORS["yellow"], width=0.6))
-        fig.add_trace(go.Bar(x=labels, y=hike, name="Hike", marker_color=COLORS["green"], width=0.6))
-        fig.update_layout(barmode="stack")
-    fig.update_layout(
-        autosize=True,
-        paper_bgcolor=COLORS["surface"],
-        plot_bgcolor=COLORS["surface"],
-        margin=dict(l=4, r=4, t=24, b=48),
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
-                   font=dict(size=9, color=COLORS["text_muted"])),
-        xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
-        yaxis=dict(
-            title=dict(text="Probability %", font=dict(size=9, color=COLORS["text_muted"])),
-            tickfont=dict(size=8, color=COLORS["text_faint"]),
-            gridcolor="rgba(255,255,255,0.05)",
-            zeroline=False,
-            range=[0, 100],
-        ),
-        font=dict(family="Inter", size=8),
-        height=height,
-    )
-    return fig
-
-
-def _build_rate_watch_rate_path_chart(data: dict, height: int = 220) -> go.Figure:
-    """Line chart: Expected rate (orange) vs current rate (yellow dashed) for next 8 meetings."""
-    meetings = data.get("meetings", [])[:8]
-    current = data.get("current_rate") or 0
-    if not meetings:
-        fig = go.Figure()
-        fig.add_annotation(text="No meeting data", xref="paper", yref="paper", x=0.5, y=0.5,
-                            showarrow=False, font=dict(size=12, color=COLORS["text_muted"]))
-    else:
-        labels = [m["date_label"] for m in meetings]
-        exp_rates = [m["exp_rate"] for m in meetings]
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=labels, y=exp_rates, name="Expected Rate", mode="lines+markers",
-                                 line=dict(color=COLORS["orange"], width=2),
-                                 marker=dict(size=6)))
-        fig.add_trace(go.Scatter(x=labels, y=[current] * len(labels), name="Current",
-                                 line=dict(color=COLORS["yellow"], width=1.5, dash="dash")))
-    fig.update_layout(
-        autosize=True,
-        paper_bgcolor=COLORS["surface"],
-        plot_bgcolor=COLORS["surface"],
-        margin=dict(l=4, r=4, t=24, b=48),
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
-                   font=dict(size=9, color=COLORS["text_muted"])),
-        xaxis=dict(tickfont=dict(size=8, color=COLORS["text_muted"]), showgrid=False),
-        yaxis=dict(
-            title=dict(text="Rate %", font=dict(size=9, color=COLORS["text_muted"])),
-            tickfont=dict(size=8, color=COLORS["text_faint"]),
-            gridcolor="rgba(255,255,255,0.05)",
-            zeroline=False,
-        ),
-        font=dict(family="Inter", size=8),
-        height=height,
-    )
-    return fig
-
-
-def build_rate_watch_content(currency: str, data: dict, view: str = "probabilities") -> html.Div:
-    """Build Rate Watch widget content for a single sub-view (dropdown and tabs in layout)."""
-    if not data:
-        return html.Div("No data available.", style={"color": COLORS["text_muted"], "padding": "8px"})
-
-    bank_name = data.get("bank_name", "")
-    current_str = data.get("current_rate_str", "")
-    next_date = data.get("next_meeting_date", "")
-    next_days = data.get("next_meeting_days")
-    meetings = data.get("meetings", [])
-
-    chart_height = RATE_WATCH_CHART_HEIGHT if view in ("probabilities", "rate-path") else MACRO_CHART_HEIGHT
-
-    if view == "probabilities":
-        return dcc.Graph(
-            figure=_build_rate_watch_probability_chart(data, height=chart_height),
-            config=GRAPH_CONFIG,
-            style={"height": "100%", "width": "100%"},
-        )
-    if view == "rate-path":
-        return dcc.Graph(
-            figure=_build_rate_watch_rate_path_chart(data, height=chart_height),
-            config=GRAPH_CONFIG,
-            style={"height": "100%", "width": "100%"},
-        )
-    if view == "distribution":
-        headers = [("Meeting", None), ("Days", None), ("Exp.Rate", None), ("Cut %", None), ("Hold %", None), ("Hike %", None)]
-        rows = []
-        for m in meetings:
-            rows.append([
-                {"text": m["date_label"], "style": TABLE_CELL_STYLE},
-                {"text": str(m["days_until"]), "style": TABLE_CELL_STYLE},
-                {"text": f"{m['exp_rate']:.3f}", "style": TABLE_CELL_STYLE},
-                {"text": f"{m['cut_pct']:.1f}", "style": {**TABLE_CELL_STYLE, "color": COLORS["red_light"]}},
-                {"text": f"{m['hold_pct']:.1f}", "style": {**TABLE_CELL_STYLE, "color": COLORS["yellow"]}},
-                {"text": f"{m['hike_pct']:.1f}", "style": {**TABLE_CELL_STYLE, "color": COLORS["green_light"]}},
-            ])
-        prob_table = _table(headers, rows, col_widths=["80px", "45px", "65px", "55px", "55px", "55px"]) if rows else html.Div()
-        return html.Div([prob_table], style={"overflow": "auto", "maxHeight": "230px"})
-
-    if view == "rate-ranges":
-        if currency != "USD" or not meetings:
-            return html.Div(
-                "Rate Range probabilities are only available for the Federal Reserve (USD).",
-                style={"color": COLORS["text_muted"], "fontSize": "10px", "padding": "12px"},
-            )
-        first = meetings[0]
-        rate_ranges = first.get("rate_ranges", [])
-        if not rate_ranges:
-            return html.Div("No rate range data.", style={"color": COLORS["text_muted"], "padding": "8px"})
-        rr_headers = [("Rate Range", None), ("Prob %", None)]
-        rr_rows = [[{"text": r["range"], "style": TABLE_CELL_STYLE}, {"text": f"{r['pct']:.1f}", "style": TABLE_CELL_STYLE}] for r in rate_ranges]
-        rate_range_table = _table(rr_headers, rr_rows, col_widths=["90px", "60px"])
-        return html.Div([rate_range_table], style={"overflow": "auto", "maxHeight": "230px"})
-
-    return html.Div("Unknown view.", style={"color": COLORS["text_muted"], "padding": "8px"})
-
-
 def _parse_vol(val):
     """Parse volume string (e.g. '48.29M', '28,578,735') to float. Handles K/M/B suffixes."""
     if val is None or val == "":
@@ -1705,6 +1457,505 @@ def build_live_index_snapshot(data: list[dict]) -> html.Div:
     })
 
 
+# -----------------------------------------------------------------------
+# Should I Be Trading? — Bloomberg Terminal-style decision dashboard
+# -----------------------------------------------------------------------
+
+SIT_TAB_STYLE = {
+    "backgroundColor": COLORS["surface2"],
+    "color": COLORS["text_muted"],
+    "border": f"1px solid {COLORS['border']}",
+    "padding": "6px 16px",
+    "fontSize": "11px",
+    "fontWeight": 600,
+}
+SIT_TAB_SELECTED = {
+    "backgroundColor": COLORS["surface"],
+    "color": COLORS["accent"],
+    "borderBottom": "none",
+    "borderTop": f"2px solid {COLORS['accent']}",
+}
+
+
+def build_should_i_trade_tab() -> html.Div:
+    """Build Should I Trade? tab content: top bar, hero, panels, heatmap, alerts, mode toggle."""
+    loading = html.Div("Loading...", style={"color": COLORS["text_muted"], "padding": "24px"})
+    return html.Div([
+        # Top bar: mode toggle, status, last updated, refresh
+        html.Div([
+            html.Div([
+                html.Span("Mode: ", style={"fontSize": "10px", "color": COLORS["text_muted"], "marginRight": "4px"}),
+                dcc.RadioItems(
+                    id="sit-mode-toggle",
+                    options=[
+                        {"label": "Swing Trading", "value": "swing"},
+                        {"label": "Day Trading", "value": "day"},
+                    ],
+                    value="swing",
+                    inline=True,
+                    style={"fontSize": "10px", "color": COLORS["text"]},
+                ),
+            ], style={"display": "flex", "alignItems": "center"}),
+            html.Div([
+                html.Span(id="sit-status", children="LIVE", style={
+                    "fontSize": "10px", "fontWeight": 600, "color": COLORS["green"],
+                    "marginRight": "12px",
+                }),
+                html.Span(id="sit-last-updated", children="Updated —", style={
+                    "fontSize": "10px", "color": COLORS["text_muted"], "marginRight": "12px",
+                }),
+                html.Button("↻ Refresh", id="btn-refresh-should-i-trade", style={
+                    "background": "rgba(255,255,255,0.1)", "border": f"1px solid {COLORS['border']}",
+                    "color": COLORS["text"], "fontSize": "10px", "padding": "4px 8px",
+                    "borderRadius": "4px", "cursor": "pointer",
+                }),
+            ], style={"display": "flex", "alignItems": "center"}),
+        ], style={
+            "display": "flex", "justifyContent": "space-between", "alignItems": "center",
+            "padding": "8px 12px", "borderBottom": f"1px solid {COLORS['border']}",
+            "backgroundColor": COLORS["surface2"],
+        }),
+        # Main content (populated by callback)
+        html.Div(
+            id="should-i-trade-content",
+            children=loading,
+            style={"padding": "12px", "minHeight": "400px"},
+        ),
+        dcc.Interval(id="sit-interval", interval=45000, n_intervals=0),
+    ], style=CONTENT_AREA_STYLE)
+
+
+def build_should_i_trade_content(data: dict, scores: dict, summary: str | dict) -> html.Div:
+    """Build full Should I Trade dashboard content from aggregated data and scores."""
+    vol = data.get("volatility", {})
+    trend = data.get("trend", {})
+    breadth = data.get("breadth", {})
+    momentum = data.get("momentum", {})
+    macro = data.get("macro", {})
+
+    decision = scores.get("decision", "CAUTION")
+    mqs = scores.get("market_quality_score", 0)
+    ews = scores.get("execution_window_score", 0)
+    cat = scores.get("category_scores", {})
+
+    dec_color = COLORS["green"] if decision == "YES" else (COLORS["yellow"] if decision == "CAUTION" else COLORS["red"])
+
+    # Card theme colors (Bloomberg-style)
+    CARD_THEMES = {
+        "volatility": COLORS["red"],
+        "trend": "#3b82f6",
+        "breadth": COLORS["accent"],
+        "momentum": COLORS["orange"],
+        "macro": "#a855f7",
+    }
+
+    def _badge(text: str, color: str, size: str = "normal"):
+        fs = "10px" if size == "large" else "8px"
+        pad = "4px 8px" if size == "large" else "2px 6px"
+        return html.Span(text, style={
+            "fontSize": fs, "fontWeight": 600, "padding": pad, "borderRadius": "4px",
+            "background": f"{color}22", "color": color,
+        })
+
+    def _detail_card(title: str, icon: str, score: float, theme: str, rows: list, large_text: bool = False):
+        """Build a detailed card with header, progress bar, and metric rows (label, value, badge)."""
+        sz = "large" if large_text else "normal"
+        bar_color = COLORS["red"] if score < 40 else (COLORS["yellow"] if score < 70 else COLORS["green"])
+        h_fs = "12px" if large_text else "10px"
+        score_fs = "18px" if large_text else "14px"
+        bar_h = "4px" if large_text else "3px"
+        pad = "16px" if large_text else "12px"
+        return html.Div([
+            html.Div([
+                html.Span(icon, style={"fontSize": "14px" if large_text else "12px", "marginRight": "6px", "opacity": 0.9}),
+                html.Span(title.upper(), style={"fontSize": h_fs, "fontWeight": 700, "color": COLORS["text_muted"], "letterSpacing": "0.5px"}),
+                html.Span(f"{int(score)}", className="sit-mono", style={"fontSize": score_fs, "fontWeight": 700, "color": bar_color, "marginLeft": "auto"}),
+            ], style={"display": "flex", "alignItems": "center", "marginBottom": "8px" if large_text else "6px"}),
+            html.Div([
+                html.Div(style={"width": f"{min(100, max(0, score))}%", "height": bar_h, "background": bar_color, "borderRadius": "2px"}),
+            ], style={"width": "100%", "height": bar_h, "background": COLORS["surface3"], "borderRadius": "2px", "overflow": "hidden", "marginBottom": "12px" if large_text else "10px"}),
+            html.Div([
+                _metric_row(dot_color, label, value, badge_text, badge_color, sz)
+                for dot_color, label, value, badge_text, badge_color in rows
+            ]),
+        ], style={
+            "padding": pad, "borderRadius": "6px", "background": COLORS["surface2"],
+            "border": f"1px solid {COLORS['border']}", "minWidth": "160px",
+            **({"height": "100%", "display": "flex", "flexDirection": "column"} if large_text else {}),
+        })
+
+    def _metric_row(dot_color: str, label: str, value, badge_text: str, badge_color: str, size: str = "normal"):
+        fs = "12px" if size == "large" else "9px"
+        dot_fs = "10px" if size == "large" else "8px"
+        row_mb = "10px" if size == "large" else "6px"
+        label_w = "120px" if size == "large" else "90px"
+        return html.Div([
+            html.Span("●", style={"fontSize": dot_fs, "color": dot_color, "marginRight": "8px"}),
+            html.Span(label, style={"fontSize": fs, "color": COLORS["text_muted"], "flex": f"0 0 {label_w}"}),
+            html.Span(str(value) if value is not None else "—", className="sit-mono", style={"fontSize": fs, "color": COLORS["text"], "flex": "1"}),
+            _badge(badge_text, badge_color, size) if badge_text else html.Span(),
+        ], style={"display": "flex", "alignItems": "center", "gap": "6px", "marginBottom": row_mb})
+
+    def _status_dot(v, low, high):
+        if v is None: return COLORS["text_faint"]
+        return COLORS["green"] if v < low else (COLORS["red"] if v > high else COLORS["yellow"])
+    def _status_dot_slope(s):
+        if s is None: return COLORS["text_faint"]
+        return COLORS["red"] if s and s > 0.5 else (COLORS["green"] if s and s < -0.5 else COLORS["yellow"])
+    def _vix_status(v):
+        if v is None: return "—"
+        return "Low" if v < 15 else ("High" if v > 22 else "Normal")
+    def _vix_badge_color(v):
+        if v is None: return COLORS["text_faint"]
+        return COLORS["green"] if v < 15 else (COLORS["red"] if v > 22 else COLORS["yellow"])
+    def _vix_trend_badge(s):
+        if s is None: return "—"
+        return "Spiking" if s > 0.5 else ("Declining" if s < -0.5 else "Flat")
+    def _vix_trend_color(s):
+        if s is None: return COLORS["text_faint"]
+        return COLORS["red"] if s > 0.5 else (COLORS["green"] if s < -0.5 else COLORS["yellow"])
+    def _pct_status(p):
+        if p is None: return "—"
+        return "Low" if p < 20 else ("High" if p > 80 else "Normal")
+    def _pct_badge_color(p):
+        if p is None: return COLORS["text_faint"]
+        return COLORS["green"] if p > 50 else (COLORS["red"] if p < 25 else COLORS["yellow"])
+    def _pc_dot(p):
+        if p is None: return COLORS["text_faint"]
+        return COLORS["red"] if p > 1.1 else (COLORS["green"] if p < 0.9 else COLORS["yellow"])
+    def _pc_badge(p):
+        if p is None: return "—"
+        return "Fear elevated" if p > 1.1 else ("Complacent" if p < 0.85 else "Neutral")
+    def _pc_color(p):
+        if p is None: return COLORS["text_faint"]
+        return COLORS["orange"] if p > 1.05 else (COLORS["green"] if p < 0.9 else COLORS["yellow"])
+
+    # Build metric rows for each card
+    vix = vol.get("vix")
+    slope = vol.get("vix_5d_slope")
+    pct = vol.get("vix_1y_pct")
+    pc = vol.get("put_call_est")
+    vol_rows = [
+        (_status_dot(vix, 15, 25), "VIX Level", f"{vix:.2f}" if vix is not None else "—", _vix_status(vix), _vix_badge_color(vix)),
+        (_status_dot_slope(slope), "VIX Trend", "Rising" if slope and slope > 0.5 else ("Falling" if slope and slope < -0.5 else "Flat"), _vix_trend_badge(slope), _vix_trend_color(slope)),
+        (COLORS["green"] if pct and pct > 30 else (COLORS["red"] if pct and pct < 20 else COLORS["yellow"]), "VIX 1Y %ile", f"{int(pct)}th" if pct is not None else "—", _pct_status(pct), _pct_badge_color(pct)),
+        (_pc_dot(pc), "Put/Call", f"{pc:.2f}" if pc is not None else "—", _pc_badge(pc), _pc_color(pc)),
+    ]
+
+    spy_a20 = trend.get("spy_above_20")
+    spy_a50 = trend.get("spy_above_50")
+    spy_a200 = trend.get("spy_above_200")
+    qqq_a50 = trend.get("qqq_above_50")
+    regime = trend.get("regime", "chop")
+
+    def _ma_label(above):
+        if above is None: return "—"
+        return "Above" if above else "Below"
+    def _ma_dot(above):
+        if above is None: return COLORS["text_faint"]
+        return COLORS["green"] if above else COLORS["red"]
+    def _ma_badge(above):
+        if above is None: return "—"
+        return "Intact" if above else "Weak"
+    def _ma_badge_color(above):
+        if above is None: return COLORS["text_faint"]
+        return COLORS["green"] if above else COLORS["red"]
+    def _at_ma(above):
+        return "At MA" if above is None else (_ma_label(above))
+
+    trend_rows = [
+        (_ma_dot(spy_a20), "SPX vs 20d", _at_ma(spy_a20), "Neutral" if spy_a20 is None else _ma_badge(spy_a20), COLORS["text_muted"] if spy_a20 is None else _ma_badge_color(spy_a20)),
+        (_ma_dot(spy_a50), "SPX vs 50d", _ma_label(spy_a50), _ma_badge(spy_a50), _ma_badge_color(spy_a50)),
+        (_ma_dot(spy_a200), "SPX vs 200d", _ma_label(spy_a200), _ma_badge(spy_a200), _ma_badge_color(spy_a200)),
+        (_ma_dot(qqq_a50), "QQQ Trend", "Below 50d" if qqq_a50 is False else ("Above 50d" if qqq_a50 else "—"), "Correcting" if qqq_a50 is False else ("Strong" if qqq_a50 else "—"), COLORS["red"] if qqq_a50 is False else (COLORS["green"] if qqq_a50 else COLORS["text_faint"])),
+        (COLORS["red"] if regime == "downtrend" else (COLORS["green"] if regime == "uptrend" else COLORS["yellow"]), "Regime", regime.title(), regime.title(), COLORS["red"] if regime == "downtrend" else (COLORS["green"] if regime == "uptrend" else COLORS["orange"])),
+    ]
+
+    p20 = breadth.get("pct_above_20")
+    p50 = breadth.get("pct_above_50")
+    p200 = breadth.get("pct_above_200")
+    up4 = breadth.get("up4")
+    down4 = breadth.get("down4")
+    nh = breadth.get("new_highs")
+    nl = breadth.get("new_lows")
+
+    def _pct_badge(p):
+        if p is None: return "—"
+        return "Very weak" if p < 25 else ("Weak" if p < 40 else ("Healthy" if p > 55 else "Neutral"))
+    def _pct_dot(p):
+        if p is None: return COLORS["text_faint"]
+        return COLORS["green"] if p > 50 else (COLORS["red"] if p < 35 else COLORS["yellow"])
+    ad_ratio = (up4 / down4) if (up4 is not None and down4 is not None and down4 > 0) else None
+    ad_display = f"{ad_ratio:.1f}:1" if ad_ratio is not None else (f"{up4 or 0}/{down4 or 0}" if (up4 or down4) else "—")
+    breadth_rows = [
+        (_pct_dot(p50), "% > 50d MA", f"{p50}%" if p50 is not None else "—", _pct_badge(p50), _pct_dot(p50)),
+        (_pct_dot(p200), "% > 200d MA", f"{p200}%" if p200 is not None else "—", _pct_badge(p200), _pct_dot(p200)),
+        (_pct_dot(p20), "% > 20d MA", f"{p20}%" if p20 is not None else "—", _pct_badge(p20), _pct_dot(p20)),
+        (COLORS["green"] if ad_ratio and ad_ratio > 1 else (COLORS["red"] if ad_ratio else COLORS["text_faint"]), "NYSE A/D", ad_display, "Positive" if ad_ratio and ad_ratio > 1 else ("Negative" if ad_ratio and ad_ratio < 1 else "—"), COLORS["green"] if ad_ratio and ad_ratio > 1 else (COLORS["red"] if ad_ratio else COLORS["text_faint"])),
+        (COLORS["green"] if nh and nl and nh > nl else (COLORS["red"] if nh and nl else COLORS["text_faint"]), "NAS Highs/Lows", f"{nh or 0}/{nl or 0}" if (nh or nl) is not None else "—", "Highs dominate" if nh and nl and nh > nl else ("Lows dominate" if nh and nl else "—"), COLORS["green"] if nh and nl and nh > nl else (COLORS["red"] if nh and nl else COLORS["text_faint"])),
+    ]
+
+    sectors = momentum.get("sectors", [])
+    pos_count = sum(1 for s in sectors if (s.get("chg") or 0) >= 0)
+    leader = momentum.get("top3", [{}])[0] if momentum.get("top3") else {}
+    laggard = momentum.get("bottom3", [{}])[-1] if momentum.get("bottom3") else {}
+    participation = "Low" if pos_count <= 3 else ("High" if pos_count >= 8 else "Mixed")
+
+    def _sector_label(s):
+        if not s: return "—"
+        t = s.get("ticker", "")
+        name = SECTOR_NAMES.get(t, t)
+        chg = s.get("chg") or 0
+        return f"{name} ({chg:+.2f}%)"
+
+    mom_rows = [
+        (COLORS["green"] if pos_count >= 6 else (COLORS["red"] if pos_count <= 2 else COLORS["yellow"]), "Sectors +", f"{pos_count}/11", "Very thin" if pos_count <= 2 else ("Narrow" if pos_count <= 5 else "Broad"), COLORS["red"] if pos_count <= 2 else (COLORS["yellow"] if pos_count <= 5 else COLORS["green"])),
+        (COLORS["green"] if (leader.get("chg") or 0) >= 0 else COLORS["red"], "Leader", _sector_label(leader), "", COLORS["text_muted"]),
+        (COLORS["red"] if (laggard.get("chg") or 0) < 0 else COLORS["green"], "Laggard", _sector_label(laggard), "", COLORS["text_muted"]),
+        (COLORS["green"] if participation == "High" else (COLORS["red"] if participation == "Low" else COLORS["yellow"]), "Participation", participation, "Narrow" if participation == "Low" else ("Broad" if participation == "High" else "Mixed"), COLORS["red"] if participation == "Low" else (COLORS["green"] if participation == "High" else COLORS["yellow"])),
+    ]
+
+    fomc_status = "TODAY" if macro.get("fomc_today") else ("72h" if macro.get("fomc_within_72h") else "Clear")
+    tnx = macro.get("tnx")
+    dxy = macro.get("dxy")
+    fed = macro.get("fed_stance", "neutral")
+    fed_rate = macro.get("fed_rate_str", "")
+    tnx_trend = macro.get("tnx_5d_trend")
+    dxy_trend = macro.get("dxy_trend")
+
+    macro_rows = [
+        (COLORS["red"] if macro.get("fomc_today") else (COLORS["yellow"] if macro.get("fomc_within_72h") else COLORS["green"]), "FOMC", fomc_status, "Event risk!" if macro.get("fomc_today") else ("Watch" if macro.get("fomc_within_72h") else "Clear"), COLORS["red"] if macro.get("fomc_today") else (COLORS["yellow"] if macro.get("fomc_within_72h") else COLORS["green"])),
+        (COLORS["red"] if tnx_trend and tnx_trend > 0.1 else (COLORS["green"] if tnx_trend and tnx_trend < -0.05 else COLORS["yellow"]), "10Y Yield", f"{tnx:.2f}%" if tnx is not None else "—", "Rising" if tnx_trend and tnx_trend > 0.05 else ("Falling" if tnx_trend and tnx_trend < -0.05 else "Stable"), COLORS["orange"] if tnx_trend and tnx_trend > 0.05 else (COLORS["green"] if tnx_trend and tnx_trend < -0.05 else COLORS["yellow"])),
+        (COLORS["orange"] if dxy_trend and dxy_trend > 0.3 else (COLORS["green"] if dxy_trend and dxy_trend < -0.3 else COLORS["yellow"]), "DXY", f"{dxy:.2f}" if dxy is not None else "—", "Strengthening" if dxy_trend and dxy_trend > 0.2 else ("Weakening" if dxy_trend and dxy_trend < -0.2 else "Stable"), COLORS["orange"] if dxy_trend and dxy_trend > 0.2 else (COLORS["green"] if dxy_trend and dxy_trend < -0.2 else COLORS["yellow"])),
+        (COLORS["blue_tml"] if fed == "neutral" else (COLORS["green"] if fed == "dovish" else COLORS["orange"]), "Fed Stance", f"{fed.title()} ({fed_rate})" if fed_rate else fed.title(), fed.title(), COLORS["blue_tml"] if fed == "neutral" else (COLORS["green"] if fed == "dovish" else COLORS["orange"])),
+        (COLORS["text_faint"], "Geopolitical", "—", "Monitor", COLORS["text_muted"]),
+    ]
+
+    panels = html.Div([
+        _detail_card("Volatility", "▽", cat.get("volatility", {}).get("score", 50), CARD_THEMES["volatility"], vol_rows),
+        _detail_card("Trend", "↗", cat.get("trend", {}).get("score", 50), CARD_THEMES["trend"], trend_rows),
+        _detail_card("Breadth", "◇", cat.get("breadth", {}).get("score", 50), CARD_THEMES["breadth"], breadth_rows),
+        _detail_card("Momentum", "↑", cat.get("momentum", {}).get("score", 50), CARD_THEMES["momentum"], mom_rows),
+        _detail_card("Macro", "◉", cat.get("macro", {}).get("score", 50), CARD_THEMES["macro"], macro_rows),
+    ], style={"display": "grid", "gridTemplateColumns": "repeat(5, 1fr)", "gap": "8px", "marginBottom": "12px"})
+
+    mode_label = "Swing Trading" if scores.get("mode") == "swing" else "Day Trading"
+    position_size = "FULL" if mqs >= 80 else ("HALF" if mqs >= 60 else "MINIMAL")
+    position_instruction = "Press risk" if mqs >= 80 else ("A+ setups only" if mqs >= 60 else "Preserve capital")
+
+    def _score_color(s):
+        return COLORS["red"] if s < 40 else (COLORS["yellow"] if s < 70 else COLORS["green"])
+
+    cat_items = [
+        ("Volatility", "〰", cat.get("volatility", {}).get("score", 0), CARD_THEMES["volatility"]),
+        ("Trend", "↗", cat.get("trend", {}).get("score", 0), CARD_THEMES["trend"]),
+        ("Breadth", "⊞", cat.get("breadth", {}).get("score", 0), CARD_THEMES["breadth"]),
+        ("Momentum", "↑", cat.get("momentum", {}).get("score", 0), CARD_THEMES["momentum"]),
+        ("Macro", "◉", cat.get("macro", {}).get("score", 0), CARD_THEMES["macro"]),
+    ]
+    cat_columns = []
+    for name, icon, s, theme in cat_items:
+        sc = _score_color(s)
+        cat_columns.append(html.Div([
+            html.Div(icon, style={"fontSize": "14px", "color": theme, "marginBottom": "4px"}),
+            html.Div(name.upper(), style={"fontSize": "9px", "color": COLORS["text_muted"], "letterSpacing": "0.5px", "marginBottom": "2px"}),
+            html.Div(f"{int(s)}", className="sit-mono", style={"fontSize": "16px", "fontWeight": 700, "color": sc, "marginBottom": "6px"}),
+            html.Div([
+                html.Div(style={"width": f"{min(100, s)}%", "height": "4px", "background": sc, "borderRadius": "2px"}),
+            ], style={"width": "100%", "height": "4px", "background": COLORS["surface3"], "borderRadius": "2px", "overflow": "hidden"}),
+        ], style={"display": "flex", "flexDirection": "column", "alignItems": "center", "minWidth": "72px"}))
+
+    mqs_pct = min(100, max(0, mqs))
+    gauge_fill = _score_color(mqs)
+
+    hero = html.Div([
+        # Decision section
+        html.Div([
+            html.Div("DECISION", style={"fontSize": "9px", "color": COLORS["text_muted"], "letterSpacing": "1px", "marginBottom": "6px"}),
+            html.Div(decision, className="sit-mono", style={
+                "fontSize": "32px", "fontWeight": 800, "color": dec_color,
+                "letterSpacing": "3px", "padding": "12px 20px", "border": f"2px solid {dec_color}",
+                "borderRadius": "6px", "boxShadow": f"0 0 12px {dec_color}40",
+            }),
+            html.Div(mode_label, style={"fontSize": "10px", "color": COLORS["text_muted"], "marginTop": "8px"}),
+        ], style={"display": "flex", "flexDirection": "column", "alignItems": "center", "marginRight": "32px"}),
+        # Circular gauge
+        html.Div([
+            html.Div(style={
+                "width": "80px", "height": "80px", "borderRadius": "50%",
+                "background": f"conic-gradient({gauge_fill} 0% {mqs_pct}%, {COLORS['surface3']} {mqs_pct}% 100%)",
+                "padding": "6px", "boxSizing": "border-box",
+            }, children=[
+                html.Div([
+                    html.Div(f"{int(mqs)}", className="sit-mono", style={"fontSize": "22px", "fontWeight": 800, "color": gauge_fill, "lineHeight": 1}),
+                    html.Div("/ 100", style={"fontSize": "10px", "color": COLORS["text_muted"]}),
+                ], style={"width": "100%", "height": "100%", "borderRadius": "50%", "background": COLORS["surface2"], "display": "flex", "flexDirection": "column", "alignItems": "center", "justifyContent": "center"}),
+            ]),
+        ], style={"marginRight": "40px"}),
+        # Five category columns
+        html.Div(cat_columns, style={"display": "flex", "gap": "40px", "flex": "1", "justifyContent": "space-evenly", "alignItems": "center"}),
+        # Vertical divider
+        html.Div(style={"width": "1px", "height": "60px", "background": COLORS["border"], "marginRight": "24px"}),
+        # Position size
+        html.Div([
+            html.Div("POSITION SIZE", style={"fontSize": "9px", "color": COLORS["text_muted"], "letterSpacing": "1px", "marginBottom": "6px"}),
+            html.Div([
+                html.Span("🛡", style={"fontSize": "18px", "marginRight": "6px"}),
+                html.Div([
+                    html.Div(position_size, className="sit-mono", style={"fontSize": "16px", "fontWeight": 700, "color": dec_color}),
+                    html.Div(position_instruction, style={"fontSize": "10px", "color": COLORS["text_muted"], "marginTop": "2px"}),
+                ]),
+            ], style={"display": "flex", "alignItems": "center"}),
+        ], style={"display": "flex", "flexDirection": "column", "alignItems": "flex-start"}),
+    ], style={"display": "flex", "alignItems": "center", "padding": "24px 28px", "background": COLORS["surface2"], "borderRadius": "8px", "border": f"1px solid {COLORS['border']}", "marginBottom": "12px"})
+
+    ew_factors = scores.get("execution_window_factors", {})
+    def _ew_row(key, label):
+        v = ew_factors.get(key, ("—", "—"))
+        yes_no = v[0] if len(v) > 0 else "—"
+        detail = v[1] if len(v) > 1 else "—"
+        dot = COLORS["green"] if yes_no == "Yes" else (COLORS["red"] if yes_no == "No" else COLORS["yellow"])
+        badge_c = COLORS["green"] if yes_no == "Yes" else (COLORS["red"] if yes_no == "No" else COLORS["yellow"])
+        return (dot, label, yes_no, detail, badge_c)
+    ew_rows = [
+        _ew_row("breakouts_working", "Breakouts working?"),
+        _ew_row("leaders_holding", "Leaders holding?"),
+        _ew_row("pullbacks_bought", "Pullbacks bought?"),
+        _ew_row("follow_through", "Follow-through?"),
+    ]
+    execution_card = _detail_card("Execution Window", "◐", ews, COLORS["accent"], ew_rows, large_text=True)
+
+    sectors = momentum.get("sectors", [])
+    sector_bars = []
+    for s in sorted(sectors, key=lambda x: x.get("chg") or 0, reverse=True):
+        chg = s.get("chg") or 0
+        bar_color = COLORS["green"] if chg >= 0 else COLORS["red"]
+        sector_bars.append(html.Div([
+            html.Span(s.get("ticker", ""), style={"fontSize": "10px", "width": "40px", "display": "inline-block"}),
+            html.Div([
+                html.Div(style={
+                    "width": f"{min(100, max(0, 50 + chg * 2))}%", "height": "100%",
+                    "background": bar_color, "borderRadius": "2px",
+                }),
+            ], style={"flex": 1, "height": "14px", "background": COLORS["surface3"], "borderRadius": "2px", "overflow": "hidden"}),
+            html.Span(f"{chg:+.2f}%", className="sit-mono", style={"fontSize": "10px", "width": "50px", "textAlign": "right", "color": bar_color}),
+        ], style={"display": "flex", "alignItems": "center", "gap": "8px", "marginBottom": "4px"}))
+
+    heatmap = html.Div([
+        html.Div("Sector Performance", style={"fontSize": "11px", "fontWeight": 600, "marginBottom": "8px", "color": COLORS["text_muted"]}),
+        html.Div(sector_bars or [html.Span("No sector data", style={"color": COLORS["text_muted"]})], style={"flex": "1", "minHeight": "0", "overflowY": "auto"}),
+    ], style={"padding": "12px", "background": COLORS["surface2"], "borderRadius": "6px", "border": f"1px solid {COLORS['border']}", "display": "flex", "flexDirection": "column", "height": "100%"})
+
+    def _weight_row_color(s):
+        return COLORS["red"] if s < 40 else (COLORS["orange"] if s < 70 else COLORS["green"])
+    weight_order = ["volatility", "momentum", "trend", "breadth", "macro"]
+    weight_rows = []
+    for name in weight_order:
+        cfg = cat.get(name, {})
+        s = cfg.get("score", 0)
+        w = cfg.get("weight", 0) * 100
+        bar_c = _weight_row_color(s)
+        weight_rows.append(html.Div([
+            html.Span(name.title(), style={"fontSize": "10px", "color": COLORS["text_muted"], "width": "72px", "flexShrink": 0}),
+            html.Div([
+                html.Div(style={"width": f"{min(100, max(0, s))}%", "height": "100%", "background": bar_c, "borderRadius": "4px"}),
+            ], style={"flex": 1, "height": "8px", "background": COLORS["surface3"], "borderRadius": "4px", "overflow": "hidden", "minWidth": "60px"}),
+            html.Span(f"{int(s)}", className="sit-mono", style={"fontSize": "10px", "fontWeight": 600, "color": bar_c, "width": "24px", "textAlign": "right"}),
+            html.Span(f"×{w:.0f}%", style={"fontSize": "9px", "color": COLORS["text_faint"], "width": "36px", "textAlign": "right"}),
+        ], style={"display": "flex", "alignItems": "center", "gap": "8px", "marginBottom": "6px"}))
+    total_color = _weight_row_color(mqs)
+    legend = html.Div([
+        html.Span("●", style={"color": COLORS["green"], "fontSize": "8px", "marginRight": "4px"}),
+        html.Span("80-100: YES (press risk)  ", style={"fontSize": "9px", "color": COLORS["text_muted"]}),
+        html.Span("●", style={"color": COLORS["orange"], "fontSize": "8px", "marginRight": "4px"}),
+        html.Span("60-79: CAUTION (selective)  ", style={"fontSize": "9px", "color": COLORS["text_muted"]}),
+        html.Span("●", style={"color": COLORS["red"], "fontSize": "8px", "marginLeft": "4px", "marginRight": "4px"}),
+        html.Span("<60: NO (preserve capital)", style={"fontSize": "9px", "color": COLORS["text_muted"]}),
+    ], style={"marginTop": "10px", "display": "flex", "flexWrap": "wrap", "alignItems": "center"})
+
+    breakdown = html.Div([
+        html.Div([
+            html.Span("〰", style={"fontSize": "12px", "color": COLORS["accent"], "marginRight": "6px"}),
+            html.Span("SCORING WEIGHTS", style={"fontSize": "11px", "fontWeight": 700, "color": COLORS["accent"], "letterSpacing": "0.5px"}),
+        ], style={"display": "flex", "alignItems": "center", "marginBottom": "12px"}),
+        html.Div(weight_rows),
+        html.Div(style={"height": "1px", "background": COLORS["border"], "margin": "8px 0"}),
+        html.Div([
+            html.Span("TOTAL SCORE", style={"fontSize": "10px", "color": COLORS["text_muted"]}),
+            html.Span(f"{int(mqs)}/100", className="sit-mono", style={"fontSize": "18px", "fontWeight": 800, "color": total_color}),
+        ], style={"display": "flex", "justifyContent": "space-between", "alignItems": "center"}),
+        legend,
+    ], style={"padding": "12px", "background": COLORS["surface2"], "borderRadius": "6px", "border": f"1px solid {COLORS['border']}", "display": "flex", "flexDirection": "column", "height": "100%"})
+
+    alert_banner = html.Div()
+    if macro.get("major_event_within_72h"):
+        events = macro.get("events_72h", [])
+        evt_str = "; ".join(e.get("title", "") for e in events[:3])
+        fomc_note = "FOMC DECISION TODAY: " if macro.get("fomc_today") else "Major event within 72h: "
+        fed_rate = macro.get("fed_rate_str", "")
+        hold_str = f" at {fed_rate}" if fed_rate else ""
+        fomc_detail = f"Rate decision at 2:00 PM ET. Fed widely expected to hold{hold_str}. Press conference at 2:30 PM." if macro.get("fomc_today") else evt_str
+        alert_banner = html.Div([
+            html.Span("⚠ ", style={"color": COLORS["orange"], "fontSize": "14px"}),
+            html.Span(f"{fomc_note}{fomc_detail}", style={"fontSize": "11px", "color": COLORS["orange"]}),
+        ], style={
+            "padding": "8px 12px", "background": "rgba(249,115,22,0.15)", "borderRadius": "4px",
+            "border": f"1px solid {COLORS['orange']}", "marginBottom": "12px",
+        })
+
+    summary_text = summary.get("text", summary) if isinstance(summary, dict) else summary
+    suggested_action = summary.get("suggested_action", "") if isinstance(summary, dict) else ""
+
+    analysis = html.Div([
+        html.Div("AI-Generated Market Assessment", style={"fontSize": "11px", "fontWeight": 600, "marginBottom": "6px", "color": COLORS["text_muted"]}),
+        html.Div(summary_text, style={"fontSize": "11px", "color": COLORS["text"], "lineHeight": 1.5, "marginBottom": "8px", "flex": "1", "minHeight": "0", "overflowY": "auto"}),
+        html.Div([
+            html.Span("Suggested action: ", style={"fontSize": "10px", "color": COLORS["text_muted"]}),
+            html.Span(suggested_action, style={"fontSize": "11px", "fontWeight": 700, "color": dec_color}),
+        ], style={"paddingTop": "8px", "borderTop": f"1px solid {COLORS['border']}"}) if suggested_action else html.Span(),
+    ], style={"padding": "12px", "background": COLORS["surface2"], "borderRadius": "6px", "border": f"1px solid {COLORS['border']}", "display": "flex", "flexDirection": "column", "height": "100%"})
+
+    ticker_tape = data.get("ticker_tape", [])
+    def _tape_item(t):
+        chg = t.get("change", "")
+        is_pos = "+" in str(chg)
+        return html.Span([
+            html.Span(t.get("ticker", ""), style={"fontWeight": 600, "marginRight": "4px"}),
+            html.Span(chg, className="sit-mono", style={"color": COLORS["green"] if is_pos else COLORS["red"], "fontSize": "10px"}),
+        ], style={"display": "inline-flex", "marginRight": "24px", "whiteSpace": "nowrap"})
+    tape_items = [_tape_item(t) for t in ticker_tape]
+    tape_duplicated = tape_items + tape_items if tape_items else []
+    ticker_marquee = html.Div([
+        html.Div(tape_duplicated, className="sit-ticker-marquee-inner"),
+    ], className="sit-ticker-marquee") if tape_items else html.Div("Loading ticker data...", style={"color": COLORS["text_muted"], "fontSize": "10px"})
+
+    return html.Div([
+        html.Div([
+            html.Div("SHOULD I BE TRADING?", style={"fontSize": "14px", "fontWeight": 800, "color": COLORS["text"], "letterSpacing": "1px"}),
+            html.Div("MARKET QUALITY TERMINAL.", style={"fontSize": "10px", "color": COLORS["text_muted"], "marginTop": "2px"}),
+        ], style={"marginBottom": "8px"}),
+        html.Div(ticker_marquee, style={
+            "padding": "8px 0", "borderBottom": f"1px solid {COLORS['border']}", "marginBottom": "12px",
+        }),
+        hero,
+        alert_banner,
+        panels,
+        html.Div([
+            execution_card,
+            heatmap,
+            breakdown,
+            analysis,
+        ], style={
+            "display": "grid",
+            "gridTemplateColumns": "1fr 2fr",
+            "gridTemplateRows": "1fr 1fr",
+            "gap": "12px",
+            "alignItems": "stretch",
+            "minHeight": "320px",
+        }),
+    ])
+
+
 def build_stockbee_breadth(breadth: dict | None) -> html.Div:
     """Stockbee-style breadth metric cards: S&P 500, T2108, 5-Day Ratio, 10-Day Ratio, Up 4%+, Down 4%+."""
     if not breadth:
@@ -2200,19 +2451,26 @@ def _build_toggle_item(wid: str, name: str) -> html.Div:
 def build_settings_drawer() -> html.Div:
     """Settings drawer with tab-specific sections. Content shown based on active tab."""
     market_toggles = [_build_toggle_item(wid, name) for wid, name, _ in MARKET_METRICS_WIDGETS]
-    macro_toggles = [_build_toggle_item(wid, name) for wid, name, _ in MACRO_MONITOR_WIDGETS]
+    super_scanners_toggles = [_build_toggle_item(wid, name) for wid, name, _ in SUPER_SCANNERS_WIDGETS]
     intraday_toggles = [_build_toggle_item(wid, name) for wid, name, _ in INTRADAY_WIDGETS]
 
     return html.Div([
         html.Div("Widget Settings", style=SETTINGS_TITLE_STYLE),
         html.Div([
             html.Div("Macro Monitor", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
-            *macro_toggles,
+            html.Div(
+                "Single full-page view (FRED). No per-widget toggles.",
+                style={"fontSize": "10px", "color": COLORS["text_faint"], "lineHeight": 1.4, "maxWidth": "220px"},
+            ),
         ], id="settings-macro-monitor"),
         html.Div([
             html.Div("Market Metrics", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
             *market_toggles,
         ], id="settings-market-metrics"),
+        html.Div([
+            html.Div("Super Scanners", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
+            *super_scanners_toggles,
+        ], id="settings-super-scanners"),
         html.Div([
             html.Div("Intraday Inspector", style={**SETTINGS_TITLE_STYLE, "fontSize": "10px", "marginTop": "8px", "color": COLORS["text_muted"]}),
             *intraday_toggles,
@@ -2254,6 +2512,132 @@ def _sortable_table_wrap(widget_id: str, default_sort_col: str = "change", defau
     ])
 
 
+def build_super_scanners_tab() -> html.Div:
+    """FinViz / StockBee scanner widgets (moved from Market Metrics)."""
+    return html.Div([
+        html.Div([
+            html.Div([
+                _widget("qulla", "Qullamaggie",
+                        _sortable_table_wrap("qulla"),
+                        variant="green",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("qulla", True),
+                        extra_header=html.Span([
+                            _finviz_link("EP", "qullamaggie", {"marginLeft": "8px"}),
+                            html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
+                            _finviz_link("Breakouts", "qulla_breakouts"),
+                            html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
+                            _finviz_link("PS Small", "qulla_ps_small"),
+                            html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
+                            _finviz_link("PS Large", "qulla_ps_large"),
+                        ])),
+                _widget("minervini", "Minervini",
+                        _sortable_table_wrap("minervini"),
+                        variant="purple",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("minervini", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "minervini", {"marginLeft": "8px"}),
+                        ])),
+                _widget("oneil", "O'Neil",
+                        _sortable_table_wrap("oneil"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("oneil", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "oneil", {"marginLeft": "8px"}),
+                        ])),
+            ], id="row-super-screeners", style=THIRD_ROW_STYLE),
+            html.Div([
+                _widget("club97", "97 Club",
+                        html.Div([
+                            dcc.Store(id="club97-data-store"),
+                            dcc.Store(id="club97-sort-store", data={"col": "change", "asc": False}, storage_type="memory"),
+                            _loading_wrap("club97-content"),
+                        ]),
+                        variant="green",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("club97", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "club97", {"marginLeft": "8px"}),
+                        ])),
+                _widget("movers", "StockBee - 9 Million Movers",
+                        _sortable_table_wrap("movers"),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("movers", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "9m_movers", {"marginLeft": "8px"}),
+                        ])),
+                _widget("weekly", "StockBee - 20% Weekly Movers",
+                        _sortable_table_wrap("weekly", default_sort_col="week", default_sort_asc=False),
+                        variant="red",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("weekly", True),
+                        extra_header=html.Span([
+                            _finviz_link("+20", "20pct_weekly_up", {"marginLeft": "8px"}),
+                            html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
+                            _finviz_link("-20", "20pct_weekly_down"),
+                        ], style={"marginLeft": "6px"})),
+                _widget("daily", "StockBee - 4% Daily Gainers",
+                        _sortable_table_wrap("daily"),
+                        variant="green",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("daily", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "4pct_daily", {"marginLeft": "8px"}),
+                        ])),
+            ], id="row-super-middle4", style=QUARTER_ROW_STYLE),
+            html.Div([
+                _widget("earnings-calendar-week", "Earnings Calendar — This Week",
+                        html.Div([
+                            dcc.Store(id="earnings-calendar-week-data-store"),
+                            dcc.Store(id="earnings-calendar-week-sort-store", data={"col": "market_cap", "asc": False}),
+                            _loading_wrap("earnings-calendar-week-content"),
+                        ]),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("earnings-calendar-week", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "earnings_this_week", {"marginLeft": "8px"}),
+                        ])),
+            ], id="row-super-earnings-week", style=WIDE_ROW_STYLE),
+        ], style=CONTENT_AREA_STYLE),
+    ])
+
+
+def build_nav_sidebar() -> html.Div:
+    """Collapsible left rail; updates main-tabs store (dcc.Tabs removed — no built-in tab strip)."""
+    nav_btns = [
+        ("should-i-trade", "Should I Trade?"),
+        ("macro-monitor", "Macro Monitor"),
+        ("market-metrics", "Market Metrics"),
+        ("super-scanners", "Super Scanners"),
+        ("intraday", "Intraday Inspector"),
+    ]
+    return html.Div(
+        [
+            html.Button(
+                "☰",
+                id="nav-sidebar-toggle",
+                n_clicks=0,
+                className="nav-sidebar-toggle",
+                title="Collapse / expand sidebar",
+            ),
+            html.Div(
+                [
+                    html.Button(
+                        label,
+                        id=f"nav-tab-{value}",
+                        n_clicks=0,
+                        className=(
+                            "nav-tab-btn nav-tab-active"
+                            if value == "market-metrics"
+                            else "nav-tab-btn"
+                        ),
+                    )
+                    for value, label in nav_btns
+                ],
+                id="nav-sidebar-inner",
+                className="nav-sidebar-inner",
+            ),
+        ],
+        id="nav-sidebar",
+        className="nav-sidebar",
+    )
+
+
 def build_layout() -> html.Div:
     loading = html.Div("Loading data...", style=LOADING_STYLE)
     empty_table = build_key_metrics_table({})
@@ -2266,201 +2650,33 @@ def build_layout() -> html.Div:
         dcc.Interval(id="interval-chart-resize", interval=500, n_intervals=0, max_intervals=1),
         dcc.Store(id="watchlist-store", data=_initial_watchlist()),
         dcc.Store(id="chart-resize-trigger"),
+        dcc.Store(id="main-tabs", data="market-metrics"),
 
         build_header(),
         build_settings_drawer(),
         build_tv_modal(),
 
-        dcc.Tabs(
-            id="main-tabs",
-            value="market-metrics",
-            style={
-                "backgroundColor": COLORS["surface"],
-                "borderBottom": f"1px solid {COLORS['border']}",
-                "padding": "0 12px",
-            },
-            children=[
-                dcc.Tab(
-                    label="Macro Monitor",
-                    value="macro-monitor",
-                    style={
-                        "backgroundColor": COLORS["surface2"],
-                        "color": COLORS["text_muted"],
-                        "border": f"1px solid {COLORS['border']}",
-                        "padding": "6px 16px",
-                        "fontSize": "11px",
-                        "fontWeight": 600,
-                    },
-                    selected_style={
-                        "backgroundColor": COLORS["surface"],
-                        "color": COLORS["accent"],
-                        "borderBottom": "none",
-                        "borderTop": f"2px solid {COLORS['accent']}",
-                    },
-                    children=[
-                        html.Div([
-                            dcc.Store(id="rate-watch-currency-store", data="USD"),
-                            html.Div([
-                                _widget("rate_watch_probabilities", "Rate Watch — Probabilities",
-                                        html.Div([
-                                            html.Div([
-                                                html.Label("Currency: ", style={"fontSize": "10px", "marginRight": "6px"}),
-                                                dcc.Dropdown(
-                                                    id="rate-watch-probabilities-currency",
-                                                    options=[{"label": c, "value": c} for c in ["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"]],
-                                                    value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
-                                                ),
-                                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
-                                            _loading_wrap("rate_watch_probabilities-content", [loading], style={**CHART_WRAP_STYLE, "height": "270px", "overflow": "hidden"}),
-                                        ]),
-                                        variant="teal",
-                                        initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_probabilities", True),
-                                        card_style_override={**WIDGET_STYLE, "maxHeight": "320px"},
-                                        body_style=RATE_WATCH_CHART_BODY_STYLE,
-                                        extra_header=html.Span([
-                                            html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
-                                                  id="rate-watch-probabilities-link", target="_blank", rel="noopener noreferrer",
-                                                  style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
-                                                         "textDecoration": "none", "marginLeft": "8px"}),
-                                        ])),
-                                _widget("rate_watch_rate_path", "Rate Watch — Rate Path",
-                                        html.Div([
-                                            html.Div([
-                                                html.Label("Currency: ", style={"fontSize": "10px", "marginRight": "6px"}),
-                                                dcc.Dropdown(
-                                                    id="rate-watch-rate-path-currency",
-                                                    options=[{"label": c, "value": c} for c in ["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"]],
-                                                    value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
-                                                ),
-                                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
-                                            _loading_wrap("rate_watch_rate_path-content", [loading], style={**CHART_WRAP_STYLE, "height": "270px", "overflow": "hidden"}),
-                                        ]),
-                                        variant="teal",
-                                        initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_rate_path", True),
-                                        card_style_override={**WIDGET_STYLE, "maxHeight": "320px"},
-                                        body_style=RATE_WATCH_CHART_BODY_STYLE,
-                                        extra_header=html.Span([
-                                            html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
-                                                  id="rate-watch-rate-path-link", target="_blank", rel="noopener noreferrer",
-                                                  style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
-                                                         "textDecoration": "none", "marginLeft": "8px"}),
-                                        ])),
-                                _widget("rate_watch_distribution", "Rate Watch — Distribution",
-                                        html.Div([
-                                            html.Div([
-                                                html.Label("Currency: ", style={"fontSize": "10px", "marginRight": "6px"}),
-                                                dcc.Dropdown(
-                                                    id="rate-watch-distribution-currency",
-                                                    options=[{"label": c, "value": c} for c in ["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"]],
-                                                    value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
-                                                ),
-                                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
-                                            _loading_wrap("rate_watch_distribution-content", [loading], style={**CHART_WRAP_STYLE, "height": "250px", "overflow": "hidden"}),
-                                        ]),
-                                        variant="teal",
-                                        initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_distribution", True),
-                                        card_style_override={**WIDGET_STYLE, "maxHeight": "300px"},
-                                        body_style=MACRO_CHART_BODY_STYLE,
-                                        extra_header=html.Span([
-                                            html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
-                                                  id="rate-watch-distribution-link", target="_blank", rel="noopener noreferrer",
-                                                  style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
-                                                         "textDecoration": "none", "marginLeft": "8px"}),
-                                        ])),
-                                _widget("rate_watch_rate_ranges", "Rate Watch — Rate Ranges",
-                                        html.Div([
-                                            html.Div([
-                                                html.Label("Currency: ", style={"fontSize": "10px", "marginRight": "6px"}),
-                                                dcc.Dropdown(
-                                                    id="rate-watch-rate-ranges-currency",
-                                                    options=[{"label": c, "value": c} for c in ["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "NZD"]],
-                                                    value="USD", clearable=False, style={"width": "100px", "fontSize": "10px"},
-                                                ),
-                                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "6px"}),
-                                            _loading_wrap("rate_watch_rate_ranges-content", [loading], style={**CHART_WRAP_STYLE, "height": "250px", "overflow": "hidden"}),
-                                        ]),
-                                        variant="teal",
-                                        initial_hidden=not DEFAULT_VISIBILITY.get("rate_watch_rate_ranges", True),
-                                        card_style_override={**WIDGET_STYLE, "maxHeight": "300px"},
-                                        body_style=MACRO_CHART_BODY_STYLE,
-                                        extra_header=html.Span([
-                                            html.A("Source", href=RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/"),
-                                                  id="rate-watch-rate-ranges-link", target="_blank", rel="noopener noreferrer",
-                                                  style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
-                                                         "textDecoration": "none", "marginLeft": "8px"}),
-                                        ])),
-                                _widget("economic_calendar", "Economic Calendar — Today",
-                                        _loading_wrap("economic_calendar-content"),
-                                        variant="teal",
-                                        initial_hidden=not DEFAULT_VISIBILITY.get("economic_calendar", True),
-                                        card_style_override={
-                                            **WIDGET_STYLE,
-                                            "maxHeight": "300px",
-                                        },
-                                        extra_header=html.Span([
-                                            html.A("Forex Factory", href="https://www.forexfactory.com/calendar",
-                                                   target="_blank", rel="noopener noreferrer",
-                                                   style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
-                                                          "textDecoration": "none", "marginLeft": "8px"}),
-                                        ])),
-                                _widget("cpi", "Consumer Price Index CPI",
-                                        _loading_wrap("cpi-content", [loading], style={**CHART_WRAP_STYLE, "height": f"{MACRO_WIDGET_BODY_HEIGHT}px", "overflow": "hidden"}),
-                                        variant="teal",
-                                        initial_hidden=not DEFAULT_VISIBILITY.get("cpi", True),
-                                        card_style_override={
-                                            **WIDGET_STYLE,
-                                            "maxHeight": "300px",
-                                        },
-                                        body_style=MACRO_CHART_BODY_STYLE,
-                                        extra_header=html.Span([
-                                            _finviz_link("FinViz", "cpi", {"marginLeft": "8px"}),
-                                        ])),
-                                _widget("core_inflation_mom", "Core Inflation Rate MoM",
-                                        _loading_wrap("core_inflation_mom-content", [loading], style={**CHART_WRAP_STYLE, "height": f"{MACRO_WIDGET_BODY_HEIGHT}px", "overflow": "hidden"}),
-                                        variant="teal",
-                                        initial_hidden=not DEFAULT_VISIBILITY.get("core_inflation_mom", True),
-                                        card_style_override={
-                                            **WIDGET_STYLE,
-                                            "maxHeight": "300px",
-                                        },
-                                        body_style=MACRO_CHART_BODY_STYLE,
-                                        extra_header=html.Span([
-                                            _finviz_link("FinViz", "core_inflation_mom", {"marginLeft": "8px"}),
-                                        ])),
-                                _widget("core_inflation_yoy", "Core Inflation Rate YoY",
-                                        _loading_wrap("core_inflation_yoy-content", [loading], style={**CHART_WRAP_STYLE, "height": f"{MACRO_WIDGET_BODY_HEIGHT}px", "overflow": "hidden"}),
-                                        variant="teal",
-                                        initial_hidden=not DEFAULT_VISIBILITY.get("core_inflation_yoy", True),
-                                        card_style_override={
-                                            **WIDGET_STYLE,
-                                            "maxHeight": "300px",
-                                        },
-                                        body_style=MACRO_CHART_BODY_STYLE,
-                                        extra_header=html.Span([
-                                            _finviz_link("FinViz", "core_inflation_yoy", {"marginLeft": "8px"}),
-                                        ])),
-                            ], style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "8px", "marginBottom": "4px"}),
-                        ], style=CONTENT_AREA_STYLE),
-                    ],
-                ),
-                dcc.Tab(
-                    label="Market Metrics",
-                    value="market-metrics",
-                    style={
-                        "backgroundColor": COLORS["surface2"],
-                        "color": COLORS["text_muted"],
-                        "border": f"1px solid {COLORS['border']}",
-                        "padding": "6px 16px",
-                        "fontSize": "11px",
-                        "fontWeight": 600,
-                    },
-                    selected_style={
-                        "backgroundColor": COLORS["surface"],
-                        "color": COLORS["accent"],
-                        "borderBottom": "none",
-                        "borderTop": f"2px solid {COLORS['accent']}",
-                    },
-                    children=[
+        html.Div(
+            [
+                build_nav_sidebar(),
+                html.Div(
+                    [
+                        html.Div(
+                            [
+                                html.Div(
+                                    [build_should_i_trade_tab()],
+                                    id="tab-pane-should-i-trade",
+                                    className="pradly-tab-content-pane",
+                                    style=_TAB_PANE_HIDE,
+                                ),
+                                html.Div(
+                                    [build_macro_monitor_tab()],
+                                    id="tab-pane-macro-monitor",
+                                    className="pradly-tab-content-pane",
+                                    style=_TAB_PANE_HIDE,
+                                ),
+                                html.Div(
+                                    [
                         html.Div([
             # ---- PRIMARY ROW: full-size widgets ----
             html.Div([
@@ -2534,39 +2750,12 @@ def build_layout() -> html.Div:
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
             ], id="row-breadth-charts", style=QUARTER_ROW_STYLE),
 
-            # ---- SCREENERS ROW (4 across) ----
+            # ---- WATCHLIST (screeners moved to Super Scanners tab) ----
             html.Div([
-                _widget("qulla", "Qullamaggie",
-                        _sortable_table_wrap("qulla"),
-                        variant="green",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("qulla", True),
-                        extra_header=html.Span([
-                            _finviz_link("EP", "qullamaggie", {"marginLeft": "8px"}),
-                            html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
-                            _finviz_link("Breakouts", "qulla_breakouts"),
-                            html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
-                            _finviz_link("PS Small", "qulla_ps_small"),
-                            html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
-                            _finviz_link("PS Large", "qulla_ps_large"),
-                        ])),
-                _widget("minervini", "Minervini",
-                        _sortable_table_wrap("minervini"),
-                        variant="purple",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("minervini", True),
-                        extra_header=html.Span([
-                            _finviz_link("FinViz", "minervini", {"marginLeft": "8px"}),
-                        ])),
-                _widget("oneil", "O'Neil",
-                        _sortable_table_wrap("oneil"),
-                        variant="orange",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("oneil", True),
-                        extra_header=html.Span([
-                            _finviz_link("FinViz", "oneil", {"marginLeft": "8px"}),
-                        ])),
                 _widget("watchlist", "Watchlist",
                         build_watchlist_body(),
                         initial_hidden=not DEFAULT_VISIBILITY.get("watchlist", True)),
-            ], id="row-screeners", style=QUARTER_ROW_STYLE),
+            ], id="row-screeners", style=WIDE_ROW_STYLE),
 
             # ---- SECTOR + RRG ROW ----
             html.Div([
@@ -2613,44 +2802,7 @@ def build_layout() -> html.Div:
                         body_style=RRG_CHART_BODY_STYLE),
             ], id="row-sector", style=THIRD_ROW_STYLE),
 
-            # ---- MIDDLE 4 ----
-            html.Div([
-                _widget("club97", "97 Club",
-                        html.Div([
-                            dcc.Store(id="club97-data-store"),
-                            dcc.Store(id="club97-sort-store", data={"col": "change", "asc": False}, storage_type="memory"),
-                            _loading_wrap("club97-content"),
-                        ]),
-                        variant="green",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("club97", True),
-                        extra_header=html.Span([
-                            _finviz_link("FinViz", "club97", {"marginLeft": "8px"}),
-                        ])),
-                _widget("movers", "StockBee - 9 Million Movers",
-                        _sortable_table_wrap("movers"),
-                        initial_hidden=not DEFAULT_VISIBILITY.get("movers", True),
-                        extra_header=html.Span([
-                            _finviz_link("FinViz", "9m_movers", {"marginLeft": "8px"}),
-                        ])),
-                _widget("weekly", "StockBee - 20% Weekly Movers",
-                        _sortable_table_wrap("weekly", default_sort_col="week", default_sort_asc=False),
-                        variant="red",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("weekly", True),
-                        extra_header=html.Span([
-                            _finviz_link("+20", "20pct_weekly_up", {"marginLeft": "8px"}),
-                            html.Span(" | ", style={"marginLeft": "2px", "marginRight": "2px", "color": COLORS["text_muted"]}),
-                            _finviz_link("-20", "20pct_weekly_down"),
-                        ], style={"marginLeft": "6px"})),
-                _widget("daily", "StockBee - 4% Daily Gainers",
-                        _sortable_table_wrap("daily"),
-                        variant="green",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("daily", True),
-                        extra_header=html.Span([
-                            _finviz_link("FinViz", "4pct_daily", {"marginLeft": "8px"}),
-                        ])),
-            ], id="row-middle4", style=QUARTER_ROW_STYLE),
-
-            # ---- BOTTOM ROW ----
+            # ---- LEADING + STAGE (earnings this week → Super Scanners tab) ----
             html.Div([
                 _widget("leading", "Leading Industries — Top 20%",
                         html.Div([
@@ -2668,18 +2820,7 @@ def build_layout() -> html.Div:
                                       style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
                         initial_hidden=not DEFAULT_VISIBILITY.get("stage", True),
                         body_style=RRG_CHART_BODY_STYLE),
-                _widget("earnings-calendar-week", "Earnings Calendar — This Week",
-                        html.Div([
-                            dcc.Store(id="earnings-calendar-week-data-store"),
-                            dcc.Store(id="earnings-calendar-week-sort-store", data={"col": "market_cap", "asc": False}),
-                            _loading_wrap("earnings-calendar-week-content"),
-                        ]),
-                        variant="orange",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("earnings-calendar-week", True),
-                        extra_header=html.Span([
-                            _finviz_link("FinViz", "earnings_this_week", {"marginLeft": "8px"}),
-                        ])),
-            ], id="row-bottom", style=THIRD_ROW_STYLE),
+            ], id="row-bottom", style=HALF_ROW_STYLE),
 
             # ---- THEMATICS ROW ----
             html.Div([
@@ -2718,26 +2859,19 @@ def build_layout() -> html.Div:
                         body_style=RRG_CHART_BODY_STYLE),
             ], id="row-thematics", style=THIRD_ROW_STYLE),
         ], style=CONTENT_AREA_STYLE),
-                    ],
-                ),
-                dcc.Tab(
-                    label="Intraday Inspector",
-                    value="intraday",
-                    style={
-                        "backgroundColor": COLORS["surface2"],
-                        "color": COLORS["text_muted"],
-                        "border": f"1px solid {COLORS['border']}",
-                        "padding": "6px 16px",
-                        "fontSize": "11px",
-                        "fontWeight": 600,
-                    },
-                    selected_style={
-                        "backgroundColor": COLORS["surface"],
-                        "color": COLORS["accent"],
-                        "borderBottom": "none",
-                        "borderTop": f"2px solid {COLORS['accent']}",
-                    },
-                    children=[
+                                    ],
+                                    id="tab-pane-market-metrics",
+                                    className="pradly-tab-content-pane",
+                                    style=_TAB_PANE_SHOW,
+                                ),
+                                html.Div(
+                                    [build_super_scanners_tab()],
+                                    id="tab-pane-super-scanners",
+                                    className="pradly-tab-content-pane",
+                                    style=_TAB_PANE_HIDE,
+                                ),
+                                html.Div(
+                                    [
                         html.Div([
                         html.Div([
                             html.Div([
@@ -2817,8 +2951,33 @@ def build_layout() -> html.Div:
                         ], style=WIDE_ROW_STYLE),
                         ], style=CONTENT_AREA_STYLE),
                     ],
+                                    id="tab-pane-intraday",
+                                    className="pradly-tab-content-pane",
+                                    style=_TAB_PANE_HIDE,
+                                ),
+                            ],
+                        ),
+                    ],
+                    id="app-main-tabs-host",
+                    style={
+                        "flex": "1",
+                        "minWidth": "0",
+                        "minHeight": "0",
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "overflow": "hidden",
+                    },
                 ),
             ],
+            id="app-layout-row",
+            style={
+                "display": "flex",
+                "flexDirection": "row",
+                "flex": "1",
+                "minHeight": "0",
+                "overflow": "hidden",
+                "width": "100%",
+            },
         ),
 
     ], style=DASHBOARD_STYLE)

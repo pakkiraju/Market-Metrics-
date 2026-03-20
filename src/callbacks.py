@@ -11,7 +11,7 @@ from dash import html, dcc, Input, Output, State, callback, no_update, ctx, ALL
 import plotly.graph_objects as go
 
 from src import cache
-from src.constants import COLORS, RATE_WATCH_LINKS, GRAPH_CONFIG, GRAPH_CONFIG_ZOOM
+from src.constants import COLORS, GRAPH_CONFIG, GRAPH_CONFIG_ZOOM
 from src.calculations import (
     compute_all_key_metrics,
     compute_sector_data,
@@ -37,6 +37,7 @@ from src.screeners import (
 )
 from src.layout import (
     build_cnbc_premarket_watchlist_table,
+    build_should_i_trade_content,
     build_key_metrics_table,
     build_live_index_snapshot,
     build_metrics_bar_chart,
@@ -62,11 +63,6 @@ from src.layout import (
     build_thematics_sector_table,
     build_top_gainers_table,
     build_top_losers_table,
-    build_economic_calendar_table,
-    build_cpi_chart,
-    build_core_inflation_mom_chart,
-    build_core_inflation_yoy_chart,
-    build_rate_watch_content,
     build_stage_chart,
     build_stage_summary,
     build_ticker_grid,
@@ -91,6 +87,7 @@ ET = timezone(timedelta(hours=-5))
 
 # Per-widget refresh: cache keys to invalidate when btn-refresh-{widget_id} is clicked
 WIDGET_CACHE_KEYS = {
+    "should-i-trade": ["should_i_trade_aggregate"],
     "key-metrics": ["all_key_metrics"],
     "chart2": ["all_key_metrics"],
     "chart3": ["all_key_metrics"],
@@ -110,18 +107,7 @@ WIDGET_CACHE_KEYS = {
     "top_losers": ["thematics_data"],
     "stage": ["stage_analysis"],
     "thematics-rrg": ["thematics_rrg_data"],
-    "economic_calendar": ["economic_calendar_today"],
-    "cpi": ["cpi_ytd"],
-    "core_inflation_mom": ["core_inflation_mom_ytd"],
-    "core_inflation_yoy": ["core_inflation_yoy_ytd"],
-    "rate_watch_probabilities": ["rate_watch_USD", "rate_watch_EUR", "rate_watch_GBP", "rate_watch_JPY",
-                                 "rate_watch_CAD", "rate_watch_CHF", "rate_watch_AUD", "rate_watch_NZD"],
-    "rate_watch_rate_path": ["rate_watch_USD", "rate_watch_EUR", "rate_watch_GBP", "rate_watch_JPY",
-                             "rate_watch_CAD", "rate_watch_CHF", "rate_watch_AUD", "rate_watch_NZD"],
-    "rate_watch_distribution": ["rate_watch_USD", "rate_watch_EUR", "rate_watch_GBP", "rate_watch_JPY",
-                                "rate_watch_CAD", "rate_watch_CHF", "rate_watch_AUD", "rate_watch_NZD"],
-    "rate_watch_rate_ranges": ["rate_watch_USD", "rate_watch_EUR", "rate_watch_GBP", "rate_watch_JPY",
-                               "rate_watch_CAD", "rate_watch_CHF", "rate_watch_AUD", "rate_watch_NZD"],
+    "macro-monitor": ["macro_fred_bundle"],
     "qulla": ["qulla_episodic_v2", "qulla_parabolic_v2", "qulla_breakouts_v2"],
     "minervini": ["minervini_table"],
     "oneil": ["oneil_table"],
@@ -180,9 +166,17 @@ def _now_str():
 
 
 def _err_div(e):
-    return html.Div(f"Error: {e}", style={
-        "color": COLORS["red"], "padding": "8px", "fontSize": "10px",
-    })
+    import traceback
+    msg = str(e) if e else "Unknown error"
+    children = [html.Div(f"Error: {msg}", style={"fontWeight": 600})]
+    if logger.isEnabledFor(logging.DEBUG):
+        tb = traceback.format_exc()
+        if tb:
+            children.append(html.Pre(
+                tb[:1500] + ("..." if len(tb) > 1500 else ""),
+                style={"fontSize": "9px", "overflow": "auto", "maxHeight": "120px", "marginTop": "4px", "whiteSpace": "pre-wrap"},
+            ))
+    return html.Div(children, style={"color": COLORS["red"], "padding": "8px", "fontSize": "10px"})
 
 
 def register_callbacks(app):
@@ -214,6 +208,55 @@ def register_callbacks(app):
         return f"{date_str} · {time_str}"
 
     # ------------------------------------------------------------------
+    # 0b2. Should I Trade? — aggregate data, score, build content (45s refresh)
+    # ------------------------------------------------------------------
+    @app.callback(
+        [
+            Output("should-i-trade-content", "children"),
+            Output("sit-status", "children"),
+            Output("sit-last-updated", "children"),
+        ],
+        [
+            Input("sit-interval", "n_intervals"),
+            Input("btn-refresh-should-i-trade", "n_clicks"),
+            Input("sit-mode-toggle", "value"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_should_i_trade(n_interval, n_refresh, mode):
+        if ctx.triggered_id == "btn-refresh-should-i-trade":
+            _invalidate_widget_cache("should-i-trade")
+        try:
+            from src.should_i_trade_data import fetch_should_i_trade_data
+            from src.should_i_trade_scoring import compute_scores, generate_terminal_analysis
+
+            data = fetch_should_i_trade_data()
+            mode = mode or "swing"
+            scores = compute_scores(data, mode=mode)
+            summary = generate_terminal_analysis(data, scores)
+            content = build_should_i_trade_content(data, scores, summary)
+
+            ts = data.get("timestamp", "")
+            if ts:
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    updated = dt.strftime("Updated %I:%M:%S %p")
+                except Exception:
+                    updated = "Updated —"
+            else:
+                updated = "Updated —"
+
+            return content, "LIVE", updated
+        except Exception as e:
+            logger.exception("Should I Trade refresh failed: %s", e)
+            err = html.Div([
+                html.Div("Error loading data", style={"fontSize": "14px", "color": COLORS["red"], "marginBottom": "8px"}),
+                html.Div(str(e), style={"fontSize": "11px", "color": COLORS["text_muted"]}),
+            ], style={"padding": "24px"})
+            return err, "ERROR", "—"
+
+    # ------------------------------------------------------------------
     # 0c. Chart resize on tab switch / initial load (fixes zoomed-in charts)
     # ------------------------------------------------------------------
     app.clientside_callback(
@@ -238,11 +281,87 @@ def register_callbacks(app):
         """,
         Output("chart-resize-trigger", "data"),
         [
-            Input("main-tabs", "value"),
+            Input("main-tabs", "data"),
             Input("interval-chart-resize", "n_intervals"),
             Input("settings-drawer", "style"),
         ],
     )
+
+    # ------------------------------------------------------------------
+    # 0d. Tab switch — server callback (Dash 4 clientside inline hash can fail to register →
+    #     undefined.apply in dash_renderer). Keeps main-tabs in sync for other callbacks.
+    # ------------------------------------------------------------------
+    _TAB_PANE_HIDE = {"display": "none"}
+    _TAB_PANE_SHOW = {
+        "display": "flex",
+        "flexDirection": "column",
+        "flex": "1",
+        "minHeight": "0",
+        "minWidth": "0",
+        "overflow": "auto",
+        "backgroundColor": COLORS["bg"],
+    }
+    _TAB_ORDER = (
+        "should-i-trade",
+        "macro-monitor",
+        "market-metrics",
+        "super-scanners",
+        "intraday",
+    )
+    _NAV_TO_TAB = {
+        "nav-tab-should-i-trade": "should-i-trade",
+        "nav-tab-macro-monitor": "macro-monitor",
+        "nav-tab-market-metrics": "market-metrics",
+        "nav-tab-super-scanners": "super-scanners",
+        "nav-tab-intraday": "intraday",
+    }
+
+    @app.callback(
+        [
+            Output("main-tabs", "data"),
+            Output("tab-pane-should-i-trade", "style"),
+            Output("tab-pane-macro-monitor", "style"),
+            Output("tab-pane-market-metrics", "style"),
+            Output("tab-pane-super-scanners", "style"),
+            Output("tab-pane-intraday", "style"),
+            Output("nav-tab-should-i-trade", "className"),
+            Output("nav-tab-macro-monitor", "className"),
+            Output("nav-tab-market-metrics", "className"),
+            Output("nav-tab-super-scanners", "className"),
+            Output("nav-tab-intraday", "className"),
+        ],
+        [
+            Input("nav-tab-should-i-trade", "n_clicks"),
+            Input("nav-tab-macro-monitor", "n_clicks"),
+            Input("nav-tab-market-metrics", "n_clicks"),
+            Input("nav-tab-super-scanners", "n_clicks"),
+            Input("nav-tab-intraday", "n_clicks"),
+        ],
+        prevent_initial_call=True,
+    )
+    def switch_main_tab(_n1, _n2, _n3, _n4, _n5):
+        tid = ctx.triggered_id
+        if tid not in _NAV_TO_TAB:
+            return [no_update] * 11
+        tab = _NAV_TO_TAB[tid]
+        pane_styles = [{**_TAB_PANE_SHOW} if tab == t else {**_TAB_PANE_HIDE} for t in _TAB_ORDER]
+        nav_classes = [
+            "nav-tab-btn nav-tab-active" if tab == t else "nav-tab-btn" for t in _TAB_ORDER
+        ]
+        return [tab, *pane_styles, *nav_classes]
+
+    @app.callback(
+        Output("nav-sidebar", "className"),
+        Input("nav-sidebar-toggle", "n_clicks"),
+        State("nav-sidebar", "className"),
+        prevent_initial_call=True,
+    )
+    def nav_sidebar_toggle(_n, cls):
+        base = "nav-sidebar"
+        cur = cls or base
+        if "nav-sidebar-collapsed" in cur:
+            return base
+        return f"{base} nav-sidebar-collapsed"
 
     # ------------------------------------------------------------------
     # 1. Settings drawer toggle
@@ -265,17 +384,26 @@ def register_callbacks(app):
         [
             Output("settings-macro-monitor", "style"),
             Output("settings-market-metrics", "style"),
+            Output("settings-super-scanners", "style"),
             Output("settings-intraday", "style"),
         ],
-        Input("main-tabs", "value"),
+        Input("main-tabs", "data"),
         prevent_initial_call=False,
     )
     def settings_tab_content(active_tab):
+        hide = {"display": "none"}
+        show = {"display": "block"}
+        if active_tab == "should-i-trade":
+            return hide, hide, hide, hide
         if active_tab == "macro-monitor":
-            return {"display": "block"}, {"display": "none"}, {"display": "none"}
+            return show, hide, hide, hide
+        if active_tab == "market-metrics":
+            return hide, show, hide, hide
+        if active_tab == "super-scanners":
+            return hide, hide, show, hide
         if active_tab == "intraday":
-            return {"display": "none"}, {"display": "none"}, {"display": "block"}
-        return {"display": "none"}, {"display": "block"}, {"display": "none"}
+            return hide, hide, hide, show
+        return hide, show, hide, hide
 
     # ------------------------------------------------------------------
     # 2. Widget visibility: ALL widgets toggleable
@@ -392,7 +520,7 @@ def register_callbacks(app):
         Output("watchlist-sector-dropdown", "options"),
         [
             Input("interval-refresh", "n_intervals"),
-            Input("main-tabs", "value"),
+            Input("main-tabs", "data"),
         ],
         prevent_initial_call=False,
     )
@@ -949,188 +1077,125 @@ def register_callbacks(app):
             logger.exception("Group D failed: %s", e)
             return [_err_div(e), [], no_update, _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
 
-    # Rate Watch currency: dropdowns -> store (no cycle). Sync dropdowns via clientside only.
+    # ------------------------------------------------------------------
+    # Macro Monitor — FRED-backed panel + history modal
+    # ------------------------------------------------------------------
     @app.callback(
-        Output("rate-watch-currency-store", "data"),
+        Output("macro-monitor-content", "children"),
         [
-            Input("rate-watch-probabilities-currency", "value"),
-            Input("rate-watch-rate-path-currency", "value"),
-            Input("rate-watch-distribution-currency", "value"),
-            Input("rate-watch-rate-ranges-currency", "value"),
+            Input("interval-macro", "n_intervals"),
+            Input("main-tabs", "data"),
+            Input("btn-refresh", "n_clicks"),
         ],
         prevent_initial_call=False,
     )
-    def sync_rate_watch_currency_store(p1, p2, p3, p4):
-        triggered = ctx.triggered
-        if not triggered:
-            return "USD"
-        tid = triggered[0].get("prop_id", "")
-        if "probabilities" in tid:
-            return p1 or "USD"
-        if "rate-path" in tid:
-            return p2 or "USD"
-        if "distribution" in tid:
-            return p3 or "USD"
-        if "rate-ranges" in tid:
-            return p4 or "USD"
-        return "USD"
+    def refresh_macro_monitor(n_interval, tab, n_refresh):
+        if tab != "macro-monitor":
+            return no_update
+        force = ctx.triggered_id == "btn-refresh" and n_refresh
+        if force:
+            from src.macro_data import invalidate_macro_cache
 
-    # Clientside sync: when any dropdown changes, update the other 3 (avoids store->dropdown cycle)
-    app.clientside_callback(
-        """
-        function(p1, p2, p3, p4) {
-            var triggered = dash_clientside.callback_context.triggered;
-            if (!triggered || triggered.length === 0) return dash_clientside.no_update;
-            var tid = triggered[0].prop_id;
-            var ccy = "USD";
-            if (tid.indexOf("probabilities") >= 0) ccy = p1 || "USD";
-            else if (tid.indexOf("rate-path") >= 0) ccy = p2 || "USD";
-            else if (tid.indexOf("distribution") >= 0) ccy = p3 || "USD";
-            else if (tid.indexOf("rate-ranges") >= 0) ccy = p4 || "USD";
-            if (p1 === ccy && p2 === ccy && p3 === ccy && p4 === ccy) return dash_clientside.no_update;
-            var no = dash_clientside.no_update;
-            if (tid.indexOf("probabilities") >= 0) return [no, ccy, ccy, ccy];
-            if (tid.indexOf("rate-path") >= 0) return [ccy, no, ccy, ccy];
-            if (tid.indexOf("distribution") >= 0) return [ccy, ccy, no, ccy];
-            return [ccy, ccy, ccy, no];
+            invalidate_macro_cache()
+        try:
+            from src.macro_data import fetch_macro_bundle
+            from src.macro_monitor_layout import build_macro_monitor_content
+
+            return build_macro_monitor_content(fetch_macro_bundle(force=bool(force)))
+        except Exception as e:
+            logger.exception("Macro Monitor failed: %s", e)
+            return html.Div(str(e), style={"color": COLORS["red"], "padding": "16px", "fontSize": "11px"})
+
+    @app.callback(
+        Output("macro-selected-metric", "data"),
+        Input({"type": "macro-kpi", "index": ALL}, "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def macro_kpi_clicked(_clicks):
+        trig = ctx.triggered_id
+        if isinstance(trig, dict) and trig.get("type") == "macro-kpi":
+            return trig["index"]
+        return no_update
+
+    @app.callback(
+        Output("macro-selected-metric", "data", allow_duplicate=True),
+        Input("macro-history-close", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def macro_history_close(_n):
+        return None
+
+    @app.callback(
+        Output("macro-selected-metric", "data", allow_duplicate=True),
+        Input("main-tabs", "data"),
+        prevent_initial_call=True,
+    )
+    def clear_macro_metric_when_leaving_macro_tab(tab):
+        if tab != "macro-monitor":
+            return None
+        return no_update
+
+    @app.callback(
+        Output("macro-history-panel", "style"),
+        Input("macro-selected-metric", "data"),
+        prevent_initial_call=False,
+    )
+    def macro_history_panel_visibility(sel):
+        if sel is None:
+            return {"display": "none"}
+        return {
+            "display": "block",
+            "marginTop": "14px",
         }
-        """,
-        [
-            Output("rate-watch-probabilities-currency", "value"),
-            Output("rate-watch-rate-path-currency", "value"),
-            Output("rate-watch-distribution-currency", "value"),
-            Output("rate-watch-rate-ranges-currency", "value"),
-        ],
-        [
-            Input("rate-watch-probabilities-currency", "value"),
-            Input("rate-watch-rate-path-currency", "value"),
-            Input("rate-watch-distribution-currency", "value"),
-            Input("rate-watch-rate-ranges-currency", "value"),
-        ],
-    )
-
-    def _make_rate_watch_callback(widget_id: str, view: str):
-        """Factory for Rate Watch widget callbacks."""
-        @app.callback(
-            [
-                Output(f"{widget_id}-content", "children"),
-                Output(f"rate-watch-{view.replace('_', '-')}-link", "href"),
-            ],
-            [
-                Input("interval-refresh", "n_intervals"),
-                Input("btn-refresh", "n_clicks"),
-                Input(f"btn-refresh-{widget_id}", "n_clicks"),
-                Input("rate-watch-currency-store", "data"),
-            ],
-            prevent_initial_call=False,
-        )
-        def _cb(n_intervals, n_clicks, btn_widget, currency):
-            if btn_widget:
-                _invalidate_widget_cache(widget_id)
-            currency = currency or "USD"
-            try:
-                from src.rate_watch_data import fetch_rate_watch_data
-                data = fetch_rate_watch_data(currency)
-                content = build_rate_watch_content(currency, data, view.replace("_", "-"))
-                link = RATE_WATCH_LINKS.get(currency, "https://centralbank.watch/")
-                return content, link
-            except Exception as e:
-                logger.exception("Rate Watch %s failed: %s", widget_id, e)
-                return _err_div(e), RATE_WATCH_LINKS.get("USD", "https://centralbank.watch/")
-
-    _make_rate_watch_callback("rate_watch_probabilities", "probabilities")
-    _make_rate_watch_callback("rate_watch_rate_path", "rate_path")
-    _make_rate_watch_callback("rate_watch_distribution", "distribution")
-    _make_rate_watch_callback("rate_watch_rate_ranges", "rate_ranges")
 
     @app.callback(
-        Output("economic_calendar-content", "children"),
         [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
-            Input("btn-refresh-economic_calendar", "n_clicks"),
+            Output("macro-history-graph", "figure"),
+            Output("macro-history-title", "children"),
+        ],
+        [
+            Input("macro-selected-metric", "data"),
+            Input("macro-lookback", "value"),
         ],
         prevent_initial_call=False,
     )
-    def refresh_economic_calendar(n_intervals, n_clicks, btn_widget):
-        """Today's economic calendar — scraped from Forex Factory."""
-        if btn_widget:
-            _invalidate_widget_cache("economic_calendar")
-        try:
-            from src.economic_calendar import fetch_todays_economic_calendar
-            data = fetch_todays_economic_calendar()
-            return build_economic_calendar_table(data)
-        except Exception as e:
-            logger.exception("Economic Calendar failed: %s", e)
-            return _err_div(e)
-
-    @app.callback(
-        Output("cpi-content", "children"),
-        [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
-            Input("btn-refresh-cpi", "n_clicks"),
-        ],
-        prevent_initial_call=False,
-    )
-    def refresh_cpi(n_intervals, n_clicks, btn_widget):
-        """Consumer Price Index CPI — Expected vs Actual YTD. Scraped from FinViz Elite."""
-        if btn_widget:
-            _invalidate_widget_cache("cpi")
-        try:
-            from src.cpi_data import fetch_cpi_ytd
-            data = fetch_cpi_ytd()
-            fig = build_cpi_chart(data)
-            return dcc.Graph(
-                figure=fig,
-                config=GRAPH_CONFIG,
-                style={"height": "100%", "width": "100%"},
+    def macro_history_chart(metric_id, lookback):
+        def _empty_fig(msg: str):
+            fig = go.Figure()
+            fig.update_layout(
+                paper_bgcolor=COLORS["surface"],
+                plot_bgcolor=COLORS["surface"],
+                margin=dict(l=40, r=20, t=40, b=40),
+                annotations=[
+                    dict(
+                        text=msg,
+                        xref="paper",
+                        yref="paper",
+                        x=0.5,
+                        y=0.5,
+                        showarrow=False,
+                        font=dict(size=12, color=COLORS["text_muted"]),
+                    )
+                ],
+                height=400,
+                autosize=True,
             )
-        except Exception as e:
-            logger.exception("CPI widget failed: %s", e)
-            return _err_div(e)
+            return fig
 
-    @app.callback(
-        Output("core_inflation_mom-content", "children"),
-        [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
-            Input("btn-refresh-core_inflation_mom", "n_clicks"),
-        ],
-        prevent_initial_call=False,
-    )
-    def refresh_core_inflation_mom(n_intervals, n_clicks, btn_widget):
-        if btn_widget:
-            _invalidate_widget_cache("core_inflation_mom")
+        if not metric_id:
+            return _empty_fig("Select a KPI card to view history"), "History"
         try:
-            from src.cpi_data import fetch_core_inflation_mom_ytd
-            data = fetch_core_inflation_mom_ytd()
-            fig = build_core_inflation_mom_chart(data)
-            return dcc.Graph(figure=fig, config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"})
-        except Exception as e:
-            logger.exception("Core Inflation MoM failed: %s", e)
-            return _err_div(e)
+            from src.macro_data import get_series_for_chart
+            from src.macro_monitor_layout import build_macro_history_figure
 
-    @app.callback(
-        Output("core_inflation_yoy-content", "children"),
-        [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
-            Input("btn-refresh-core_inflation_yoy", "n_clicks"),
-        ],
-        prevent_initial_call=False,
-    )
-    def refresh_core_inflation_yoy(n_intervals, n_clicks, btn_widget):
-        if btn_widget:
-            _invalidate_widget_cache("core_inflation_yoy")
-        try:
-            from src.cpi_data import fetch_core_inflation_yoy_ytd
-            data = fetch_core_inflation_yoy_ytd()
-            fig = build_core_inflation_yoy_chart(data)
-            return dcc.Graph(figure=fig, config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"})
+            yrs = int(lookback or 10)
+            chart = get_series_for_chart(metric_id, yrs)
+            if chart.get("error"):
+                return _empty_fig(str(chart.get("error", "No data"))), chart.get("title", metric_id)
+            return build_macro_history_figure(chart), chart.get("title", metric_id)
         except Exception as e:
-            logger.exception("Core Inflation YoY failed: %s", e)
-            return _err_div(e)
+            logger.exception("Macro history chart: %s", e)
+            return _empty_fig(str(e)), "Error"
 
     @app.callback(
         Output("cnbc_premarket-content", "children"),

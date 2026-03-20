@@ -29,61 +29,25 @@ python app.py
 
 ## Widget Reference
 
-The dashboard has three tabs: **Macro Monitor**, **Market Metrics** (swing/position), and **Intraday** (day trading). Each widget can be toggled on/off via the Settings gear icon.
+The main workspace includes **Should I Trade?**, **Macro Monitor**, **Market Metrics**, **Super Scanners**, and **Intraday Inspector**. **Market Metrics**, **Super Scanners**, and **Intraday** widgets can be toggled via the Settings gear icon. **Macro Monitor** is a single full-page view (no per-widget toggles).
+
+**Super Scanners** holds the FinViz / StockBee tables: Qullamaggie, Minervini, O’Neil, 97 Club, 9 Million Movers, 20% Weekly Movers, 4% Daily Gainers, and Earnings Calendar — This Week.
 
 ---
 
 ### Macro Monitor Tab
 
-Central bank rates, inflation data, and economic calendar.
+**Macro Intelligence** — terminal-style macro dashboard backed by the **FRED API** (Federal Reserve Economic Data, St. Louis Fed). Set **`FRED_API_KEY`** in your environment or `.env` (free key from [FRED](https://fred.stlouisfed.org/docs/api/api_key.html)).
 
----
+- **KPI strip** — Fed funds target range, CPI / Core CPI / PPI / PCE / Core PCE (YoY), unemployment, payroll change (m/m), Brent crude, S&P 500, Michigan sentiment, federal deficit (FY). Labor and inflation figures are often **BLS/BEA-sourced via FRED** and labeled accordingly.
+- **Signal balance** — donut chart of hawkish / dovish / neutral / mixed / tightening counts from simple rules (tunable in `src/macro_signals.py`).
+- **Bottom line** — short narrative synthesized from the latest KPIs.
+- **Fiscal block** — debt, surplus/deficit, debt/GDP, receipts, outlays, net interest (official series; see `src/macro_fred_series.py`).
+- **History** — click any KPI card to open a modal with a line chart and 5y / 10y / 20y lookback.
 
-#### Rate Watch — Probabilities
+Optional labels: edit `config/macro_cbo.yaml` for CBO-style deficit line copy.
 
-Stacked bar chart of **Cut** (red), **Hold** (yellow), and **Hike** (green) probabilities for the next 6 central bank meetings. Currency dropdown supports USD, EUR, GBP, JPY, CAD, CHF, AUD, NZD. Data from rateprobability.com and CentralBank.watch.
-
----
-
-#### Rate Watch — Rate Path
-
-Line chart of **Expected Rate** vs **Current** rate for the next 8 meetings. Shows projected policy rate path per central bank.
-
----
-
-#### Rate Watch — Distribution
-
-Table of meeting dates, days until, expected rate, and Cut/Hold/Hike probabilities. Same currency selector as above.
-
----
-
-#### Rate Watch — Rate Ranges
-
-Fed-specific rate range probabilities (e.g., 4.25–4.50%, 4.50–4.75%). USD only.
-
----
-
-#### Economic Calendar — Today
-
-Today’s economic events from **Forex Factory** (nfs.faireconomy.media). Columns: time, country, impact, title, forecast, actual, previous. No API key required.
-
----
-
-#### Consumer Price Index CPI
-
-Bar chart of **Expected vs Actual** CPI YTD. Scraped from FinViz Elite economic calendar detail. Links to FinViz Elite.
-
----
-
-#### Core Inflation Rate MoM
-
-Bar chart of **Expected vs Actual** Core Inflation Rate (month-over-month) YTD. FinViz Elite.
-
----
-
-#### Core Inflation Rate YoY
-
-Bar chart of **Expected vs Actual** Core Inflation Rate (year-over-year) YTD. FinViz Elite.
+Styling: `assets/macro_terminal.css` (scoped to `#macro-monitor-root`).
 
 ---
 
@@ -338,7 +302,9 @@ Data is cached in `.cache/` for faster loads. Cache TTLs vary by widget (e.g., 5
 ```
 Market Metrics Dashboard/
 ├── app.py              # Dash entry point
-├── .env                 # API keys (FINVIZ_API_KEY, etc.)
+├── .env                 # API keys (FINVIZ_API_KEY, FRED_API_KEY, etc.)
+├── config/
+│   └── macro_cbo.yaml   # Optional CBO-style labels for Macro Monitor
 ├── watchlist.csv        # Optional user watchlist
 ├── requirements.txt
 ├── .cache/              # JSON cache files
@@ -351,9 +317,12 @@ Market Metrics Dashboard/
     ├── stockbee.py      # Stockbee API / Sheets
     ├── cnbc_premarket.py # CNBC premarket scraper
     ├── finviz_elite.py   # FinViz Elite API
-    ├── rate_watch_data.py # Central bank rate probabilities (rateprobability.com)
-    ├── cpi_data.py      # CPI, Core Inflation (FinViz Elite)
-    ├── economic_calendar.py # Forex Factory calendar
+    ├── rate_watch_data.py # Central bank rate probabilities (Should I Trade / future use)
+    ├── macro_fred_client.py
+    ├── macro_fred_series.py
+    ├── macro_data.py
+    ├── macro_signals.py
+    ├── macro_monitor_layout.py
     ├── cache.py         # Cache layer
     └── sortable_table.py # Sortable table component
 ```
@@ -364,11 +333,7 @@ Market Metrics Dashboard/
 
 ### [Unreleased]
 
-- **Macro Monitor tab** — New tab for central bank rates, inflation, and economic calendar
-- **Rate Watch** — Four widgets: Probabilities (stacked bar), Rate Path (line), Distribution (table), Rate Ranges (Fed-only). Supports USD, EUR, GBP, JPY, CAD, CHF, AUD, NZD. Data from rateprobability.com and CentralBank.watch
-- **Economic Calendar** — Today’s events from Forex Factory (no API key)
-- **CPI** — Consumer Price Index Expected vs Actual YTD bar chart (FinViz Elite)
-- **Core Inflation MoM / YoY** — Core Inflation Rate Expected vs Actual YTD bar charts (FinViz Elite)
+- **Macro Monitor** — Rebuilt as **Macro Intelligence**: FRED-backed KPI strip, signal donut, bottom-line text, fiscal snapshot, click-for-history charts; terminal styling (`macro_terminal.css`). Requires `FRED_API_KEY`. Optional `config/macro_cbo.yaml`.
 - **S&P 500 Landscape** — Bubble chart of S&P 500 constituents by sector and valuation
 - **Top Gainers / Top Losers** — Intraday tab widgets showing top 12 gainers and losers
 - **Watchlist** — Sector dropdown to quickly view any S&P 500 sector (My Watchlist at top); bulk fetch for faster loading; delete button fix for reliable removal

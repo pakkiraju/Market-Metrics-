@@ -8,3 +8,4 @@ cssselect>=1.2.0
 numpy>=1.26
 requests>=2.31
 yfinance>=0.2.40
+pyyaml>=6.0
