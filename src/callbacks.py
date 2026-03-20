@@ -1035,8 +1035,16 @@ def register_callbacks(app):
             if single_widget == "intraday-earnings":
                 d = compute_earnings_yesterday_today([])
                 et = build_earnings_table(d, "intraday-earnings", "change", False)
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    no_update, no_update, et, d, no_update, no_update, no_update)
+                # Outputs 0–10 = club97…in_play (11 slots); 11–12 = intraday earnings; 13–14 = pre_market
+                return _out(
+                    no_update, no_update, no_update,
+                    no_update, no_update,
+                    no_update, no_update,
+                    no_update, no_update,
+                    no_update, no_update,
+                    et, d,
+                    no_update, no_update,
+                )
             if single_widget == "in_play":
                 d = compute_stocks_in_play([])
                 return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,

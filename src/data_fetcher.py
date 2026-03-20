@@ -189,6 +189,89 @@ def _find_csv_col(keys: list, *substrings: str, exact: str | None = None) -> str
     return None
 
 
+def _looks_like_earnings_date(val) -> bool:
+    """True when value looks like a usable earnings date (legacy / layout guard)."""
+    return _coerce_earnings_date_str(val) is not None
+
+
+def _coerce_earnings_date_str(val) -> str | None:
+    """Normalize FinViz cell to a display string: text dates, or Excel serial numbers (common in CSV exports)."""
+    if val is None:
+        return None
+    if isinstance(val, float) and val == val:
+        try:
+            if abs(val - round(val)) < 1e-6:
+                val = int(round(val))
+        except (OverflowError, ValueError):
+            pass
+    s = str(val).strip()
+    if not s or s == "-":
+        return None
+    # Row index / rank (not dates)
+    if re.fullmatch(r"\d{1,3}", s):
+        return None
+    if s.isdigit() and len(s) <= 3:
+        return None
+    # Excel serial date (FinViz often exports 5-digit integers, e.g. ~45xxx ≈ 2023–2026)
+    if s.isdigit() and len(s) == 5:
+        n = int(s)
+        if 35000 <= n <= 60000:
+            try:
+                from datetime import datetime, timedelta
+
+                dt = datetime(1899, 12, 30) + timedelta(days=n)
+                return dt.strftime("%b %d, %Y")
+            except (OverflowError, ValueError, OSError):
+                return None
+    if re.search(r"[/-]|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec", s, re.I):
+        return s
+    if re.match(r"\d{4}-\d{2}-\d{2}", s):
+        return s
+    return None
+
+
+def _pick_earnings_date_column(keys: list[str], sample_rows: list[dict]) -> str | None:
+    """Pick CSV column with earnings dates (handles varied FinViz header names)."""
+    bad = frozenset({"no", "no.", "#", "index", "rank"})
+    # Exact header (FinViz often uses this)
+    for k in keys:
+        if str(k).strip().lower() == "earnings date":
+            return k
+    candidates: list[str] = []
+    for k in keys:
+        lk = str(k).strip().lower()
+        if lk in bad:
+            continue
+        if "earnings" in lk and "date" in lk:
+            candidates.append(k)
+        elif "next" in lk and "earnings" in lk and "date" in lk:
+            candidates.append(k)
+    best_k, best_score = None, 0
+    for k in candidates:
+        score = sum(1 for row in sample_rows[:40] if _coerce_earnings_date_str(row.get(k)))
+        if score > best_score:
+            best_k, best_score = k, score
+    if best_k is not None and best_score >= 1:
+        return best_k
+    for k in keys:
+        lk = str(k).strip().lower()
+        if lk in bad or "date" not in lk:
+            continue
+        if not any(x in lk for x in ("earnings", "report", "next", "eps")):
+            continue
+        score = sum(1 for row in sample_rows[:40] if _coerce_earnings_date_str(row.get(k)))
+        if score > best_score:
+            best_k, best_score = k, score
+    if best_k is not None and best_score >= 1:
+        return best_k
+    for k in candidates:
+        if str(k).strip().lower() == "earnings date":
+            return k
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 def fetch_industry_map_from_overview(cache_key: str = "leading_industry_map", ttl: int = MEDIUM) -> dict[str, str]:
     """Fetch ticker->industry from FinViz Overview export ($1B+, USA). Industry/Sector columns from v=111."""
     cached = cache.get(cache_key)
@@ -263,6 +346,8 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
         news_link_col = (_find_csv_col(keys, "news", "link") or _find_csv_col(keys, "link") or
                         _find_csv_col(keys, "url") or _find_csv_col(keys, "news", "url"))
 
+        earnings_date_col = _pick_earnings_date_column(keys, data)
+
         def _val(row: dict, col: str | None, *fallbacks: str):
             if col and row.get(col) not in (None, "", "-"):
                 v = row.get(col)
@@ -306,6 +391,11 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
                 "rel_vol": rel_vol,
                 "atr_pct": atr_pct,
             }
+            if earnings_date_col:
+                ed = _val(row, earnings_date_col, "Earnings Date")
+                coerced = _coerce_earnings_date_str(ed)
+                if coerced:
+                    row_dict["earnings_date"] = coerced
             if news_url:
                 row_dict["news_url"] = news_url
             elif news_val:
@@ -645,9 +735,11 @@ def fetch_earnings_this_week(ttl: int = MEDIUM) -> list[dict]:
             if not overview_data:
                 return []
         mcap_map = {}
+        ed_map: dict[str, str] = {}
         o_keys = list(overview_data[0].keys())
         o_ticker = _find_csv_col(o_keys, exact="Ticker") or _find_csv_col(o_keys, "ticker") or "Ticker"
         o_mcap = _find_csv_col(o_keys, "market", "cap") or _find_csv_col(o_keys, "marketcap")
+        o_ed_col = _pick_earnings_date_column(o_keys, overview_data)
         for row in overview_data:
             t = str(row.get(o_ticker, "") or "").strip().upper()
             if not t:
@@ -658,6 +750,28 @@ def fetch_earnings_this_week(ttl: int = MEDIUM) -> list[dict]:
                 if market_cap >= 1000:
                     market_cap = market_cap * 1e6
             mcap_map[t] = market_cap
+            if o_ed_col:
+                c = _coerce_earnings_date_str(row.get(o_ed_col))
+                if c:
+                    ed_map[t] = c
+
+        # 1b. Financial (v=161): Earnings Date is often present here but missing from v=111 overview export.
+        url_fin = FINVIZ_EXPORT_URLS.get("earnings_this_week_financial")
+        if url_fin:
+            time.sleep(_FINVIZ_DELAY_SEC)
+            fin_data = fetch_export_from_url(url_fin, caller="earnings_this_week_financial")
+            if fin_data:
+                fk = list(fin_data[0].keys())
+                f_ticker = _find_csv_col(fk, exact="Ticker") or _find_csv_col(fk, "ticker") or "Ticker"
+                f_ed_col = _pick_earnings_date_column(fk, fin_data)
+                if f_ed_col:
+                    for row in fin_data:
+                        t = str(row.get(f_ticker, "") or "").strip().upper()
+                        if not t:
+                            continue
+                        c = _coerce_earnings_date_str(row.get(f_ed_col))
+                        if c:
+                            ed_map[t] = c
 
         # 2. Performance: Avg Vol, Rel Vol, Price, Change, Volume, ATR
         url_perf = FINVIZ_EXPORT_URLS.get("earnings_this_week_perf")
@@ -706,6 +820,8 @@ def fetch_earnings_this_week(ttl: int = MEDIUM) -> list[dict]:
             atr_val = _parse_num(_v(row, atr_col, "ATR", "atr")) if atr_col else None
             price_num = _parse_num(price) if price else None
             atr_pct = round((atr_val / price_num * 100), 2) if atr_val and price_num and price_num != 0 else None
+            # Earnings date: from overview (v=111) only — perf export has no reliable date column here.
+            edate = ed_map.get(t, "")
             rows.append({
                 "ticker": t,
                 "market_cap": mcap_map.get(t),
@@ -715,6 +831,7 @@ def fetch_earnings_this_week(ttl: int = MEDIUM) -> list[dict]:
                 "avg_vol": avg_vol,
                 "rel_vol": rel_vol,
                 "atr_pct": atr_pct,
+                "earnings_date": edate,
             })
         rows.sort(key=lambda x: (x.get("market_cap") or 0), reverse=True)
         if rows:
@@ -725,14 +842,68 @@ def fetch_earnings_this_week(ttl: int = MEDIUM) -> list[dict]:
         return []
 
 
+def _merge_earnings_dates_from_financial(rows: list[dict], fin_url_key: str) -> list[dict]:
+    """Attach Earnings Date from v=161 Financial export (same universe) — matches Super Scanners / this-week behavior."""
+    if not rows:
+        return rows
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_EXPORT_URLS
+
+        if not is_elite_configured():
+            return rows
+        url = FINVIZ_EXPORT_URLS.get(fin_url_key)
+        if not url:
+            return rows
+        time.sleep(_FINVIZ_DELAY_SEC)
+        fin_data = fetch_export_from_url(url, caller=fin_url_key)
+        if not fin_data:
+            return rows
+        fk = list(fin_data[0].keys())
+        ft = _find_csv_col(fk, exact="Ticker") or _find_csv_col(fk, "ticker") or "Ticker"
+        f_ed_col = _pick_earnings_date_column(fk, fin_data)
+        if not f_ed_col:
+            return rows
+        ed_map: dict[str, str] = {}
+        for row in fin_data:
+            t = str(row.get(ft, "") or "").strip().upper()
+            if not t:
+                continue
+            c = _coerce_earnings_date_str(row.get(f_ed_col))
+            if c:
+                ed_map[t] = c
+        if not ed_map:
+            return rows
+        out: list[dict] = []
+        for r in rows:
+            rr = dict(r)
+            t = str(rr.get("ticker", "") or "").strip().upper()
+            if t in ed_map:
+                rr["earnings_date"] = ed_map[t]
+            out.append(rr)
+        return out
+    except Exception as e:
+        logger.warning("merge earnings dates from financial (%s): %s", fin_url_key, e)
+        return rows
+
+
 def fetch_earnings_yesterday_today(ttl: int = MEDIUM) -> list[dict]:
-    """Earnings yesterday or today. Use Performance view (v=141) - has Avg Vol, Rel Vol, Change, Volume."""
+    """Earnings yesterday or today: v=141 perf + v=161 financial merge for Earnings Date (intraday table)."""
     cached = cache.get("earnings_yesterday_today")
     if cached:
         s = cached[0]
         if not s.get("avg_vol") and not s.get("rel_vol"):
             cache.invalidate("earnings_yesterday_today")
-    return fetch_screener_from_url("earnings_yesterday_today_perf", "earnings_yesterday_today", ttl=ttl)
+        elif not any(r.get("earnings_date") for r in cached[: min(12, len(cached))]):
+            cache.invalidate("earnings_yesterday_today")
+        else:
+            return cached
+
+    rows = fetch_screener_from_url("earnings_yesterday_today_perf", "earnings_yesterday_today", ttl=ttl)
+    rows = _merge_earnings_dates_from_financial(rows, "earnings_yesterday_today_financial")
+    if rows:
+        cache.put("earnings_yesterday_today", rows, ttl=ttl)
+    return rows
 
 
 def fetch_metric_count(url: str, cache_key: str, skip_delay: bool = False) -> int:
@@ -1551,14 +1722,29 @@ def _fetch_vix_via_yfinance() -> dict | None:
         price = float(last["Close"])
         prev = float(hist.iloc[-2]["Close"]) if len(hist) >= 2 else price
         chg = ((price - prev) / prev * 100) if prev and prev != 0 else 0.0
+        open_v = float(last["Open"]) if "Open" in last.index else price
         return {
             "ticker": "VIX",
             "price": f"{price:.2f}",
             "change": f"{chg:+.2f}%",
+            "open": f"{open_v:.2f}",
+            "prev_close": f"{prev:.2f}",
+            "volume": "",
         }
     except Exception as e:
         logger.warning("yfinance VIX fetch failed: %s", e)
         return None
+
+
+def _fmt_snapshot_line_price(val) -> str:
+    """Format price for snapshot sub-lines (Open / Prev)."""
+    if val is None or val == "":
+        return ""
+    p = _parse_num(val)
+    if p is None:
+        s = str(val).strip()
+        return s if s else ""
+    return f"{p:.2f}" if p >= 1 else f"{p:.4f}"
 
 
 def fetch_live_index_quotes(ttl: int = FAST) -> list[dict]:
@@ -1593,10 +1779,17 @@ def fetch_live_index_quotes(ttl: int = FAST) -> list[dict]:
                 continue
             change = _parse_pct(_get_csv_val(s, "Change", "change"))
             chg_val = 0.0 if (change is None or (isinstance(change, float) and change != change)) else float(change)
+            open_raw = _get_csv_val(s, "Open", "open")
+            prev_raw = _get_csv_val(s, "Prev Close", "prev close", "Previous Close")
+            vol_raw = _get_csv_val(s, "Volume", "volume")
+            vol_disp = str(vol_raw).strip() if vol_raw not in (None, "", "-") else ""
             rows.append({
                 "ticker": t,
                 "price": f"{price:.2f}" if price >= 1 else f"{price:.4f}",
                 "change": f"{chg_val:+.2f}%",
+                "open": _fmt_snapshot_line_price(open_raw),
+                "prev_close": _fmt_snapshot_line_price(prev_raw),
+                "volume": vol_disp,
             })
             time.sleep(_FINVIZ_DELAY_SEC)
 

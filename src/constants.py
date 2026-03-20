@@ -254,9 +254,13 @@ FINVIZ_EXPORT_URLS = {
     # 4% daily: c=1,47,61,62,63,64,65 = Ticker,ATR,AvgVol,RelVol,Price,Change,Volume (single request)
     "4pct_daily": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change&c=1,47,61,62,63,64,65",
     "earnings_yesterday_today": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=change",
+    # No &c=: perf columns for ATR/vol. Earnings Date merged from earnings_yesterday_today_financial (v=161).
     "earnings_yesterday_today_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change",
+    "earnings_yesterday_today_financial": "https://elite.finviz.com/export.ashx?v=161&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change",
     # Earnings This Week: Overview for Market Cap; Performance for Avg Vol, Rel Vol. ft=4 for earnings date filter.
     "earnings_this_week_overview": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
+    # v=161 Financial: includes Earnings Date column; v=111 overview often does not. Same filters as overview.
+    "earnings_this_week_financial": "https://elite.finviz.com/export.ashx?v=161&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
     "earnings_this_week_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
     # Stocks in Play: c=1,137,47,61,62,63,64,65 = Ticker,News/Link,ATR,AvgVol,RelVol,Price,Change,Volume
     "stocks_in_play": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,news_date_yesterday|today,sh_avgvol_o1000,sh_price_o1,sh_relvol_o2&o=-change&c=1,137,47,61,62,63,64,65",

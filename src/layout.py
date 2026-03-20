@@ -26,6 +26,8 @@ from src.styles import (
     SETTINGS_BTN_STYLE,
     CONTENT_AREA_STYLE,
     PRIMARY_ROW_STYLE, QUARTER_ROW_STYLE, THIRD_ROW_STYLE, WIDE_ROW_STYLE, HALF_ROW_STYLE,
+    SNAPSHOT_MOVERS_ROW_STYLE,
+    INTRADAY_TOP_MOVERS_BODY_STYLE, INTRADAY_SNAPSHOT_BODY_STYLE, INTRADAY_INDEX_ROW_CARD_STYLE,
     WIDGET_STYLE, WIDGET_PRIMARY_STYLE, WIDGET_SECONDARY_STYLE, WIDGET_KEY_METRICS_STYLE,
     section_header_style, SECTION_BODY_STYLE, KEY_METRICS_BODY_STYLE,
     TICKER_GRID_STYLE, ticker_pill_style,
@@ -36,6 +38,7 @@ from src.styles import (
     stage_badge_style,
 )
 from src.constants import pct_color, chg_color
+from src.data_fetcher import _coerce_earnings_date_str
 from src.macro_monitor_layout import build_macro_monitor_tab
 
 ET = timezone(timedelta(hours=-5))
@@ -501,12 +504,51 @@ def build_minervini_table(data: list[dict], widget_id: str = None, sort_col: str
 
 
 def build_earnings_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
-    """Earnings Yesterday + Today: same layout as Minervini screener."""
+    """Earnings Yesterday + Today: screener columns + Earnings Date (rightmost)."""
+    from src.sortable_table import sort_data, SCREENER_SORT_KEYS
+
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    return _build_screener_table(data, widget_id, sort_col, sort_asc)
+    if widget_id and sort_col:
+        data = sort_data(data, sort_col, sort_asc, SCREENER_SORT_KEYS)
+    headers = [
+        ("Ticker", "ticker"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
+        ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"),
+        ("Earnings Date", "earnings_date"),
+    ]
+    rows = []
+    for r in data:
+        chg_val = r.get("change")
+        try:
+            chg_num = float(str(chg_val).replace("%", "")) if chg_val not in (None, "") else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        atr_pct = r.get("atr_pct")
+        atr_str = f"{atr_pct:.2f}%" if atr_pct is not None else ""
+        ed = _coerce_earnings_date_str(r.get("earnings_date")) or ""
+        rows.append([
+            {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
+             "style": TABLE_CELL_STYLE},
+            str(r.get("price", "")),
+            avg_str,
+            str(r.get("rel_vol", "")),
+            {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
+             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
+            atr_str,
+            ed,
+        ])
+    return _table(
+        headers,
+        rows,
+        col_widths=["62px", "55px", "65px", "55px", "55px", "65px", "50px", "82px"],
+        widget_id=widget_id,
+        sort_col=sort_col,
+        sort_asc=sort_asc,
+    )
 
 
 def _fmt_mcap(val) -> str:
@@ -523,7 +565,7 @@ def _fmt_mcap(val) -> str:
 
 
 def build_earnings_calendar_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
-    """Earnings This Week: Ticker, Market Cap, Price, Avg Vol, Rel Vol, Change, Vol, ATR %. Sorted by market cap by default."""
+    """Earnings This Week: Ticker, Mkt Cap, …, ATR %, Earnings Date (rightmost). Sorted by market cap by default."""
     from src.sortable_table import sort_data, SCREENER_SORT_KEYS
 
     if not data:
@@ -538,6 +580,7 @@ def build_earnings_calendar_table(data: list[dict], widget_id: str = None, sort_
     headers = [
         ("Ticker", "ticker"), ("Mkt Cap", "market_cap"), ("Price", "price"), ("Avg Vol", "avg_vol"), ("Rel Vol", "rel_vol"),
         ("Change", "change"), ("Vol", "volume"), ("ATR %", "atr_pct"),
+        ("Earnings Date", "earnings_date"),
     ]
     rows = []
     for r in data:
@@ -549,6 +592,7 @@ def build_earnings_calendar_table(data: list[dict], widget_id: str = None, sort_
         vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
         atr_pct = r.get("atr_pct")
         atr_str = f"{atr_pct:.2f}%" if atr_pct is not None else ""
+        ed = _coerce_earnings_date_str(r.get("earnings_date")) or ""
         rows.append([
             {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}), "style": TABLE_CELL_STYLE},
             _fmt_mcap(r.get("market_cap")),
@@ -558,9 +602,16 @@ def build_earnings_calendar_table(data: list[dict], widget_id: str = None, sort_
             {"text": f"{chg_num}%" if chg_val not in (None, "") else "", "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
             vol_str,
             atr_str,
+            ed,
         ])
-    return _table(headers, rows, col_widths=["65px", "60px", "55px", "65px", "50px", "55px", "65px", "50px"],
-                  widget_id=widget_id, sort_col=sort_col or "market_cap", sort_asc=sort_asc)
+    return _table(
+        headers,
+        rows,
+        col_widths=["65px", "60px", "55px", "65px", "50px", "55px", "65px", "50px", "82px"],
+        widget_id=widget_id,
+        sort_col=sort_col or "market_cap",
+        sort_asc=sort_asc,
+    )
 
 
 def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
@@ -783,6 +834,7 @@ def build_top_gainers_table(data: list[dict]) -> html.Div:
         return html.Div("No data. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
+    cell = {**TABLE_CELL_STYLE, "padding": "0px 3px 1px 3px", "lineHeight": 1.25}
     headers = [("Ticker", None), ("Chg", None)]
     rows = []
     for r in data:
@@ -793,9 +845,9 @@ def build_top_gainers_table(data: list[dict]) -> html.Div:
             chg_num = 0
         rows.append([
             {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}),
-             "style": TABLE_CELL_STYLE},
+             "style": cell},
             {"text": f"{chg_num:+.2f}%",
-             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+             "style": {**cell, "color": chg_color(chg_num), "fontWeight": 600}},
         ])
     return _table(headers, rows, col_widths=["70px", "55px"])
 
@@ -806,6 +858,7 @@ def build_top_losers_table(data: list[dict]) -> html.Div:
         return html.Div("No data. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
+    cell = {**TABLE_CELL_STYLE, "padding": "0px 3px 1px 3px", "lineHeight": 1.25}
     headers = [("Ticker", None), ("Chg", None)]
     rows = []
     for r in data:
@@ -816,9 +869,9 @@ def build_top_losers_table(data: list[dict]) -> html.Div:
             chg_num = 0
         rows.append([
             {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}),
-             "style": TABLE_CELL_STYLE},
+             "style": cell},
             {"text": f"{chg_num:+.2f}%",
-             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+             "style": {**cell, "color": chg_color(chg_num), "fontWeight": 600}},
         ])
     return _table(headers, rows, col_widths=["70px", "55px"])
 
@@ -1428,32 +1481,65 @@ def build_live_index_snapshot(data: list[dict]) -> html.Div:
             "color": COLORS["text_muted"], "fontSize": "10px", "padding": "8px",
         })
 
-    def _card(ticker: str, price: str, change: str) -> html.Div:
+    muted = {"color": COLORS["text_muted"], "fontSize": "8px", "fontWeight": 500}
+
+    def _card(r: dict) -> html.Div:
+        ticker = r.get("ticker", "")
+        price = r.get("price", "—")
+        change = r.get("change", "")
         try:
             chg_val = float(str(change or "").replace("%", "").replace(",", "").strip()) if change else 0.0
         except (ValueError, TypeError):
             chg_val = 0.0
         color = chg_color(chg_val)
-        return html.Div([
-            html.Div(_clickable_ticker(ticker, {"fontSize": "10px", "marginBottom": "2px"}),
-                    style={"color": COLORS["text_muted"]}),
-            html.Div(price, style={"fontSize": "16px", "fontWeight": 700, "color": COLORS["text"]}),
-            html.Div(change or "—", style={"fontSize": "11px", "fontWeight": 600, "color": color}),
-        ], style={
-            "padding": "10px 14px", "borderRadius": "6px", "background": COLORS["surface2"],
+        o = (r.get("open") or "").strip()
+        p = (r.get("prev_close") or "").strip()
+        vol = (r.get("volume") or "").strip()
+        sub: list = []
+        if o or p:
+            sub.append(html.Div([
+                html.Span("O ", style=muted),
+                html.Span(o or "—", style={"fontSize": "8px", "color": COLORS["text"]}),
+                html.Span(" · P ", style=muted),
+                html.Span(p or "—", style={"fontSize": "8px", "color": COLORS["text"]}),
+            ], style={"lineHeight": 1.25}))
+        if vol:
+            sub.append(html.Div([
+                html.Span("Vol ", style=muted),
+                html.Span(vol, style={"fontSize": "8px", "color": COLORS["text"]}),
+            ], style={"lineHeight": 1.25}))
+        kids = [
+            html.Div(_clickable_ticker(ticker, {"fontSize": "9px", "fontWeight": 600}),
+                     style={"color": COLORS["text_muted"], "marginBottom": "2px"}),
+            html.Div(price, style={"fontSize": "14px", "fontWeight": 700, "color": COLORS["text"], "lineHeight": 1.15}),
+            html.Div(change or "—", style={"fontSize": "10px", "fontWeight": 600, "color": color, "marginTop": "1px"}),
+        ]
+        if sub:
+            kids.append(html.Div(sub, style={"marginTop": "auto", "paddingTop": "4px", "display": "flex", "flexDirection": "column", "gap": "3px"}))
+        return html.Div(kids, style={
+            "padding": "6px 6px",
+            "borderRadius": "4px",
+            "background": COLORS["surface2"],
             "border": f"1px solid {COLORS['border']}",
-            "display": "flex", "flexDirection": "column", "justifyContent": "center",
-            "minWidth": "72px",
+            "display": "flex",
+            "flexDirection": "column",
+            "justifyContent": "flex-start",
+            "flex": 1,
+            "minWidth": 0,
+            "minHeight": 0,
+            "height": "100%",
         })
 
-    cards = []
-    for r in data:
-        t = r.get("ticker", "")
-        if t:
-            cards.append(_card(t, r.get("price", "—"), r.get("change", "")))
+    cards = [_card(r) for r in data if r.get("ticker")]
     return html.Div(cards, style={
-        "display": "flex", "flexWrap": "wrap", "gap": "10px", "padding": "8px",
+        "display": "flex",
+        "flexDirection": "row",
+        "gap": "5px",
         "alignItems": "stretch",
+        "flex": 1,
+        "minHeight": 0,
+        "height": "100%",
+        "width": "100%",
     })
 
 
@@ -2502,6 +2588,28 @@ def _loading_wrap(content_id, children=None, style=None):
     )
 
 
+def _intraday_loading_wrap(content_id: str):
+    """Loading wrapper that fills compact intraday widget bodies (no 40px min gap)."""
+    inner = html.Div(
+        id=content_id,
+        children=[],
+        style={
+            "minHeight": 0,
+            "height": "100%",
+            "flex": 1,
+            "display": "flex",
+            "flexDirection": "column",
+            "overflow": "hidden",
+        },
+    )
+    return dcc.Loading(
+        inner,
+        type="circle",
+        color=COLORS["accent"],
+        style={"minHeight": 0, "flex": 1, "display": "flex", "flexDirection": "column"},
+    )
+
+
 def _sortable_table_wrap(widget_id: str, default_sort_col: str = "change", default_sort_asc: bool = False):
     """Wrap content with data and sort stores for sortable tables.
     Default: sort by change descending (biggest gainers at top). Users can click headers to change."""
@@ -2874,18 +2982,31 @@ def build_layout() -> html.Div:
                                     [
                         html.Div([
                         html.Div([
-                            html.Div([
-                                _widget("live_index", "Market Snapshot",
-                                        _loading_wrap("live_index-content"),
-                                        variant="teal",
-                                        initial_hidden=not DEFAULT_VISIBILITY.get("live_index", True),
-                                        card_style_override={
-                                            **WIDGET_STYLE,
-                                            "maxHeight": "110px",
-                                            "width": "fit-content",
-                                        }),
-                            ], style={"width": "fit-content"}),
-                        ], style=WIDE_ROW_STYLE),
+                            _widget("live_index", "Market Snapshot",
+                                    _intraday_loading_wrap("live_index-content"),
+                                    variant="teal",
+                                    initial_hidden=not DEFAULT_VISIBILITY.get("live_index", True),
+                                    body_style=INTRADAY_SNAPSHOT_BODY_STYLE,
+                                    card_style_override=INTRADAY_INDEX_ROW_CARD_STYLE),
+                            _widget("top_gainers", "Top Gainers",
+                                    _intraday_loading_wrap("top_gainers-content"),
+                                    variant="teal",
+                                    initial_hidden=not DEFAULT_VISIBILITY.get("top_gainers", True),
+                                    body_style=INTRADAY_TOP_MOVERS_BODY_STYLE,
+                                    card_style_override=INTRADAY_INDEX_ROW_CARD_STYLE,
+                                    extra_header=html.Span([
+                                        _finviz_link("FinViz", "thematics", {"marginLeft": "8px"}),
+                                    ])),
+                            _widget("top_losers", "Top Losers",
+                                    _intraday_loading_wrap("top_losers-content"),
+                                    variant="teal",
+                                    initial_hidden=not DEFAULT_VISIBILITY.get("top_losers", True),
+                                    body_style=INTRADAY_TOP_MOVERS_BODY_STYLE,
+                                    card_style_override=INTRADAY_INDEX_ROW_CARD_STYLE,
+                                    extra_header=html.Span([
+                                        _finviz_link("FinViz", "thematics", {"marginLeft": "8px"}),
+                                    ])),
+                        ], style=SNAPSHOT_MOVERS_ROW_STYLE),
                         html.Div([
                             _widget("in_play", "Stocks In Play",
                                     _sortable_table_wrap("in_play"),
@@ -2902,30 +3023,6 @@ def build_layout() -> html.Div:
                                         _finviz_link("FinViz", "earnings_yesterday_today", {"marginLeft": "8px"}),
                                     ])),
                         ], style=HALF_ROW_STYLE),
-                        html.Div([
-                            _widget("top_gainers", "Top Gainers",
-                                    _loading_wrap("top_gainers-content"),
-                                    variant="teal",
-                                    initial_hidden=not DEFAULT_VISIBILITY.get("top_gainers", True),
-                                    card_style_override={
-                                        **WIDGET_STYLE,
-                                        "maxHeight": "260px",
-                                    },
-                                    extra_header=html.Span([
-                                        _finviz_link("FinViz", "thematics", {"marginLeft": "8px"}),
-                                    ])),
-                            _widget("top_losers", "Top Losers",
-                                    _loading_wrap("top_losers-content"),
-                                    variant="teal",
-                                    initial_hidden=not DEFAULT_VISIBILITY.get("top_losers", True),
-                                    card_style_override={
-                                        **WIDGET_STYLE,
-                                        "maxHeight": "260px",
-                                    },
-                                    extra_header=html.Span([
-                                        _finviz_link("FinViz", "thematics", {"marginLeft": "8px"}),
-                                    ])),
-                        ], style=THIRD_ROW_STYLE),
                         html.Div([
                             _widget("pre_market", "Pre-market Scanner",
                                     _sortable_table_wrap("pre_market", default_sort_col="Gap", default_sort_asc=False),

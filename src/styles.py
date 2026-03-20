@@ -134,6 +134,37 @@ THIRD_ROW_STYLE = {
     "marginBottom": "4px",
 }
 
+# Intraday: Market Snapshot + Top Gainers + Top Losers — equal columns, same card height
+SNAPSHOT_MOVERS_ROW_STYLE = {
+    "display": "grid",
+    "gridTemplateColumns": "1fr 1fr 1fr",
+    "gap": "4px",
+    "marginBottom": "4px",
+    "alignItems": "stretch",
+}
+
+# Tight body (~12 table rows) — not SECTION_BODY_STYLE (360px) which left empty space below short tables
+INTRADAY_TOP_MOVERS_BODY_HEIGHT_PX = 200
+_INTRADAY_TOP_MOVERS_BODY = {
+    "flex": 1,
+    "display": "flex",
+    "flexDirection": "column",
+    "overflow": "auto",
+    "minHeight": 0,
+    "maxHeight": f"{INTRADAY_TOP_MOVERS_BODY_HEIGHT_PX}px",
+    "backgroundColor": COLORS["surface"],
+    "padding": "2px 4px 1px 4px",
+    "position": "relative",
+    "isolation": "isolate",
+}
+INTRADAY_TOP_MOVERS_BODY_STYLE = _INTRADAY_TOP_MOVERS_BODY
+INTRADAY_SNAPSHOT_BODY_STYLE = {
+    **_INTRADAY_TOP_MOVERS_BODY,
+    "overflow": "hidden",
+    "display": "flex",
+    "flexDirection": "column",
+}
+
 # ---------- Widget card ----------
 WIDGET_STYLE = {
     "backgroundColor": COLORS["surface"],
@@ -143,6 +174,15 @@ WIDGET_STYLE = {
     "flexDirection": "column",
     "overflow": "hidden",
     "isolation": "isolate",
+}
+
+# Header ~20px + body 200px — fixed row so snapshot aligns with gainers/losers (must follow WIDGET_STYLE)
+INTRADAY_INDEX_ROW_CARD_STYLE = {
+    **WIDGET_STYLE,
+    "minHeight": "222px",
+    "maxHeight": "222px",
+    "width": "100%",
+    "minWidth": 0,
 }
 
 WIDGET_PRIMARY_STYLE = {
