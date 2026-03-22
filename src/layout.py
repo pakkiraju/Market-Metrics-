@@ -83,6 +83,18 @@ SUPER_SCANNERS_WIDGETS = [
     ("qulla",          "Qullamaggie",                False),
     ("minervini",      "Minervini",                  False),
     ("oneil",          "O'Neil",                     False),
+    ("jeff_sun_canslim", "Jeff Sun - CANSLIM",       False),
+    ("jeff_sun_high_adr", "Jeff Sun - High ADR% Hottest Stock", False),
+    ("jeff_sun_extended_bases", "Jeff Sun - Extended Bases/Prolonged Consolidations", False),
+    ("jeff_sun_1w20", "Jeff Sun - Strongest 1-Week Mover Exceeding 20%", False),
+    ("jeff_sun_4w30", "Jeff Sun - Strongest 1-Month Mover Exceeding 30%", False),
+    ("jeff_sun_4w50", "Jeff Sun - Strongest 1-Month Mover Exceeding 50%", False),
+    ("jeff_sun_13w50", "Jeff Sun - Strongest 3-Month Mover Exceeding 50%", False),
+    ("jeff_sun_26w100", "Jeff Sun - Strongest 6-Month Mover Exceeding 100%", False),
+    ("jeff_sun_ipo_thisweek", "Jeff Sun - IPO", False),
+    ("jeff_sun_high_short_float", "Jeff Sun - High Short Float", False),
+    ("jeff_sun_liquid_etfs", "Jeff Sun - Liquid ETF's", False),
+    ("julian_komar_strongest", "Julian Komar - Strongest Stocks", False),
     ("club97",         "97 Club",                    False),
     ("movers",         "StockBee - 9 Million Movers",           False),
     ("weekly",         "StockBee - 20% Weekly Movers",          False),
@@ -104,7 +116,7 @@ WIDGETS = MARKET_METRICS_WIDGETS + SUPER_SCANNERS_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "pre_market", "cnbc_premarket") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "jeff_sun_canslim", "jeff_sun_high_adr", "jeff_sun_extended_bases", "jeff_sun_1w20", "jeff_sun_4w30", "jeff_sun_4w50", "jeff_sun_13w50", "jeff_sun_26w100", "jeff_sun_ipo_thisweek", "jeff_sun_high_short_float", "jeff_sun_liquid_etfs", "julian_komar_strongest", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "pre_market", "cnbc_premarket") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -146,9 +158,16 @@ WIDGET_REFRESH_BTN_STYLE = {
     "marginLeft": "4px",
     "lineHeight": 1,
 }
+WIDGET_EXPORT_BTN_STYLE = {
+    **WIDGET_REFRESH_BTN_STYLE,
+    "fontSize": "8px",
+    "padding": "1px 4px",
+    "background": "rgba(6,182,212,0.25)",
+}
 def _widget(widget_id, header_text, body_children, variant="default",
             count=None, extra_header=None, primary=False, initial_hidden=False,
-            body_style=None, card_style_override=None, refreshable=True):
+            body_style=None, card_style_override=None, refreshable=True,
+            watchlist_export=True):
     left_kids = [html.Span(header_text)]
     if count is not None:
         left_kids.append(html.Span(
@@ -165,10 +184,25 @@ def _widget(widget_id, header_text, body_children, variant="default",
         left_kids.append(extra_header)
 
     header_kids = [html.Div(left_kids, style={"display": "flex", "alignItems": "center", "flexWrap": "wrap"})]
+    right_header = []
     if refreshable:
-        header_kids.append(
+        right_header.append(
             html.Button("↻", id=f"btn-refresh-{widget_id}", title="Refresh this widget",
                         style=WIDGET_REFRESH_BTN_STYLE, n_clicks=0)
+        )
+    if watchlist_export:
+        right_header.append(
+            html.Button(
+                "Export WL",
+                id={"type": "export-watchlist", "widget": widget_id},
+                title="Download symbols as TradingView watchlist (.txt)",
+                style=WIDGET_EXPORT_BTN_STYLE,
+                n_clicks=0,
+            )
+        )
+    if right_header:
+        header_kids.append(
+            html.Div(right_header, style={"display": "flex", "alignItems": "center", "gap": "3px", "flexShrink": 0}),
         )
 
     card_style = card_style_override or (WIDGET_PRIMARY_STYLE if primary else WIDGET_SECONDARY_STYLE)
@@ -1195,6 +1229,114 @@ def build_97_club_table(club_data: list[dict], widget_id: str = None, sort_col: 
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
     return _build_screener_table(club_data, widget_id, sort_col, sort_asc)
+
+
+def build_jeff_sun_canslim_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Jeff Sun CANSLIM: same layout as Minervini (Ticker, Price, Avg Vol, Rel Vol, Change, Vol) from export URL."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id, sort_col, sort_asc)
+
+
+def build_jeff_sun_high_adr_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Jeff Sun High ADR% Hottest Stock: same layout as Minervini (Ticker, Price, Avg Vol, Rel Vol, Change, Vol)."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id, sort_col, sort_asc)
+
+
+def build_jeff_sun_extended_bases_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Jeff Sun Extended Bases/Prolonged Consolidations: same layout as Minervini."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id, sort_col, sort_asc)
+
+
+def build_jeff_sun_1w20_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Jeff Sun Strongest 1-Week Mover Exceeding 20%: same layout as Minervini."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id or "jeff_sun_1w20", sort_col, sort_asc)
+
+
+def build_jeff_sun_4w30_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Jeff Sun Strongest 1-Month Mover Exceeding 30%: same layout as Minervini."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id or "jeff_sun_4w30", sort_col, sort_asc)
+
+
+def build_jeff_sun_4w50_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Jeff Sun Strongest 1-Month Mover Exceeding 50%: same layout as Minervini."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id or "jeff_sun_4w50", sort_col, sort_asc)
+
+
+def build_jeff_sun_13w50_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Jeff Sun Strongest 3-Month Mover Exceeding 50%: same layout as Minervini."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id or "jeff_sun_13w50", sort_col, sort_asc)
+
+
+def build_jeff_sun_26w100_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Jeff Sun Strongest 6-Month Mover Exceeding 100%: same layout as Minervini."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id or "jeff_sun_26w100", sort_col, sort_asc)
+
+
+def build_jeff_sun_ipo_thisweek_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Jeff Sun IPO: mid+ cap, EPS growth, USA, IPO previous year. Cached weekly."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id or "jeff_sun_ipo_thisweek", sort_col, sort_asc)
+
+
+def build_jeff_sun_high_short_float_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Jeff Sun High Short Float: small+ cap, float <100M, short >30%. Cached weekly."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id or "jeff_sun_high_short_float", sort_col, sort_asc)
+
+
+def build_jeff_sun_liquid_etfs_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Jeff Sun Liquid ETFs: ETFs, high volume, week volatility."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id or "jeff_sun_liquid_etfs", sort_col, sort_asc)
+
+
+def build_julian_komar_strongest_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
+    """Julian Komar Strongest Stocks: 52w high proximity, SMA50, liquid small+ names."""
+    if not data:
+        return html.Div("No results", style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
+    return _build_screener_table(data, widget_id or "julian_komar_strongest", sort_col, sort_asc)
 
 
 # -----------------------------------------------------------------------
@@ -2654,6 +2796,96 @@ def build_super_scanners_tab() -> html.Div:
                         ])),
             ], id="row-super-screeners", style=THIRD_ROW_STYLE),
             html.Div([
+                _widget("jeff_sun_canslim", "Jeff Sun - CANSLIM",
+                        _sortable_table_wrap("jeff_sun_canslim"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("jeff_sun_canslim", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "jeff_sun_canslim", {"marginLeft": "8px"}),
+                        ])),
+                _widget("jeff_sun_high_adr", "Jeff Sun - High ADR% Hottest Stock",
+                        _sortable_table_wrap("jeff_sun_high_adr"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("jeff_sun_high_adr", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "jeff_sun_high_adr", {"marginLeft": "8px"}),
+                        ])),
+                _widget("jeff_sun_extended_bases", "Jeff Sun - Extended Bases",
+                        _sortable_table_wrap("jeff_sun_extended_bases"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("jeff_sun_extended_bases", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "jeff_sun_extended_bases", {"marginLeft": "8px"}),
+                        ])),
+                _widget("jeff_sun_1w20", "Jeff Sun - 1W Mover +20%",
+                        _sortable_table_wrap("jeff_sun_1w20"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("jeff_sun_1w20", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "jeff_sun_1w20", {"marginLeft": "8px"}),
+                        ])),
+            ], id="row-jeff-sun", style=QUARTER_ROW_STYLE),
+            html.Div([
+                _widget("jeff_sun_4w30", "Jeff Sun - 1M Mover +30%",
+                        _sortable_table_wrap("jeff_sun_4w30"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("jeff_sun_4w30", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "jeff_sun_4w30", {"marginLeft": "8px"}),
+                        ])),
+                _widget("jeff_sun_4w50", "Jeff Sun - 1M Mover +50%",
+                        _sortable_table_wrap("jeff_sun_4w50"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("jeff_sun_4w50", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "jeff_sun_4w50", {"marginLeft": "8px"}),
+                        ])),
+                _widget("jeff_sun_13w50", "Jeff Sun - 3M Mover +50%",
+                        _sortable_table_wrap("jeff_sun_13w50"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("jeff_sun_13w50", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "jeff_sun_13w50", {"marginLeft": "8px"}),
+                        ])),
+                _widget("jeff_sun_26w100", "Jeff Sun - 6M Mover +100%",
+                        _sortable_table_wrap("jeff_sun_26w100"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("jeff_sun_26w100", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "jeff_sun_26w100", {"marginLeft": "8px"}),
+                        ])),
+            ], id="row-jeff-sun-movers", style=QUARTER_ROW_STYLE),
+            html.Div([
+                _widget("jeff_sun_ipo_thisweek", "Jeff Sun - IPO",
+                        _sortable_table_wrap("jeff_sun_ipo_thisweek"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("jeff_sun_ipo_thisweek", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "jeff_sun_ipo_thisweek", {"marginLeft": "8px"}),
+                        ])),
+                _widget("jeff_sun_high_short_float", "Jeff Sun - High Short Float",
+                        _sortable_table_wrap("jeff_sun_high_short_float"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("jeff_sun_high_short_float", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "jeff_sun_high_short_float", {"marginLeft": "8px"}),
+                        ])),
+                _widget("jeff_sun_liquid_etfs", "Jeff Sun - Liquid ETF's",
+                        _sortable_table_wrap("jeff_sun_liquid_etfs"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("jeff_sun_liquid_etfs", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "jeff_sun_liquid_etfs", {"marginLeft": "8px"}),
+                        ])),
+                _widget("julian_komar_strongest", "Julian Komar - Strongest Stocks",
+                        _sortable_table_wrap("julian_komar_strongest"),
+                        variant="orange",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("julian_komar_strongest", True),
+                        extra_header=html.Span([
+                            _finviz_link("FinViz", "julian_komar_strongest", {"marginLeft": "8px"}),
+                        ])),
+            ], id="row-jeff-sun-weekly", style=QUARTER_ROW_STYLE),
+            html.Div([
                 _widget("club97", "97 Club",
                         html.Div([
                             dcc.Store(id="club97-data-store"),
@@ -2759,6 +2991,7 @@ def build_layout() -> html.Div:
         dcc.Store(id="watchlist-store", data=_initial_watchlist()),
         dcc.Store(id="chart-resize-trigger"),
         dcc.Store(id="main-tabs", data="market-metrics"),
+        dcc.Download(id="download-watchlist-tv"),
 
         build_header(),
         build_settings_drawer(),

@@ -127,6 +127,20 @@ QUARTER_ROW_STYLE = {
     "marginBottom": "4px",
 }
 
+# Super Scanners: 5–6 Jeff Sun / CANSLIM-style widgets in first row
+FIVE_COL_ROW_STYLE = {
+    "display": "grid",
+    "gridTemplateColumns": "1fr 1fr 1fr 1fr 1fr",
+    "gap": "4px",
+    "marginBottom": "4px",
+}
+SIX_COL_ROW_STYLE = {
+    "display": "grid",
+    "gridTemplateColumns": "1fr 1fr 1fr 1fr 1fr 1fr",
+    "gap": "4px",
+    "marginBottom": "4px",
+}
+
 THIRD_ROW_STYLE = {
     "display": "grid",
     "gridTemplateColumns": "1fr 1fr 1fr",

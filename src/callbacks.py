@@ -8,6 +8,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from dash import html, dcc, Input, Output, State, callback, no_update, ctx, ALL
+from dash.exceptions import PreventUpdate
 import plotly.graph_objects as go
 
 from src import cache
@@ -34,6 +35,18 @@ from src.screeners import (
     qullamaggie_screener,
     minervini_screener,
     oneil_screener,
+    jeff_sun_canslim_screener,
+    jeff_sun_high_adr_screener,
+    jeff_sun_extended_bases_screener,
+    jeff_sun_1w20_screener,
+    jeff_sun_4w30_screener,
+    jeff_sun_4w50_screener,
+    jeff_sun_13w50_screener,
+    jeff_sun_26w100_screener,
+    jeff_sun_ipo_thisweek_screener,
+    jeff_sun_high_short_float_screener,
+    jeff_sun_liquid_etfs_screener,
+    julian_komar_strongest_screener,
 )
 from src.layout import (
     build_cnbc_premarket_watchlist_table,
@@ -68,6 +81,18 @@ from src.layout import (
     build_ticker_grid,
     build_minervini_table,
     build_oneil_table,
+    build_jeff_sun_canslim_table,
+    build_jeff_sun_high_adr_table,
+    build_jeff_sun_extended_bases_table,
+    build_jeff_sun_1w20_table,
+    build_jeff_sun_4w30_table,
+    build_jeff_sun_4w50_table,
+    build_jeff_sun_13w50_table,
+    build_jeff_sun_26w100_table,
+    build_jeff_sun_ipo_thisweek_table,
+    build_jeff_sun_high_short_float_table,
+    build_jeff_sun_liquid_etfs_table,
+    build_julian_komar_strongest_table,
     build_qullamaggie_table,
     build_watchlist_table,
     WIDGETS, ALL_WIDGET_IDS,
@@ -111,6 +136,18 @@ WIDGET_CACHE_KEYS = {
     "qulla": ["qulla_episodic_v2", "qulla_parabolic_v2", "qulla_breakouts_v2"],
     "minervini": ["minervini_table"],
     "oneil": ["oneil_table"],
+    "jeff_sun_canslim": ["jeff_sun_canslim"],
+    "jeff_sun_high_adr": ["jeff_sun_high_adr"],
+    "jeff_sun_extended_bases": ["jeff_sun_extended_bases"],
+    "jeff_sun_1w20": ["jeff_sun_1w20"],
+    "jeff_sun_4w30": ["jeff_sun_4w30"],
+    "jeff_sun_4w50": ["jeff_sun_4w50"],
+    "jeff_sun_13w50": ["jeff_sun_13w50"],
+    "jeff_sun_26w100": ["jeff_sun_26w100"],
+    "jeff_sun_ipo_thisweek": ["jeff_sun_ipo_thisweek"],
+    "jeff_sun_high_short_float": ["jeff_sun_high_short_float"],
+    "jeff_sun_liquid_etfs": ["jeff_sun_liquid_etfs"],
+    "julian_komar_strongest": ["julian_komar_strongest"],
     "sector": ["sector_data"],
     "stockbee": ["stockbee_momentum50"],
     "breadth": ["stockbee_breadth"],
@@ -670,7 +707,7 @@ def register_callbacks(app):
         "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
     })
 
-    _GROUP_B_WIDGETS = ["qulla", "minervini", "oneil"]
+    _GROUP_B_WIDGETS = ["qulla", "minervini", "oneil", "jeff_sun_canslim", "jeff_sun_high_adr", "jeff_sun_extended_bases", "jeff_sun_1w20", "jeff_sun_4w30", "jeff_sun_4w50", "jeff_sun_13w50", "jeff_sun_26w100", "jeff_sun_ipo_thisweek", "jeff_sun_high_short_float"]
 
     @app.callback(
         [
@@ -680,6 +717,26 @@ def register_callbacks(app):
             Output("minervini-data-store", "data"),
             Output("oneil-content", "children"),
             Output("oneil-data-store", "data"),
+            Output("jeff_sun_canslim-content", "children"),
+            Output("jeff_sun_canslim-data-store", "data"),
+            Output("jeff_sun_high_adr-content", "children"),
+            Output("jeff_sun_high_adr-data-store", "data"),
+            Output("jeff_sun_extended_bases-content", "children"),
+            Output("jeff_sun_extended_bases-data-store", "data"),
+            Output("jeff_sun_1w20-content", "children"),
+            Output("jeff_sun_1w20-data-store", "data"),
+            Output("jeff_sun_4w30-content", "children"),
+            Output("jeff_sun_4w30-data-store", "data"),
+            Output("jeff_sun_4w50-content", "children"),
+            Output("jeff_sun_4w50-data-store", "data"),
+            Output("jeff_sun_13w50-content", "children"),
+            Output("jeff_sun_13w50-data-store", "data"),
+            Output("jeff_sun_26w100-content", "children"),
+            Output("jeff_sun_26w100-data-store", "data"),
+            Output("jeff_sun_ipo_thisweek-content", "children"),
+            Output("jeff_sun_ipo_thisweek-data-store", "data"),
+            Output("jeff_sun_high_short_float-content", "children"),
+            Output("jeff_sun_high_short_float-data-store", "data"),
         ],
         [
             Input("interval-refresh", "n_intervals"),
@@ -699,13 +756,43 @@ def register_callbacks(app):
         try:
             if single == "qulla":
                 d = qullamaggie_screener()
-                return build_qullamaggie_table(d, "qulla", "change", False), d, no_update, no_update, no_update, no_update
+                return build_qullamaggie_table(d, "qulla", "change", False), d, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
             if single == "minervini":
                 d = minervini_screener()
-                return no_update, no_update, build_minervini_table(d, "minervini", "change", False), d, no_update, no_update
+                return no_update, no_update, build_minervini_table(d, "minervini", "change", False), d, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
             if single == "oneil":
                 d = oneil_screener()
-                return no_update, no_update, no_update, no_update, build_oneil_table(d, "oneil", "change", False), d
+                return no_update, no_update, no_update, no_update, build_oneil_table(d, "oneil", "change", False), d, no_update, no_update, no_update, no_update, no_update, no_update
+            if single == "jeff_sun_canslim":
+                d = jeff_sun_canslim_screener()
+                return no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_canslim_table(d, "jeff_sun_canslim", "change", False), d, no_update, no_update, no_update, no_update
+            if single == "jeff_sun_high_adr":
+                d = jeff_sun_high_adr_screener()
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_high_adr_table(d, "jeff_sun_high_adr", "change", False), d, no_update, no_update
+            if single == "jeff_sun_extended_bases":
+                d = jeff_sun_extended_bases_screener()
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_extended_bases_table(d, "jeff_sun_extended_bases", "change", False), d, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+            if single == "jeff_sun_1w20":
+                d = jeff_sun_1w20_screener()
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_1w20_table(d, "jeff_sun_1w20", "change", False), d, no_update, no_update, no_update, no_update, no_update, no_update
+            if single == "jeff_sun_4w30":
+                d = jeff_sun_4w30_screener()
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_4w30_table(d, "jeff_sun_4w30", "change", False), d, no_update, no_update, no_update, no_update
+            if single == "jeff_sun_4w50":
+                d = jeff_sun_4w50_screener()
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_4w50_table(d, "jeff_sun_4w50", "change", False), d, no_update, no_update
+            if single == "jeff_sun_13w50":
+                d = jeff_sun_13w50_screener()
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_13w50_table(d, "jeff_sun_13w50", "change", False), d, no_update
+            if single == "jeff_sun_26w100":
+                d = jeff_sun_26w100_screener()
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_26w100_table(d, "jeff_sun_26w100", "change", False), d, no_update, no_update, no_update, no_update
+            if single == "jeff_sun_ipo_thisweek":
+                d = jeff_sun_ipo_thisweek_screener()
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_ipo_thisweek_table(d, "jeff_sun_ipo_thisweek", "change", False), d, no_update, no_update
+            if single == "jeff_sun_high_short_float":
+                d = jeff_sun_high_short_float_screener()
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_high_short_float_table(d, "jeff_sun_high_short_float", "change", False), d
 
             qulla_data = qullamaggie_screener()
             qulla_table = build_qullamaggie_table(qulla_data, "qulla", "change", False)
@@ -713,10 +800,71 @@ def register_callbacks(app):
             minervini_table = build_minervini_table(minervini_data, "minervini", "change", False)
             oneil_data = oneil_screener()
             oneil_table = build_oneil_table(oneil_data, "oneil", "change", False)
-            return [qulla_table, qulla_data, minervini_table, minervini_data, oneil_table, oneil_data]
+            jeff_sun_data = jeff_sun_canslim_screener()
+            jeff_sun_table = build_jeff_sun_canslim_table(jeff_sun_data, "jeff_sun_canslim", "change", False)
+            jeff_sun_adr_data = jeff_sun_high_adr_screener()
+            jeff_sun_adr_table = build_jeff_sun_high_adr_table(jeff_sun_adr_data, "jeff_sun_high_adr", "change", False)
+            jeff_sun_bases_data = jeff_sun_extended_bases_screener()
+            jeff_sun_bases_table = build_jeff_sun_extended_bases_table(jeff_sun_bases_data, "jeff_sun_extended_bases", "change", False)
+            jeff_sun_1w20_data = jeff_sun_1w20_screener()
+            jeff_sun_1w20_table = build_jeff_sun_1w20_table(jeff_sun_1w20_data, "jeff_sun_1w20", "change", False)
+            jeff_sun_4w30_data = jeff_sun_4w30_screener()
+            jeff_sun_4w30_table = build_jeff_sun_4w30_table(jeff_sun_4w30_data, "jeff_sun_4w30", "change", False)
+            jeff_sun_4w50_data = jeff_sun_4w50_screener()
+            jeff_sun_4w50_table = build_jeff_sun_4w50_table(jeff_sun_4w50_data, "jeff_sun_4w50", "change", False)
+            jeff_sun_13w50_data = jeff_sun_13w50_screener()
+            jeff_sun_13w50_table = build_jeff_sun_13w50_table(jeff_sun_13w50_data, "jeff_sun_13w50", "change", False)
+            jeff_sun_26w100_data = jeff_sun_26w100_screener()
+            jeff_sun_26w100_table = build_jeff_sun_26w100_table(jeff_sun_26w100_data, "jeff_sun_26w100", "change", False)
+            jeff_sun_ipo_data = jeff_sun_ipo_thisweek_screener()
+            jeff_sun_ipo_table = build_jeff_sun_ipo_thisweek_table(jeff_sun_ipo_data, "jeff_sun_ipo_thisweek", "change", False)
+            jeff_sun_short_data = jeff_sun_high_short_float_screener()
+            jeff_sun_short_table = build_jeff_sun_high_short_float_table(jeff_sun_short_data, "jeff_sun_high_short_float", "change", False)
+            return [qulla_table, qulla_data, minervini_table, minervini_data, oneil_table, oneil_data, jeff_sun_table, jeff_sun_data, jeff_sun_adr_table, jeff_sun_adr_data, jeff_sun_bases_table, jeff_sun_bases_data, jeff_sun_1w20_table, jeff_sun_1w20_data, jeff_sun_4w30_table, jeff_sun_4w30_data, jeff_sun_4w50_table, jeff_sun_4w50_data, jeff_sun_13w50_table, jeff_sun_13w50_data, jeff_sun_26w100_table, jeff_sun_26w100_data, jeff_sun_ipo_table, jeff_sun_ipo_data, jeff_sun_short_table, jeff_sun_short_data]
         except Exception as e:
             logger.exception("Group B failed: %s", e)
-            return [_err_div(e), [], _disabled_msg, [], _disabled_msg, []]
+            return [_err_div(e), [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
+
+    _GROUP_B_EXTRA = ["jeff_sun_liquid_etfs", "julian_komar_strongest"]
+
+    @app.callback(
+        [
+            Output("jeff_sun_liquid_etfs-content", "children"),
+            Output("jeff_sun_liquid_etfs-data-store", "data"),
+            Output("julian_komar_strongest-content", "children"),
+            Output("julian_komar_strongest-data-store", "data"),
+        ],
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-jeff_sun_liquid_etfs", "n_clicks"),
+            Input("btn-refresh-julian_komar_strongest", "n_clicks"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_group_b_extra(n_intervals, n_clicks, btn_liq, btn_julian):
+        tid = ctx.triggered_id if ctx.triggered else None
+        single = None
+        if tid and isinstance(tid, str) and tid.startswith("btn-refresh-"):
+            single = tid.replace("btn-refresh-", "")
+            if single in _GROUP_B_EXTRA:
+                _invalidate_widget_cache(single)
+        try:
+            if single == "jeff_sun_liquid_etfs":
+                d = jeff_sun_liquid_etfs_screener()
+                return build_jeff_sun_liquid_etfs_table(d, "jeff_sun_liquid_etfs", "change", False), d, no_update, no_update
+            if single == "julian_komar_strongest":
+                d = julian_komar_strongest_screener()
+                return no_update, no_update, build_julian_komar_strongest_table(d, "julian_komar_strongest", "change", False), d
+            d1 = jeff_sun_liquid_etfs_screener()
+            d2 = julian_komar_strongest_screener()
+            return (
+                build_jeff_sun_liquid_etfs_table(d1, "jeff_sun_liquid_etfs", "change", False), d1,
+                build_julian_komar_strongest_table(d2, "julian_komar_strongest", "change", False), d2,
+            )
+        except Exception as e:
+            logger.exception("Group B extra failed: %s", e)
+            return [_disabled_msg, [], _disabled_msg, []]
 
     @app.callback(
         [
@@ -1388,6 +1536,18 @@ def register_callbacks(app):
         "qulla": (build_qullamaggie_table, "qulla-content", {}),
         "minervini": (build_minervini_table, "minervini-content", {}),
         "oneil": (build_oneil_table, "oneil-content", {}),
+        "jeff_sun_canslim": (build_jeff_sun_canslim_table, "jeff_sun_canslim-content", {}),
+        "jeff_sun_high_adr": (build_jeff_sun_high_adr_table, "jeff_sun_high_adr-content", {}),
+        "jeff_sun_extended_bases": (build_jeff_sun_extended_bases_table, "jeff_sun_extended_bases-content", {}),
+        "jeff_sun_1w20": (build_jeff_sun_1w20_table, "jeff_sun_1w20-content", {}),
+        "jeff_sun_4w30": (build_jeff_sun_4w30_table, "jeff_sun_4w30-content", {}),
+        "jeff_sun_4w50": (build_jeff_sun_4w50_table, "jeff_sun_4w50-content", {}),
+        "jeff_sun_13w50": (build_jeff_sun_13w50_table, "jeff_sun_13w50-content", {}),
+        "jeff_sun_26w100": (build_jeff_sun_26w100_table, "jeff_sun_26w100-content", {}),
+        "jeff_sun_ipo_thisweek": (build_jeff_sun_ipo_thisweek_table, "jeff_sun_ipo_thisweek-content", {}),
+        "jeff_sun_high_short_float": (build_jeff_sun_high_short_float_table, "jeff_sun_high_short_float-content", {}),
+        "jeff_sun_liquid_etfs": (build_jeff_sun_liquid_etfs_table, "jeff_sun_liquid_etfs-content", {}),
+        "julian_komar_strongest": (build_julian_komar_strongest_table, "julian_komar_strongest-content", {}),
         "watchlist": (build_watchlist_table, "watchlist-content", {}),
         "sector": (build_sector_table, "sector-content", {}),
         "club97": (build_97_club_table, "club97-content", {}),
@@ -1458,3 +1618,45 @@ def register_callbacks(app):
         out_content[data_idx] = table
         out_sort[data_idx] = new_sort
         return out_content + out_sort
+
+    # ------------------------------------------------------------------
+    # Export watchlist: TradingView-friendly .txt (one symbol per line)
+    # ------------------------------------------------------------------
+    from src.watchlist_export import (
+        WIDGET_DATA_STORE_IDS,
+        extract_tickers_from_rows,
+        build_tradingview_file_body,
+        tickers_from_fallback,
+    )
+
+    @app.callback(
+        Output("download-watchlist-tv", "data"),
+        Input({"type": "export-watchlist", "widget": ALL}, "n_clicks"),
+        [State(f"{w}-data-store", "data") for w in WIDGET_DATA_STORE_IDS],
+        prevent_initial_call=True,
+    )
+    def export_watchlist_tradingview(n_clicks, *store_values):
+        triggered = ctx.triggered[0] if ctx.triggered else {}
+        if triggered.get("value") is None or (
+            isinstance(triggered.get("value"), (int, float)) and triggered.get("value", 0) < 1
+        ):
+            raise PreventUpdate
+        wid_info = ctx.triggered_id
+        if not isinstance(wid_info, dict) or wid_info.get("type") != "export-watchlist":
+            raise PreventUpdate
+        widget_id = wid_info.get("widget")
+        if not widget_id:
+            raise PreventUpdate
+
+        symbols: list[str] = []
+        if widget_id in WIDGET_DATA_STORE_IDS:
+            idx = WIDGET_DATA_STORE_IDS.index(widget_id)
+            rows = store_values[idx] if idx < len(store_values) else None
+            symbols = extract_tickers_from_rows(rows)
+        if not symbols:
+            symbols = tickers_from_fallback(widget_id)
+
+        body = build_tradingview_file_body(symbols)
+        safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(widget_id))[:80]
+        fname = f"{safe_name}_tradingview_watchlist.txt"
+        return dcc.send_string(body, filename=fname, type="text/plain")

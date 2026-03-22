@@ -200,6 +200,26 @@ FINVIZ_SCREENER_URLS = {
     "club97": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1",
     # O'Neil / CANSLIM: EPS growth, ROE, net margin
     "oneil": "https://elite.finviz.com/screener.ashx?v=161&f=fa_epsyoy_o25%2Cfa_epsyoy1_o25%2Cfa_epsyoyttm_pos%2Cfa_netmargin_pos%2Cfa_roe_pos%2Cgeo_usa",
+    # Jeff Sun CANSLIM: Mid+ cap, high sales growth, volume, institutional buying, near highs, volatility
+    "jeff_sun_canslim": "https://elite.finviz.com/screener.ashx?v=111&f=cap_midover,fa_salesqoq_high,fa_salesyoyttm_high,sh_avgvol_500to,sh_curvol_o2000,sh_insttrans_pos,ta_highlow20d_a5h,ta_highlow50d_a5h,ta_volatility_wo4&ft=4",
+    # Jeff Sun High ADR% Hottest Stock: High volatility (ADR%), strong relative volume, mid+ cap
+    "jeff_sun_high_adr": "https://elite.finviz.com/screener.ashx?v=111&f=cap_midover,geo_usa,sh_avgvol_500to,sh_curvol_o2000,sh_relvol_o2,ta_volatility_wo10&ft=4",
+    # Jeff Sun Extended Bases/Prolonged Consolidations: small+ cap, near highs, YTD down, SMA200 -20 to +20
+    "jeff_sun_extended_bases": "https://elite.finviz.com/screener.ashx?v=111&f=cap_smallover,sh_avgvol_o1000,sh_curvol_o1000,sh_insttrans_pos,sh_price_o1,ta_alltime_b70h,ta_highlow50d_a15h,ta_highlow52w_b30h,ta_perf_ytddown,ta_sma200_-20to20-a,ta_volatility_wo4&ft=4",
+    # Jeff Sun Strongest Movers: cap_smallover, avg vol 300K+, cur vol 100+, various perf thresholds
+    "jeff_sun_1w20": "https://elite.finviz.com/screener.ashx?v=111&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_1w20o,ta_volatility_wo4&ft=4&o=-marketcap",
+    "jeff_sun_4w30": "https://elite.finviz.com/screener.ashx?v=111&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_4w30o,ta_volatility_mo5&ft=4&o=-marketcap",
+    "jeff_sun_4w50": "https://elite.finviz.com/screener.ashx?v=111&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_4w50o,ta_volatility_mo5&ft=4&o=-marketcap",
+    "jeff_sun_13w50": "https://elite.finviz.com/screener.ashx?v=111&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_13w50o,ta_volatility_mo5&ft=4&o=-marketcap",
+    "jeff_sun_26w100": "https://elite.finviz.com/screener.ashx?v=111&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_26w100o,ta_volatility_mo5&ft=4&o=-marketcap",
+    # Jeff Sun IPO: mid+ cap, EPS growth, USA, IPO previous year, avg vol 1000+
+    "jeff_sun_ipo_thisweek": "https://elite.finviz.com/screener.ashx?v=111&f=cap_midover,fa_epsyoy1_pos,geo_usa,ipodate_prevyear,sh_avgvol_o1000&ft=4&o=industry",
+    # Jeff Sun High Short Float: small+ cap, stocks only, avg vol 1000+, float under 100M, short over 30%
+    "jeff_sun_high_short_float": "https://elite.finviz.com/screener.ashx?v=131&f=cap_smallover,ind_stocksonly,sh_avgvol_o1000,sh_float_u100,sh_short_o30&ft=4",
+    # Jeff Sun Liquid ETFs: ETFs, avg vol 1000+, week volatility over 3%, sorted by volume
+    "jeff_sun_liquid_etfs": "https://elite.finviz.com/screener.ashx?v=111&f=ind_exchangetradedfund,sh_avgvol_o1000,ta_volatility_wo3&ft=4&o=-volume",
+    # Julian Komar Strongest Stocks: Charts view v=211 on FinViz; small+ stocks, 52w high proximity, SMA50
+    "julian_komar_strongest": "https://elite.finviz.com/screener.ashx?v=211&f=cap_smallover,ind_stocksonly,sh_avgvol_o100,sh_price_o7,ta_highlow52w_a70h,ta_sma50_pa&ft=4&ta=0&p=w&o=-low52w",
     # Minervini Trend Template (base filters; full template uses tad_*)
     "minervini": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa%2Csh_avgvol_o1000%2Csh_price_o1%2Cta_sma200_pa",
     # Qullamaggie Episodic Pivot (gap up 10%+, rel vol 2+)
@@ -245,6 +265,8 @@ STOCKBEE_LINKS = {
 }
 
 # Export URLs for data fetching (export.ashx returns CSV). v=111 Overview, v=141 Performance (Perf Week), v=171 Technical (ATR).
+# For screener widgets: use v=141 + &c=1,47,61,62,63,64,65 to get Ticker, ATR, AvgVol, RelVol, Price, Change, Volume.
+# Without c= or with v=111, Avg Vol and Rel Vol are often missing from the export.
 FINVIZ_EXPORT_URLS = {
     "9m_movers": "https://elite.finviz.com/export.ashx?v=111&f=cap_1to,geo_usa,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to",
     "club97": "https://elite.finviz.com/export.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1",
@@ -281,6 +303,27 @@ FINVIZ_EXPORT_URLS = {
     "minervini": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_sma200_pa,tad_0_sma:150:sma:d|abv:::1|close::close:d,tad_1_sma:200:sma:d|abv:::1|close::close:d,tad_2_sma:200:sma:d|abv:::1|sma:150:sma:d,tad_3_sma:50:sma:d|abv:::|sma:150:sma:d,tad_4_sma:50:sma:d|abv:::|sma:200:sma:d,tad_5_sma:50:sma:d|abv:::1|close::close:d,tad_6_close::close:d|abvpct:30::|hilo:52:low:d,tad_7_close::close:d|blwpct::25:|hilo:52:high:d,tad_8_rsi:14:rsi:d|abveq:::|value:::70&o=-change&c=1,47,61,62,63,64,65",
     # O'Neil/CANSLIM: c=1,32,40,47,61,62,63,64,65 = Ticker,ROE,ProfitMargin,ATR,AvgVol,RelVol,Price,Change,Volume. ft=2 for fundamental filters.
     "oneil": "https://elite.finviz.com/export.ashx?v=161&f=fa_epsyoy_o25,fa_epsyoy1_o25,fa_epsyoyttm_pos,fa_netmargin_pos,fa_roe_pos,geo_usa&o=-change&ft=2&c=1,32,40,47,61,62,63,64,65",
+    # Jeff Sun CANSLIM: Mid+ cap, high sales growth, volume, institutional buying, near highs, volatility
+    # v=141 + c= for AvgVol, RelVol, ATR (required for screener table columns)
+    "jeff_sun_canslim": "https://elite.finviz.com/export.ashx?v=141&f=cap_midover,fa_salesqoq_high,fa_salesyoyttm_high,sh_avgvol_500to,sh_curvol_o2000,sh_insttrans_pos,ta_highlow20d_a5h,ta_highlow50d_a5h,ta_volatility_wo4&ft=4&o=-change&c=1,47,61,62,63,64,65",
+    # Jeff Sun High ADR% Hottest Stock: ta_volatility_wo10 = week over 10%, sh_relvol_o2 = rel vol 2+
+    "jeff_sun_high_adr": "https://elite.finviz.com/export.ashx?v=141&f=cap_midover,geo_usa,sh_avgvol_500to,sh_curvol_o2000,sh_relvol_o2,ta_volatility_wo10&ft=4&o=-change&c=1,47,61,62,63,64,65",
+    # Jeff Sun Extended Bases: v=141 + c= for AvgVol, RelVol, ATR
+    "jeff_sun_extended_bases": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,sh_avgvol_o1000,sh_curvol_o1000,sh_insttrans_pos,sh_price_o1,ta_alltime_b70h,ta_highlow50d_a15h,ta_highlow52w_b30h,ta_perf_ytddown,ta_sma200_-20to20-a,ta_volatility_wo4&ft=4&o=-change&c=1,47,61,62,63,64,65",
+    # Jeff Sun Strongest Movers: v=141 + c= for AvgVol, RelVol, ATR
+    "jeff_sun_1w20": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_1w20o,ta_volatility_wo4&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
+    "jeff_sun_4w30": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_4w30o,ta_volatility_mo5&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
+    "jeff_sun_4w50": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_4w50o,ta_volatility_mo5&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
+    "jeff_sun_13w50": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_13w50o,ta_volatility_mo5&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
+    "jeff_sun_26w100": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_26w100o,ta_volatility_mo5&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
+    # Jeff Sun IPO: cap_midover, fa_epsyoy1_pos, geo_usa, ipodate_prevyear, sh_avgvol_o1000
+    "jeff_sun_ipo_thisweek": "https://elite.finviz.com/export.ashx?v=141&f=cap_midover,fa_epsyoy1_pos,geo_usa,ipodate_prevyear,sh_avgvol_o1000&ft=4&o=industry&c=1,47,61,62,63,64,65",
+    # Jeff Sun High Short Float: Ownership view v=131 for Short Float column
+    "jeff_sun_high_short_float": "https://elite.finviz.com/export.ashx?v=131&f=cap_smallover,ind_stocksonly,sh_avgvol_o1000,sh_float_u100,sh_short_o30&ft=4&c=1,47,61,62,63,64,65",
+    # Jeff Sun Liquid ETFs: Overview v=111 + performance columns
+    "jeff_sun_liquid_etfs": "https://elite.finviz.com/export.ashx?v=111&f=ind_exchangetradedfund,sh_avgvol_o1000,ta_volatility_wo3&ft=4&o=-volume&c=1,47,61,62,63,64,65",
+    # Julian Komar: v=141 export (same filters as screener, no chart params)
+    "julian_komar_strongest": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,ind_stocksonly,sh_avgvol_o100,sh_price_o7,ta_highlow52w_a70h,ta_sma50_pa&ft=4&o=-low52w&c=1,47,61,62,63,64,65",
     # Group indicators: v=141 Performance view has Perf Week/Month (v=111 Overview ignores c=). c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65
     # ind_1b: $1B+ universe for Leading Industries (needs Industry/Sector, Perf Week/Month).
     "ind_1b": "https://elite.finviz.com/export.ashx?v=141&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",

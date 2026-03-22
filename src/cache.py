@@ -9,6 +9,7 @@ from pathlib import Path
 FAST = 300       # 5 min
 MEDIUM = 3600    # 1 hour
 SLOW = 7200      # 2 hours
+WEEKLY = 604800  # 7 days
 
 # Key Metrics: 1 hour TTL
 KEY_METRICS_TTL = 3600
