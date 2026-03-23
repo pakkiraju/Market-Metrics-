@@ -162,7 +162,7 @@ WIDGET_EXPORT_BTN_STYLE = {
     **WIDGET_REFRESH_BTN_STYLE,
     "fontSize": "8px",
     "padding": "1px 4px",
-    "background": "rgba(6,182,212,0.25)",
+    "background": "rgba(255,255,255,0.16)",
 }
 def _widget(widget_id, header_text, body_children, variant="default",
             count=None, extra_header=None, primary=False, initial_hidden=False,
@@ -3047,6 +3047,7 @@ def build_layout() -> html.Div:
                         _loading_wrap("breadth-content", [loading]),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth", True),
+                        watchlist_export=False,
                         extra_header=html.Span([
                             _stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"}),
                         ])),
@@ -3069,55 +3070,34 @@ def build_layout() -> html.Div:
                         _loading_wrap("breadth-primary-content", [loading], style=BREADTH_CHART_WRAP_STYLE),
                         variant="green",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-primary", True),
+                        watchlist_export=False,
                         body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
                 _widget("breadth-ratios", "StockBee - Breadth Ratios — 5-Day & 10-Day",
                         _loading_wrap("breadth-ratios-content", [loading], style=BREADTH_CHART_WRAP_STYLE),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-ratios", True),
+                        watchlist_export=False,
                         body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
                 _widget("breadth-secondary", "StockBee - Secondary Breadth — Up/Down 25%+ Qtr",
                         _loading_wrap("breadth-secondary-content", [loading], style=BREADTH_CHART_WRAP_STYLE),
                         variant="purple",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-secondary", True),
+                        watchlist_export=False,
                         body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
                 _widget("breadth-sp500", "StockBee - S&P 500 — Last 60 Days",
                         _loading_wrap("breadth-sp500-content", [loading], style=BREADTH_CHART_WRAP_STYLE),
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("breadth-sp500", True),
+                        watchlist_export=False,
                         body_style=BREADTH_CHART_BODY_STYLE,
                         extra_header=html.Span([_stockbee_link("Monitor", "market_monitor", {"marginLeft": "8px"})])),
             ], id="row-breadth-charts", style=QUARTER_ROW_STYLE),
 
-            # ---- WATCHLIST (screeners moved to Super Scanners tab) ----
+            # ---- BUBBLE CHART (moved to former watchlist slot) ----
             html.Div([
-                _widget("watchlist", "Watchlist",
-                        build_watchlist_body(),
-                        initial_hidden=not DEFAULT_VISIBILITY.get("watchlist", True)),
-            ], id="row-screeners", style=WIDE_ROW_STYLE),
-
-            # ---- SECTOR + RRG ROW ----
-            html.Div([
-                _widget("sector", "Sector SPDR ETFs",
-                        html.Div([
-                            dcc.Store(id="sector-data-store"),
-                            dcc.Store(id="sector-sort-store", data={"col": "chg", "asc": False}),
-                            _loading_wrap("sector-content", [loading]),
-                        ]),
-                        initial_hidden=not DEFAULT_VISIBILITY.get("sector", True)),
-                _widget("rrg", "RRG Sector Rotation (vs " + RRG_BENCHMARK + ")",
-                        html.Div([
-                            dcc.Store(id="rrg-figure-store"),
-                            dcc.Loading(
-                                html.Div(id="rrg-content", children=[loading], style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
-                                type="circle", color=COLORS["accent"], style={"minHeight": "40px"},
-                            ),
-                        ], style={"height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
-                        variant="teal",
-                        initial_hidden=not DEFAULT_VISIBILITY.get("rrg", True),
-                        body_style=RRG_CHART_BODY_STYLE),
                 _widget("sp500-landscape", "S&P 500 Landscape Bubble Chart",
                         html.Div([
                             dcc.Store(id="sp500-landscape-data-store"),
@@ -3141,6 +3121,31 @@ def build_layout() -> html.Div:
                         variant="teal",
                         initial_hidden=not DEFAULT_VISIBILITY.get("sp500-landscape", True),
                         body_style=RRG_CHART_BODY_STYLE),
+            ], id="row-screeners", style=WIDE_ROW_STYLE),
+
+            # ---- SECTOR + RRG ROW ----
+            html.Div([
+                _widget("sector", "Sector SPDR ETFs",
+                        html.Div([
+                            dcc.Store(id="sector-data-store"),
+                            dcc.Store(id="sector-sort-store", data={"col": "chg", "asc": False}),
+                            _loading_wrap("sector-content", [loading]),
+                        ]),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("sector", True)),
+                _widget("rrg", "RRG Sector Rotation (vs " + RRG_BENCHMARK + ")",
+                        html.Div([
+                            dcc.Store(id="rrg-figure-store"),
+                            dcc.Loading(
+                                html.Div(id="rrg-content", children=[loading], style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
+                                type="circle", color=COLORS["accent"], style={"minHeight": "40px"},
+                            ),
+                        ], style={"height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
+                        variant="teal",
+                        initial_hidden=not DEFAULT_VISIBILITY.get("rrg", True),
+                        body_style=RRG_CHART_BODY_STYLE),
+                _widget("watchlist", "Watchlist",
+                        build_watchlist_body(),
+                        initial_hidden=not DEFAULT_VISIBILITY.get("watchlist", True)),
             ], id="row-sector", style=THIRD_ROW_STYLE),
 
             # ---- LEADING + STAGE (earnings this week → Super Scanners tab) ----

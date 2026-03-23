@@ -648,223 +648,141 @@ def register_callbacks(app):
     #  Each group loads independently; widgets appear as soon as ready.
     # ==================================================================
 
-    # Key Metrics: fetch all URLs, cache full result, display when done. Loading spinner until complete.
+    # Key Metrics widgets: split callbacks so each widget loads independently.
     @app.callback(
         [
             Output("key-metrics-content", "children"),
-            Output("chart2-content", "children"),
-            Output("chart3-content", "children"),
             Output("last-update", "children"),
         ],
         [
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-key-metrics", "n_clicks"),
-            Input("btn-refresh-chart2", "n_clicks"),
-            Input("btn-refresh-chart3", "n_clicks"),
+            Input("main-tabs", "data"),
         ],
         prevent_initial_call=False,
     )
-    def refresh_group_a(n_intervals, n_clicks, btn_km, btn_c2, btn_c3):
-        if btn_km or btn_c2 or btn_c3:
+    def refresh_key_metrics(_n_intervals, _n_clicks, btn_km, main_tab):
+        if main_tab != "market-metrics":
+            raise PreventUpdate
+        if ctx.triggered_id == "btn-refresh-key-metrics" and btn_km:
             _invalidate_widget_cache("key-metrics")
         try:
             metrics = compute_all_key_metrics()
-            key_metrics_table = build_key_metrics_table(metrics)
-            nq100_data = metrics.get("NQ100", [])
-            spy500_data = metrics.get("SPY500", [])
-            djia_data = metrics.get("DJIA", [])
-            rus_data = metrics.get("RUS2000", [])
-            b1_data = metrics.get("$1B+", [])
+            return build_key_metrics_table(metrics), _now_str()
+        except Exception as e:
+            logger.exception("Key Metrics failed: %s", e)
+            return _err_div(e), f"Error at {_now_str()}"
 
+    @app.callback(
+        Output("chart2-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-chart2", "n_clicks"),
+            Input("main-tabs", "data"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_chart2(_n_intervals, _n_clicks, btn_c2, main_tab):
+        if main_tab != "market-metrics":
+            raise PreventUpdate
+        if ctx.triggered_id == "btn-refresh-chart2" and btn_c2:
+            _invalidate_widget_cache("chart2")
+        try:
+            metrics = compute_all_key_metrics()
             chart2_fig = build_metrics_bar_chart([
-                (nq100_data, "NQ100", "#991b1b", "#dc2626"),
-                (spy500_data, "SPY500", "#166534", "#22c55e"),
-                (djia_data, "DJIA", "#1e3a5f", "#3b82f6"),
+                (metrics.get("NQ100", []), "NQ100", "#991b1b", "#dc2626"),
+                (metrics.get("SPY500", []), "SPY500", "#166534", "#22c55e"),
+                (metrics.get("DJIA", []), "DJIA", "#1e3a5f", "#3b82f6"),
             ])
-            chart2 = dcc.Graph(
+            return dcc.Graph(
                 figure=chart2_fig,
                 config=GRAPH_CONFIG,
                 style={"height": "100%", "width": "100%"},
             )
+        except Exception as e:
+            logger.exception("Chart2 failed: %s", e)
+            return _err_div(e)
+
+    @app.callback(
+        Output("chart3-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-chart3", "n_clicks"),
+            Input("main-tabs", "data"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_chart3(_n_intervals, _n_clicks, btn_c3, main_tab):
+        if main_tab != "market-metrics":
+            raise PreventUpdate
+        if ctx.triggered_id == "btn-refresh-chart3" and btn_c3:
+            _invalidate_widget_cache("chart3")
+        try:
+            metrics = compute_all_key_metrics()
             chart3_fig = build_metrics_bar_chart([
-                (rus_data, "RUS2000", "#7f1d1d", "#ef4444"),
-                (b1_data, "$1B+", "#14532d", "#4ade80"),
+                (metrics.get("RUS2000", []), "RUS2000", "#7f1d1d", "#ef4444"),
+                (metrics.get("$1B+", []), "$1B+", "#14532d", "#4ade80"),
             ])
-            chart3 = dcc.Graph(
+            return dcc.Graph(
                 figure=chart3_fig,
                 config=GRAPH_CONFIG,
                 style={"height": "100%", "width": "100%"},
             )
-            return [key_metrics_table, chart2, chart3, _now_str()]
         except Exception as e:
-            logger.exception("Group A failed: %s", e)
-            err = _err_div(e)
-            return [err, err, err, f"Error at {_now_str()}"]
+            logger.exception("Chart3 failed: %s", e)
+            return _err_div(e)
 
     # Qullamaggie: enabled
     _disabled_msg = html.Div("Widget disabled", style={
         "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
     })
 
-    _GROUP_B_WIDGETS = ["qulla", "minervini", "oneil", "jeff_sun_canslim", "jeff_sun_high_adr", "jeff_sun_extended_bases", "jeff_sun_1w20", "jeff_sun_4w30", "jeff_sun_4w50", "jeff_sun_13w50", "jeff_sun_26w100", "jeff_sun_ipo_thisweek", "jeff_sun_high_short_float"]
+    _SUPER_SCANNER_WIDGETS = {
+        "qulla": (qullamaggie_screener, build_qullamaggie_table),
+        "minervini": (minervini_screener, build_minervini_table),
+        "oneil": (oneil_screener, build_oneil_table),
+        "jeff_sun_canslim": (jeff_sun_canslim_screener, build_jeff_sun_canslim_table),
+        "jeff_sun_high_adr": (jeff_sun_high_adr_screener, build_jeff_sun_high_adr_table),
+        "jeff_sun_extended_bases": (jeff_sun_extended_bases_screener, build_jeff_sun_extended_bases_table),
+        "jeff_sun_1w20": (jeff_sun_1w20_screener, build_jeff_sun_1w20_table),
+        "jeff_sun_4w30": (jeff_sun_4w30_screener, build_jeff_sun_4w30_table),
+        "jeff_sun_4w50": (jeff_sun_4w50_screener, build_jeff_sun_4w50_table),
+        "jeff_sun_13w50": (jeff_sun_13w50_screener, build_jeff_sun_13w50_table),
+        "jeff_sun_26w100": (jeff_sun_26w100_screener, build_jeff_sun_26w100_table),
+        "jeff_sun_ipo_thisweek": (jeff_sun_ipo_thisweek_screener, build_jeff_sun_ipo_thisweek_table),
+        "jeff_sun_high_short_float": (jeff_sun_high_short_float_screener, build_jeff_sun_high_short_float_table),
+        "jeff_sun_liquid_etfs": (jeff_sun_liquid_etfs_screener, build_jeff_sun_liquid_etfs_table),
+        "julian_komar_strongest": (julian_komar_strongest_screener, build_julian_komar_strongest_table),
+    }
 
-    @app.callback(
-        [
-            Output("qulla-content", "children"),
-            Output("qulla-data-store", "data"),
-            Output("minervini-content", "children"),
-            Output("minervini-data-store", "data"),
-            Output("oneil-content", "children"),
-            Output("oneil-data-store", "data"),
-            Output("jeff_sun_canslim-content", "children"),
-            Output("jeff_sun_canslim-data-store", "data"),
-            Output("jeff_sun_high_adr-content", "children"),
-            Output("jeff_sun_high_adr-data-store", "data"),
-            Output("jeff_sun_extended_bases-content", "children"),
-            Output("jeff_sun_extended_bases-data-store", "data"),
-            Output("jeff_sun_1w20-content", "children"),
-            Output("jeff_sun_1w20-data-store", "data"),
-            Output("jeff_sun_4w30-content", "children"),
-            Output("jeff_sun_4w30-data-store", "data"),
-            Output("jeff_sun_4w50-content", "children"),
-            Output("jeff_sun_4w50-data-store", "data"),
-            Output("jeff_sun_13w50-content", "children"),
-            Output("jeff_sun_13w50-data-store", "data"),
-            Output("jeff_sun_26w100-content", "children"),
-            Output("jeff_sun_26w100-data-store", "data"),
-            Output("jeff_sun_ipo_thisweek-content", "children"),
-            Output("jeff_sun_ipo_thisweek-data-store", "data"),
-            Output("jeff_sun_high_short_float-content", "children"),
-            Output("jeff_sun_high_short_float-data-store", "data"),
-        ],
-        [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
-        ]
-        + [Input(f"btn-refresh-{w}", "n_clicks") for w in _GROUP_B_WIDGETS],
-        prevent_initial_call=False,
-    )
-    def refresh_group_b(n_intervals, n_clicks, *btn_clicks):
-        tid = ctx.triggered_id if ctx.triggered else None
-        single = None
-        if tid and isinstance(tid, str) and tid.startswith("btn-refresh-"):
-            single = tid.replace("btn-refresh-", "")
-            if single in _GROUP_B_WIDGETS:
-                _invalidate_widget_cache(single)
-
-        try:
-            if single == "qulla":
-                d = qullamaggie_screener()
-                return build_qullamaggie_table(d, "qulla", "change", False), d, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
-            if single == "minervini":
-                d = minervini_screener()
-                return no_update, no_update, build_minervini_table(d, "minervini", "change", False), d, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
-            if single == "oneil":
-                d = oneil_screener()
-                return no_update, no_update, no_update, no_update, build_oneil_table(d, "oneil", "change", False), d, no_update, no_update, no_update, no_update, no_update, no_update
-            if single == "jeff_sun_canslim":
-                d = jeff_sun_canslim_screener()
-                return no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_canslim_table(d, "jeff_sun_canslim", "change", False), d, no_update, no_update, no_update, no_update
-            if single == "jeff_sun_high_adr":
-                d = jeff_sun_high_adr_screener()
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_high_adr_table(d, "jeff_sun_high_adr", "change", False), d, no_update, no_update
-            if single == "jeff_sun_extended_bases":
-                d = jeff_sun_extended_bases_screener()
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_extended_bases_table(d, "jeff_sun_extended_bases", "change", False), d, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
-            if single == "jeff_sun_1w20":
-                d = jeff_sun_1w20_screener()
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_1w20_table(d, "jeff_sun_1w20", "change", False), d, no_update, no_update, no_update, no_update, no_update, no_update
-            if single == "jeff_sun_4w30":
-                d = jeff_sun_4w30_screener()
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_4w30_table(d, "jeff_sun_4w30", "change", False), d, no_update, no_update, no_update, no_update
-            if single == "jeff_sun_4w50":
-                d = jeff_sun_4w50_screener()
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_4w50_table(d, "jeff_sun_4w50", "change", False), d, no_update, no_update
-            if single == "jeff_sun_13w50":
-                d = jeff_sun_13w50_screener()
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_13w50_table(d, "jeff_sun_13w50", "change", False), d, no_update
-            if single == "jeff_sun_26w100":
-                d = jeff_sun_26w100_screener()
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_26w100_table(d, "jeff_sun_26w100", "change", False), d, no_update, no_update, no_update, no_update
-            if single == "jeff_sun_ipo_thisweek":
-                d = jeff_sun_ipo_thisweek_screener()
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_ipo_thisweek_table(d, "jeff_sun_ipo_thisweek", "change", False), d, no_update, no_update
-            if single == "jeff_sun_high_short_float":
-                d = jeff_sun_high_short_float_screener()
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, build_jeff_sun_high_short_float_table(d, "jeff_sun_high_short_float", "change", False), d
-
-            qulla_data = qullamaggie_screener()
-            qulla_table = build_qullamaggie_table(qulla_data, "qulla", "change", False)
-            minervini_data = minervini_screener()
-            minervini_table = build_minervini_table(minervini_data, "minervini", "change", False)
-            oneil_data = oneil_screener()
-            oneil_table = build_oneil_table(oneil_data, "oneil", "change", False)
-            jeff_sun_data = jeff_sun_canslim_screener()
-            jeff_sun_table = build_jeff_sun_canslim_table(jeff_sun_data, "jeff_sun_canslim", "change", False)
-            jeff_sun_adr_data = jeff_sun_high_adr_screener()
-            jeff_sun_adr_table = build_jeff_sun_high_adr_table(jeff_sun_adr_data, "jeff_sun_high_adr", "change", False)
-            jeff_sun_bases_data = jeff_sun_extended_bases_screener()
-            jeff_sun_bases_table = build_jeff_sun_extended_bases_table(jeff_sun_bases_data, "jeff_sun_extended_bases", "change", False)
-            jeff_sun_1w20_data = jeff_sun_1w20_screener()
-            jeff_sun_1w20_table = build_jeff_sun_1w20_table(jeff_sun_1w20_data, "jeff_sun_1w20", "change", False)
-            jeff_sun_4w30_data = jeff_sun_4w30_screener()
-            jeff_sun_4w30_table = build_jeff_sun_4w30_table(jeff_sun_4w30_data, "jeff_sun_4w30", "change", False)
-            jeff_sun_4w50_data = jeff_sun_4w50_screener()
-            jeff_sun_4w50_table = build_jeff_sun_4w50_table(jeff_sun_4w50_data, "jeff_sun_4w50", "change", False)
-            jeff_sun_13w50_data = jeff_sun_13w50_screener()
-            jeff_sun_13w50_table = build_jeff_sun_13w50_table(jeff_sun_13w50_data, "jeff_sun_13w50", "change", False)
-            jeff_sun_26w100_data = jeff_sun_26w100_screener()
-            jeff_sun_26w100_table = build_jeff_sun_26w100_table(jeff_sun_26w100_data, "jeff_sun_26w100", "change", False)
-            jeff_sun_ipo_data = jeff_sun_ipo_thisweek_screener()
-            jeff_sun_ipo_table = build_jeff_sun_ipo_thisweek_table(jeff_sun_ipo_data, "jeff_sun_ipo_thisweek", "change", False)
-            jeff_sun_short_data = jeff_sun_high_short_float_screener()
-            jeff_sun_short_table = build_jeff_sun_high_short_float_table(jeff_sun_short_data, "jeff_sun_high_short_float", "change", False)
-            return [qulla_table, qulla_data, minervini_table, minervini_data, oneil_table, oneil_data, jeff_sun_table, jeff_sun_data, jeff_sun_adr_table, jeff_sun_adr_data, jeff_sun_bases_table, jeff_sun_bases_data, jeff_sun_1w20_table, jeff_sun_1w20_data, jeff_sun_4w30_table, jeff_sun_4w30_data, jeff_sun_4w50_table, jeff_sun_4w50_data, jeff_sun_13w50_table, jeff_sun_13w50_data, jeff_sun_26w100_table, jeff_sun_26w100_data, jeff_sun_ipo_table, jeff_sun_ipo_data, jeff_sun_short_table, jeff_sun_short_data]
-        except Exception as e:
-            logger.exception("Group B failed: %s", e)
-            return [_err_div(e), [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
-
-    _GROUP_B_EXTRA = ["jeff_sun_liquid_etfs", "julian_komar_strongest"]
-
-    @app.callback(
-        [
-            Output("jeff_sun_liquid_etfs-content", "children"),
-            Output("jeff_sun_liquid_etfs-data-store", "data"),
-            Output("julian_komar_strongest-content", "children"),
-            Output("julian_komar_strongest-data-store", "data"),
-        ],
-        [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
-            Input("btn-refresh-jeff_sun_liquid_etfs", "n_clicks"),
-            Input("btn-refresh-julian_komar_strongest", "n_clicks"),
-        ],
-        prevent_initial_call=False,
-    )
-    def refresh_group_b_extra(n_intervals, n_clicks, btn_liq, btn_julian):
-        tid = ctx.triggered_id if ctx.triggered else None
-        single = None
-        if tid and isinstance(tid, str) and tid.startswith("btn-refresh-"):
-            single = tid.replace("btn-refresh-", "")
-            if single in _GROUP_B_EXTRA:
-                _invalidate_widget_cache(single)
-        try:
-            if single == "jeff_sun_liquid_etfs":
-                d = jeff_sun_liquid_etfs_screener()
-                return build_jeff_sun_liquid_etfs_table(d, "jeff_sun_liquid_etfs", "change", False), d, no_update, no_update
-            if single == "julian_komar_strongest":
-                d = julian_komar_strongest_screener()
-                return no_update, no_update, build_julian_komar_strongest_table(d, "julian_komar_strongest", "change", False), d
-            d1 = jeff_sun_liquid_etfs_screener()
-            d2 = julian_komar_strongest_screener()
-            return (
-                build_jeff_sun_liquid_etfs_table(d1, "jeff_sun_liquid_etfs", "change", False), d1,
-                build_julian_komar_strongest_table(d2, "julian_komar_strongest", "change", False), d2,
-            )
-        except Exception as e:
-            logger.exception("Group B extra failed: %s", e)
-            return [_disabled_msg, [], _disabled_msg, []]
+    for _widget_id, (_fetch_fn, _build_fn) in _SUPER_SCANNER_WIDGETS.items():
+        @app.callback(
+            [
+                Output(f"{_widget_id}-content", "children"),
+                Output(f"{_widget_id}-data-store", "data"),
+            ],
+            [
+                Input("interval-refresh", "n_intervals"),
+                Input("btn-refresh", "n_clicks"),
+                Input(f"btn-refresh-{_widget_id}", "n_clicks"),
+                Input("main-tabs", "data"),
+            ],
+            prevent_initial_call=False,
+        )
+        def _refresh_super_scanner_widget(_n_intervals, _n_clicks, _btn_widget, main_tab, widget_id=_widget_id, fetch_fn=_fetch_fn, build_fn=_build_fn):
+            if main_tab != "super-scanners":
+                raise PreventUpdate
+            if ctx.triggered_id == f"btn-refresh-{widget_id}" and _btn_widget:
+                _invalidate_widget_cache(widget_id)
+            try:
+                data = fetch_fn()
+                return build_fn(data, widget_id, "change", False), data
+            except Exception as e:
+                logger.exception("Super scanner '%s' failed: %s", widget_id, e)
+                return _err_div(e), []
 
     @app.callback(
         [
@@ -875,10 +793,13 @@ def register_callbacks(app):
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-sector", "n_clicks"),
+            Input("main-tabs", "data"),
         ],
         prevent_initial_call=False,
     )
-    def refresh_group_c(n_intervals, n_clicks, btn_w):
+    def refresh_group_c(n_intervals, n_clicks, btn_w, main_tab):
+        if main_tab != "market-metrics":
+            raise PreventUpdate
         if btn_w:
             _invalidate_widget_cache("sector")
         try:
@@ -897,10 +818,13 @@ def register_callbacks(app):
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-earnings-calendar-week", "n_clicks"),
+            Input("main-tabs", "data"),
         ],
         prevent_initial_call=False,
     )
-    def refresh_earnings_calendar_week(n_intervals, n_clicks, btn_w):
+    def refresh_earnings_calendar_week(n_intervals, n_clicks, btn_w, main_tab):
+        if main_tab != "super-scanners":
+            raise PreventUpdate
         if btn_w:
             _invalidate_widget_cache("earnings-calendar-week")
         try:
@@ -921,10 +845,13 @@ def register_callbacks(app):
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-stockbee", "n_clicks"),
+            Input("main-tabs", "data"),
         ],
         prevent_initial_call=False,
     )
-    def refresh_stockbee(n_intervals, n_clicks, btn_w):
+    def refresh_stockbee(n_intervals, n_clicks, btn_w, main_tab):
+        if main_tab != "market-metrics":
+            raise PreventUpdate
         if btn_w:
             _invalidate_widget_cache("stockbee")
         try:
@@ -962,10 +889,13 @@ def register_callbacks(app):
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-breadth", "n_clicks"),
+            Input("main-tabs", "data"),
         ],
         prevent_initial_call=False,
     )
-    def refresh_breadth(n_intervals, n_clicks, btn_w):
+    def refresh_breadth(n_intervals, n_clicks, btn_w, main_tab):
+        if main_tab != "market-metrics":
+            raise PreventUpdate
         if btn_w:
             _invalidate_widget_cache("breadth")
         try:
@@ -986,11 +916,14 @@ def register_callbacks(app):
         [
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
+            Input("main-tabs", "data"),
         ]
         + [Input(f"btn-refresh-{w}", "n_clicks") for w in ["breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500"]],
         prevent_initial_call=False,
     )
-    def refresh_breadth_charts(n_intervals, n_clicks, *btn_clicks):
+    def refresh_breadth_charts(n_intervals, n_clicks, main_tab, *btn_clicks):
+        if main_tab != "market-metrics":
+            raise PreventUpdate
         if any(btn_clicks):
             _invalidate_widget_cache("breadth-primary")
         try:
@@ -1026,10 +959,13 @@ def register_callbacks(app):
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-rrg", "n_clicks"),
+            Input("main-tabs", "data"),
         ],
         prevent_initial_call=False,
     )
-    def refresh_rrg(n_intervals, n_clicks, btn_w):
+    def refresh_rrg(n_intervals, n_clicks, btn_w, main_tab):
+        if main_tab != "market-metrics":
+            raise PreventUpdate
         if btn_w:
             _invalidate_widget_cache("rrg")
         try:
@@ -1057,17 +993,22 @@ def register_callbacks(app):
             Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-sp500-landscape", "n_clicks"),
             Input("sp500-landscape-sector-filter", "value"),
+            Input("main-tabs", "data"),
         ],
         State("sp500-landscape-data-store", "data"),
         prevent_initial_call=False,
     )
-    def refresh_sp500_landscape(n_intervals, n_clicks, btn_w, sector_filter, stored_data):
+    def refresh_sp500_landscape(n_intervals, n_clicks, btn_w, sector_filter, main_tab, stored_data):
         from src.data_fetcher import fetch_sp500_landscape_data
 
         triggered = ctx.triggered_id if ctx.triggered else None
         is_filter_change = triggered == "sp500-landscape-sector-filter"
+        if main_tab != "market-metrics" and not is_filter_change:
+            raise PreventUpdate
 
         if is_filter_change:
+            if main_tab != "market-metrics":
+                raise PreventUpdate
             data = stored_data or []
             if not data:
                 return no_update, no_update, html.Div("No data. Refresh to load.", style={
@@ -1100,138 +1041,89 @@ def register_callbacks(app):
             logger.exception("S&P 500 Landscape failed: %s", e)
             return no_update, no_update, _err_div(e)
 
-    _GROUP_D_WIDGETS = ["club97", "movers", "weekly", "daily", "in_play", "intraday-earnings", "pre_market"]
-
     @app.callback(
         [
             Output("club97-content", "children"),
             Output("club97-data-store", "data"),
             Output("club97-sort-store", "data"),
-            Output("movers-content", "children"),
-            Output("movers-data-store", "data"),
-            Output("weekly-content", "children"),
-            Output("weekly-data-store", "data"),
-            Output("daily-content", "children"),
-            Output("daily-data-store", "data"),
-            Output("in_play-content", "children"),
-            Output("in_play-data-store", "data"),
-            Output("intraday-earnings-content", "children"),
-            Output("intraday-earnings-data-store", "data"),
+        ],
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-club97", "n_clicks"),
+            Input("main-tabs", "data"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_club97(_n_intervals, _n_clicks, btn_widget, main_tab):
+        if main_tab not in ("super-scanners", "intraday"):
+            raise PreventUpdate
+        if ctx.triggered_id == "btn-refresh-club97" and btn_widget:
+            _invalidate_widget_cache("club97")
+        try:
+            data = compute_97_club([])
+            return build_97_club_table(data, "club97", "change", False), data, {"col": "change", "asc": False}
+        except Exception as e:
+            logger.exception("Club97 failed: %s", e)
+            return _err_div(e), [], no_update
+
+    def _register_group_d_simple(widget_id, compute_fn, build_fn, sort_col):
+        @app.callback(
+            [
+                Output(f"{widget_id}-content", "children"),
+                Output(f"{widget_id}-data-store", "data"),
+            ],
+            [
+                Input("interval-refresh", "n_intervals"),
+                Input("btn-refresh", "n_clicks"),
+                Input(f"btn-refresh-{widget_id}", "n_clicks"),
+                Input("main-tabs", "data"),
+            ],
+            prevent_initial_call=False,
+        )
+        def _refresh_widget(_n_intervals, _n_clicks, btn_widget, main_tab, w=widget_id, fn=compute_fn, builder=build_fn, col=sort_col):
+            if main_tab not in ("super-scanners", "intraday"):
+                raise PreventUpdate
+            if ctx.triggered_id == f"btn-refresh-{w}" and btn_widget:
+                _invalidate_widget_cache(w)
+            try:
+                data = fn([])
+                return builder(data, w, col, False), data
+            except Exception as e:
+                logger.exception("Widget '%s' failed: %s", w, e)
+                return _err_div(e), []
+
+    _register_group_d_simple("movers", compute_9m_movers, build_9m_movers_table, "change")
+    _register_group_d_simple("weekly", compute_20pct_weekly, build_20pct_weekly_table, "week")
+    _register_group_d_simple("daily", compute_4pct_daily, build_4pct_daily_table, "chg")
+    _register_group_d_simple("in_play", compute_stocks_in_play, build_stocks_in_play_table, "change")
+    _register_group_d_simple("intraday-earnings", compute_earnings_yesterday_today, build_earnings_table, "change")
+
+    @app.callback(
+        [
             Output("pre_market-content", "children"),
             Output("pre_market-data-store", "data"),
         ],
         [
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
-        ]
-        + [Input(f"btn-refresh-{w}", "n_clicks") for w in _GROUP_D_WIDGETS],
+            Input("btn-refresh-pre_market", "n_clicks"),
+            Input("main-tabs", "data"),
+        ],
         prevent_initial_call=False,
     )
-    def refresh_group_d(n_intervals, n_clicks, *btn_clicks):
-        tid = ctx.triggered_id if ctx.triggered else None
-        single_widget = None
-        if tid and isinstance(tid, str) and tid.startswith("btn-refresh-"):
-            single_widget = tid.replace("btn-refresh-", "")
-            if single_widget in _GROUP_D_WIDGETS:
-                _invalidate_widget_cache(single_widget)
-
-        def _out(*vals):
-            """Build output list; use no_update for widgets we didn't refresh when single_widget is set."""
-            if not single_widget:
-                return list(vals)
-            out = [no_update] * 15
-            idx = _GROUP_D_WIDGETS.index(single_widget) if single_widget in _GROUP_D_WIDGETS else -1
-            if idx == 0:
-                out[0], out[1], out[2] = vals[0], vals[1], vals[2]
-            elif idx == 1:
-                out[3], out[4] = vals[3], vals[4]
-            elif idx == 2:
-                out[5], out[6] = vals[5], vals[6]
-            elif idx == 3:
-                out[7], out[8] = vals[7], vals[8]
-            elif idx == 4:
-                out[9], out[10] = vals[9], vals[10]
-            elif idx == 5:
-                out[11], out[12] = vals[11], vals[12]
-            elif idx == 6:
-                out[13], out[14] = vals[13], vals[14]
-            else:
-                return list(vals)
-            return out
-
+    def refresh_pre_market(_n_intervals, _n_clicks, btn_widget, main_tab):
+        if main_tab not in ("super-scanners", "intraday"):
+            raise PreventUpdate
+        if ctx.triggered_id == "btn-refresh-pre_market" and btn_widget:
+            _invalidate_widget_cache("pre_market")
         try:
-            if single_widget == "club97":
-                d = compute_97_club([])
-                return _out(build_97_club_table(d, "club97", "change", False), d, {"col": "change", "asc": False},
-                    no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update, no_update, no_update)
-            if single_widget == "movers":
-                d = compute_9m_movers([])
-                return _out(no_update, no_update, no_update, build_9m_movers_table(d, "movers", "change", False), d,
-                    no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update)
-            if single_widget == "weekly":
-                d = compute_20pct_weekly([])
-                return _out(no_update, no_update, no_update, no_update, no_update, build_20pct_weekly_table(d, "weekly", "week", False), d,
-                    no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    no_update, no_update)
-            if single_widget == "daily":
-                d = compute_4pct_daily([])
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    build_4pct_daily_table(d, "daily", "chg", False), d, no_update, no_update, no_update, no_update,
-                    no_update, no_update)
-            if single_widget == "intraday-earnings":
-                d = compute_earnings_yesterday_today([])
-                et = build_earnings_table(d, "intraday-earnings", "change", False)
-                # Outputs 0–10 = club97…in_play (11 slots); 11–12 = intraday earnings; 13–14 = pre_market
-                return _out(
-                    no_update, no_update, no_update,
-                    no_update, no_update,
-                    no_update, no_update,
-                    no_update, no_update,
-                    no_update, no_update,
-                    et, d,
-                    no_update, no_update,
-                )
-            if single_widget == "in_play":
-                d = compute_stocks_in_play([])
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    build_stocks_in_play_table(d, "in_play", "change", False), d,
-                    no_update, no_update, no_update, no_update)
-            if single_widget == "pre_market":
-                d = compute_pre_market_scanner([])
-                gap = next((c for c in (d[0].keys() if d else []) if "gap" in c.lower() and "url" not in c.lower()), "Gap")
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update,
-                    build_pre_market_scanner_table(d, "pre_market", gap, False), d)
-
-            # Full refresh
-            club97_data = compute_97_club([])
-            club97_table = build_97_club_table(club97_data, "club97", "change", False)
-            movers_data = compute_9m_movers([])
-            movers_table = build_9m_movers_table(movers_data, "movers", "change", False)
-            weekly_data = compute_20pct_weekly([])
-            weekly_table = build_20pct_weekly_table(weekly_data, "weekly", "week", False)
-            daily_data = compute_4pct_daily([])
-            daily_table = build_4pct_daily_table(daily_data, "daily", "chg", False)
-            earnings_data = compute_earnings_yesterday_today([])
-            earnings_table = build_earnings_table(earnings_data, "intraday-earnings", "change", False)
-            in_play_data = compute_stocks_in_play([])
-            in_play_table = build_stocks_in_play_table(in_play_data, "in_play", "change", False)
-            pre_market_data = compute_pre_market_scanner([])
-            gap_col = next((c for c in (pre_market_data[0].keys() if pre_market_data else []) if "gap" in c.lower() and "url" not in c.lower()), "Gap")
-            pre_market_table = build_pre_market_scanner_table(pre_market_data, "pre_market", gap_col, False)
-            return [
-                club97_table, club97_data, {"col": "change", "asc": False},
-                movers_table, movers_data,
-                weekly_table, weekly_data, daily_table, daily_data,
-                in_play_table, in_play_data,
-                earnings_table, earnings_data,
-                pre_market_table, pre_market_data,
-            ]
+            data = compute_pre_market_scanner([])
+            gap_col = next((c for c in (data[0].keys() if data else []) if "gap" in c.lower() and "url" not in c.lower()), "Gap")
+            return build_pre_market_scanner_table(data, "pre_market", gap_col, False), data
         except Exception as e:
-            logger.exception("Group D failed: %s", e)
-            return [_err_div(e), [], no_update, _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, [], _disabled_msg, []]
+            logger.exception("Pre-market scanner failed: %s", e)
+            return _err_div(e), []
 
     # ------------------------------------------------------------------
     # Macro Monitor — FRED-backed panel + history modal
@@ -1359,10 +1251,13 @@ def register_callbacks(app):
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-cnbc_premarket", "n_clicks"),
+            Input("main-tabs", "data"),
         ],
         prevent_initial_call=False,
     )
-    def refresh_cnbc_premarket(n_intervals, n_clicks, btn_widget):
+    def refresh_cnbc_premarket(n_intervals, n_clicks, btn_widget, main_tab):
+        if main_tab != "intraday":
+            raise PreventUpdate
         if btn_widget:
             _invalidate_widget_cache("cnbc_premarket")
         try:
@@ -1380,10 +1275,13 @@ def register_callbacks(app):
             Input("interval-live-snapshot", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-live_index", "n_clicks"),
+            Input("main-tabs", "data"),
         ],
         prevent_initial_call=False,
     )
-    def refresh_live_index(n_intervals, n_clicks, btn_widget):
+    def refresh_live_index(n_intervals, n_clicks, btn_widget, main_tab):
+        if main_tab != "intraday":
+            raise PreventUpdate
         if btn_widget:
             _invalidate_widget_cache("live_index")
         try:
@@ -1394,111 +1292,154 @@ def register_callbacks(app):
             logger.exception("Market Snapshot failed: %s", e)
             return _err_div(e)
 
-    _GROUP_E_WIDGETS = ["leading", "thematics", "thematics-sector", "top_gainers", "top_losers", "stage"]
-
     @app.callback(
         [
             Output("leading-content", "children"),
             Output("leading-data-store", "data"),
-            Output("thematics-content", "children"),
-            Output("thematics-data-store", "data"),
-            Output("thematics-sector-content", "children"),
-            Output("thematics-sector-data-store", "data"),
-            Output("top_gainers-content", "children"),
-            Output("top_losers-content", "children"),
-            Output("stage-content", "children"),
         ],
         [
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
-        ]
-        + [Input(f"btn-refresh-{w}", "n_clicks") for w in _GROUP_E_WIDGETS],
+            Input("btn-refresh-leading", "n_clicks"),
+            Input("main-tabs", "data"),
+        ],
         prevent_initial_call=False,
     )
-    def refresh_group_e(n_intervals, n_clicks, *btn_clicks):
-        tid = ctx.triggered_id if ctx.triggered else None
-        single_widget = None
-        if tid and isinstance(tid, str) and tid.startswith("btn-refresh-"):
-            single_widget = tid.replace("btn-refresh-", "")
-            if single_widget in _GROUP_E_WIDGETS:
-                _invalidate_widget_cache(single_widget)
-                if single_widget in ("top_gainers", "top_losers"):
-                    _invalidate_widget_cache("thematics")  # share thematics_data
-
-        def _out(*vals):
-            if not single_widget:
-                return list(vals)
-            out = [no_update] * 9
-            idx = _GROUP_E_WIDGETS.index(single_widget) if single_widget in _GROUP_E_WIDGETS else -1
-            if idx == 0:
-                out[0], out[1] = vals[0], vals[1]
-            elif idx == 1:
-                out[2], out[3] = vals[2], vals[3]
-            elif idx == 2:
-                out[4], out[5] = vals[4], vals[5]
-            elif idx == 3:
-                out[6] = vals[6]
-            elif idx == 4:
-                out[7] = vals[7]
-            elif idx == 5:
-                out[8] = vals[8]
-            else:
-                return list(vals)
-            return out
-
+    def refresh_leading(_n_intervals, _n_clicks, btn_widget, main_tab):
+        if main_tab not in ("market-metrics", "intraday"):
+            raise PreventUpdate
+        if ctx.triggered_id == "btn-refresh-leading" and btn_widget:
+            _invalidate_widget_cache("leading")
         try:
-            if single_widget == "leading":
-                d = compute_leading_industries([], {})
-                return _out(build_leading_industries_table(d, "leading", "top_both", False), d,
-                    no_update, no_update, no_update, no_update, no_update, no_update, no_update)
-            if single_widget == "thematics":
-                d = compute_thematics([])
-                return _out(no_update, no_update, build_thematics_table(d, "thematics", "top_both", False), d,
-                    no_update, no_update, no_update, no_update, no_update)
-            if single_widget == "thematics-sector":
-                d = compute_thematics_sector_data()
-                return _out(no_update, no_update, no_update, no_update, build_thematics_sector_table(d, "thematics-sector", "year", False), d,
-                    no_update, no_update, no_update)
-            if single_widget == "top_gainers":
-                g, l = compute_top_gainers_losers(12)
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update,
-                    build_top_gainers_table(g), no_update, no_update)
-            if single_widget == "top_losers":
-                g, l = compute_top_gainers_losers(12)
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update,
-                    no_update, build_top_losers_table(l), no_update)
-            if single_widget == "stage":
-                r = compute_stage_analysis([])
-                c = r.get("counts", {})
-                sc = html.Div([
-                    build_stage_summary(c),
-                    html.Div([
-                        dcc.Graph(figure=build_stage_chart(c), config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"}),
-                    ], style={**CHART_WRAP_STYLE, "flex": 1, "minHeight": 0, "display": "flex", "flexDirection": "column"}),
-                ], style={**CHART_WRAP_STYLE, "display": "flex", "flexDirection": "column", "height": "100%"})
-                return _out(no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, sc)
+            data = compute_leading_industries([], {})
+            return build_leading_industries_table(data, "leading", "top_both", False), data
+        except Exception as e:
+            logger.exception("Leading industries failed: %s", e)
+            return _err_div(e), []
 
-            leading_data = compute_leading_industries([], {})
-            leading_table = build_leading_industries_table(leading_data, "leading", "top_both", False)
-            thematics_data = compute_thematics([])
-            thematics_table = build_thematics_table(thematics_data, "thematics", "top_both", False)
-            thematics_sector_data = compute_thematics_sector_data()
-            thematics_sector_table = build_thematics_sector_table(thematics_sector_data, "thematics-sector", "year", False)
-            gainers_data, losers_data = compute_top_gainers_losers(12)
-            top_gainers_table = build_top_gainers_table(gainers_data)
-            top_losers_table = build_top_losers_table(losers_data)
+    @app.callback(
+        [
+            Output("thematics-content", "children"),
+            Output("thematics-data-store", "data"),
+        ],
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-thematics", "n_clicks"),
+            Input("main-tabs", "data"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_thematics_widget(_n_intervals, _n_clicks, btn_widget, main_tab):
+        if main_tab not in ("market-metrics", "intraday"):
+            raise PreventUpdate
+        if ctx.triggered_id == "btn-refresh-thematics" and btn_widget:
+            _invalidate_widget_cache("thematics")
+        try:
+            data = compute_thematics([])
+            return build_thematics_table(data, "thematics", "top_both", False), data
+        except Exception as e:
+            logger.exception("Thematics failed: %s", e)
+            return _err_div(e), []
+
+    @app.callback(
+        [
+            Output("thematics-sector-content", "children"),
+            Output("thematics-sector-data-store", "data"),
+        ],
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-thematics-sector", "n_clicks"),
+            Input("main-tabs", "data"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_thematics_sector(_n_intervals, _n_clicks, btn_widget, main_tab):
+        if main_tab not in ("market-metrics", "intraday"):
+            raise PreventUpdate
+        if ctx.triggered_id == "btn-refresh-thematics-sector" and btn_widget:
+            _invalidate_widget_cache("thematics-sector")
+        try:
+            data = compute_thematics_sector_data()
+            return build_thematics_sector_table(data, "thematics-sector", "year", False), data
+        except Exception as e:
+            logger.exception("Thematics by sector failed: %s", e)
+            return _err_div(e), []
+
+    @app.callback(
+        Output("top_gainers-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-top_gainers", "n_clicks"),
+            Input("main-tabs", "data"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_top_gainers(_n_intervals, _n_clicks, btn_widget, main_tab):
+        if main_tab not in ("market-metrics", "intraday"):
+            raise PreventUpdate
+        if ctx.triggered_id == "btn-refresh-top_gainers" and btn_widget:
+            _invalidate_widget_cache("top_gainers")
+            _invalidate_widget_cache("thematics")
+        try:
+            gainers, _losers = compute_top_gainers_losers(12)
+            return build_top_gainers_table(gainers)
+        except Exception as e:
+            logger.exception("Top gainers failed: %s", e)
+            return _err_div(e)
+
+    @app.callback(
+        Output("top_losers-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-top_losers", "n_clicks"),
+            Input("main-tabs", "data"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_top_losers(_n_intervals, _n_clicks, btn_widget, main_tab):
+        if main_tab not in ("market-metrics", "intraday"):
+            raise PreventUpdate
+        if ctx.triggered_id == "btn-refresh-top_losers" and btn_widget:
+            _invalidate_widget_cache("top_losers")
+            _invalidate_widget_cache("thematics")
+        try:
+            _gainers, losers = compute_top_gainers_losers(12)
+            return build_top_losers_table(losers)
+        except Exception as e:
+            logger.exception("Top losers failed: %s", e)
+            return _err_div(e)
+
+    @app.callback(
+        Output("stage-content", "children"),
+        [
+            Input("interval-refresh", "n_intervals"),
+            Input("btn-refresh", "n_clicks"),
+            Input("btn-refresh-stage", "n_clicks"),
+            Input("main-tabs", "data"),
+        ],
+        prevent_initial_call=False,
+    )
+    def refresh_stage_widget(_n_intervals, _n_clicks, btn_widget, main_tab):
+        if main_tab not in ("market-metrics", "intraday"):
+            raise PreventUpdate
+        if ctx.triggered_id == "btn-refresh-stage" and btn_widget:
+            _invalidate_widget_cache("stage")
+        try:
             stage_result = compute_stage_analysis([])
             counts = stage_result.get("counts", {})
-            stage_content = html.Div([
+            return html.Div([
                 build_stage_summary(counts),
                 html.Div([
                     dcc.Graph(figure=build_stage_chart(counts), config=GRAPH_CONFIG, style={"height": "100%", "width": "100%"}),
                 ], style={**CHART_WRAP_STYLE, "flex": 1, "minHeight": 0, "display": "flex", "flexDirection": "column"}),
             ], style={**CHART_WRAP_STYLE, "display": "flex", "flexDirection": "column", "height": "100%"})
-            return [leading_table, leading_data, thematics_table, thematics_data, thematics_sector_table, thematics_sector_data, top_gainers_table, top_losers_table, stage_content]
         except Exception as e:
-            logger.exception("Group E (Leading/Thematics/Stage) failed: %s", e)
-            return [_err_div(e), [], _disabled_msg, [], _err_div(e), [], _err_div(e), _err_div(e), _disabled_msg]
+            logger.exception("Stage Analysis failed: %s", e)
+            return _disabled_msg
 
     @app.callback(
         [
@@ -1509,10 +1450,13 @@ def register_callbacks(app):
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-thematics-rrg", "n_clicks"),
+            Input("main-tabs", "data"),
         ],
         prevent_initial_call=False,
     )
-    def refresh_thematics_rrg(n_intervals, n_clicks, btn_widget):
+    def refresh_thematics_rrg(n_intervals, n_clicks, btn_widget, main_tab):
+        if main_tab != "market-metrics":
+            raise PreventUpdate
         if btn_widget:
             _invalidate_widget_cache("thematics-rrg")
         try:
