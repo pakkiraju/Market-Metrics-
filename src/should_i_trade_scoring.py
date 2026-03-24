@@ -195,17 +195,8 @@ def score_momentum(data: dict) -> tuple[float, str]:
 
 
 def score_macro(data: dict) -> tuple[float, str]:
-    """Score macro 0–100. No FOMC/CPI within 72h, neutral/dovish Fed, stable yields."""
+    """Score macro 0–100 from yield stability (10Y 5d change)."""
     base = 70
-    if data.get("major_event_within_72h"):
-        base -= 25
-    elif data.get("fomc_within_72h") or data.get("cpi_within_72h"):
-        base -= 20
-    stance = data.get("fed_stance", "neutral")
-    if stance == "dovish":
-        base += 5
-    elif stance == "hawkish":
-        base -= 10
     tnx_trend = data.get("tnx_5d_trend")
     if tnx_trend is not None and abs(tnx_trend) > 0.15:
         base -= 5
@@ -444,7 +435,6 @@ def generate_terminal_analysis(data: dict, scores: dict) -> str:
     vol = data.get("volatility", {})
     breadth = data.get("breadth", {})
     momentum = data.get("momentum", {})
-    macro = data.get("macro", {})
     decision = scores.get("decision", "CAUTION")
 
     regime = trend.get("regime", "chop")
@@ -487,12 +477,6 @@ def generate_terminal_analysis(data: dict, scores: dict) -> str:
     leaders = [s.get("ticker", "") for s in momentum.get("top3", [])[:3]]
     leader_names = ", ".join(leaders) if leaders else "mixed"
 
-    event_note = ""
-    if macro.get("major_event_within_72h"):
-        events = macro.get("events_72h", [])
-        evt_titles = [e.get("title", "") for e in events[:2]]
-        event_note = f" {evt_titles[0]} within 72 hours — " if evt_titles else " Major macro event within 72 hours — "
-
     if decision == "YES":
         action = "Favor selective swing trades with disciplined risk."
         suggested = "Full size, press risk"
@@ -506,6 +490,6 @@ def generate_terminal_analysis(data: dict, scores: dict) -> str:
     summary = (
         f"This is a {trend_desc} environment with {breadth_desc} and {vol_desc}"
         + (f" (VIX {vix:.1f})" if vix is not None else "")
-        + f". Sector leadership in {leader_names}.{event_note}{action}"
+        + f". Sector leadership in {leader_names}. {action}"
     )
     return {"text": summary, "suggested_action": suggested}

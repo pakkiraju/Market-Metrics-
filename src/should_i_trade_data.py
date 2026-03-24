@@ -1,7 +1,7 @@
 """Should I Be Trading? — Data aggregation for market environment evaluation.
 
 Aggregates volatility, trend, breadth, momentum, and macro data from existing
-fetchers (FinViz, yfinance, Stockbee, economic calendar, rate watch).
+fetchers (FinViz, yfinance, Stockbee).
 """
 
 import logging
@@ -9,7 +9,6 @@ from datetime import datetime, timezone, timedelta
 
 import numpy as np
 import pandas as pd
-import requests
 
 from src import cache
 from src.cache import MEDIUM
@@ -19,21 +18,11 @@ from src.data_fetcher import (
     fetch_live_index_quotes,
 )
 from src.stockbee import fetch_stockbee_breadth
-from src.rate_watch_data import fetch_rate_watch_data
 
 logger = logging.getLogger(__name__)
 
 ET = timezone(timedelta(hours=-5))
 SIT_CACHE_TTL = 30  # 30 seconds for should_i_trade aggregate
-
-# Keywords for major macro events (FOMC, CPI, NFP, etc.)
-MACRO_EVENT_KEYWORDS = (
-    "fomc", "fed", "rate decision", "interest rate",
-    "cpi", "consumer price", "inflation",
-    "nfp", "nonfarm", "employment", "jobs report", "payroll",
-)
-
-FF_CALENDAR_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 
 
 def _fetch_yf(ticker: str, period: str = "5d") -> pd.DataFrame | None:
@@ -321,19 +310,12 @@ def _fetch_momentum() -> dict:
 
 
 def _fetch_macro() -> dict:
-    """Fetch macro data: 10Y Treasury, DXY, Fed stance, FOMC/CPI within 72h."""
+    """Fetch macro data: 10Y Treasury and DXY via yfinance."""
     out = {
         "tnx": None,
         "tnx_5d_trend": None,
         "dxy": None,
         "dxy_trend": None,
-        "fed_stance": "neutral",
-        "fed_rate_str": None,
-        "fomc_within_72h": False,
-        "fomc_today": False,
-        "cpi_within_72h": False,
-        "major_event_within_72h": False,
-        "events_72h": [],
         "direction": "→",
     }
     hist_tnx = _fetch_yf("^TNX", "5d")
@@ -345,68 +327,6 @@ def _fetch_macro() -> dict:
     if hist_dxy is not None and len(hist_dxy) >= 2:
         out["dxy"] = float(hist_dxy["Close"].iloc[-1])
         out["dxy_trend"] = float(hist_dxy["Close"].iloc[-1]) - float(hist_dxy["Close"].iloc[0])
-    rate = fetch_rate_watch_data("USD")
-    if rate:
-        out["fed_rate_str"] = rate.get("current_rate_str")
-        if rate.get("meetings"):
-            m = rate["meetings"][0]
-            cut = m.get("cut_pct") or 0
-            hold = m.get("hold_pct") or 0
-            hike = m.get("hike_pct") or 0
-            if cut > hold and cut > hike:
-                out["fed_stance"] = "dovish"
-            elif hike > hold and hike > cut:
-                out["fed_stance"] = "hawkish"
-            else:
-                out["fed_stance"] = "neutral"
-    # Economic calendar within 72 hours
-    try:
-        r = requests.get(
-            FF_CALENDAR_URL,
-            timeout=15,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-        )
-        r.raise_for_status()
-        data = r.json()
-    except Exception as e:
-        logger.debug("Economic calendar fetch failed: %s", e)
-        return out
-    if not isinstance(data, list):
-        return out
-    now_et = datetime.now(ET)
-    for evt in data:
-        date_str = evt.get("date") or ""
-        if not date_str:
-            continue
-        try:
-            if "T" in date_str:
-                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                dt_et = dt.astimezone(ET)
-            else:
-                dt_et = datetime.strptime(date_str[:10], "%Y-%m-%d").replace(tzinfo=ET)
-            delta = (dt_et - now_et).total_seconds()
-            if 0 <= delta <= 72 * 3600:
-                title = (evt.get("title") or "").lower()
-                if any(kw in title for kw in MACRO_EVENT_KEYWORDS):
-                    out["major_event_within_72h"] = True
-                    out["events_72h"].append({
-                        "title": evt.get("title", ""),
-                        "date": date_str[:16],
-                    })
-                    if any(x in title for x in ["fomc", "fed", "rate decision"]):
-                        out["fomc_within_72h"] = True
-                        # Check if event is today (same calendar day)
-                        try:
-                            evt_date = date_str.split("T")[0] if "T" in date_str else date_str[:10]
-                            today_str = now_et.strftime("%Y-%m-%d")
-                            if evt_date == today_str:
-                                out["fomc_today"] = True
-                        except Exception:
-                            pass
-                    if any(x in title for x in ["cpi", "consumer price", "inflation"]):
-                        out["cpi_within_72h"] = True
-        except (ValueError, TypeError):
-            continue
     return out
 
 

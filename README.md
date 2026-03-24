@@ -15,8 +15,6 @@ Bloomberg-style market terminal built with **Plotly Dash**. The app is organized
 
 - **Yahoo Finance** (`yfinance`) — SPY/QQQ history, VIX/VVIX, `^TNX`, `DX-Y.NYB` for Should I Trade? and related logic.
 - **Stockbee** — optional local API (`STOCKBEE_API_URL`, default `http://localhost:8000`) or **public Google Sheets** (Momentum50 + Market Breadth Monitor).
-- **Forex Factory** — `ff_calendar_thisweek.json` for macro event proximity in Should I Trade?.
-- **rateprobability.com** (via `rate_watch_data.py`) — implied Fed path / stance for macro scoring.
 - **CNBC Market Insider** — HTML scrape for the pre-market watchlist widget.
 
 ---
@@ -64,7 +62,7 @@ python app.py
 | Trend | `yfinance`: SPY (close vs SMA20/50/200, RSI(14) on ~1 month of closes), QQQ vs 50-day SMA; **regime** = uptrend if all three SPY MAs bullish, downtrend if all bearish, else chop. |
 | Breadth | Cached **Key Metrics** for SPY500 (`all_key_metrics`): % above SMA20/50/200, 4% up/down counts, new 20d highs/lows; **Stockbee** sheet/API for **ratio5** / **ratio10** when available. **$1B+** row extracts participation and NH/NL for execution logic. |
 | Momentum | `fetch_sector_data` (FinViz): 11 sector SPDRs; **spread** = avg day % of top 3 sectors minus bottom 3; **% higher highs** = (new 20d highs count / SPY500 stock count) × 100. |
-| Macro | `yfinance` 5d `^TNX` trend; `rate_watch_data` for Fed stance; **Forex Factory** JSON for events in next 72h matching keywords (FOMC, CPI, NFP, etc.). |
+| Macro | **`yfinance`** in `_fetch_macro`: **`^TNX`** (10Y yield) and **`DX-Y.NYB`** (dollar); **`score_macro`** penalizes large 5d yield moves. |
 
 ### Math: category scores (0–100)
 
@@ -74,7 +72,7 @@ Default **weights** (overridable via `src/should_i_trade_config.json`): volatili
 - **Trend:** Base from regime (uptrend 85, downtrend 25, chop 55); ± for QQQ vs 50d; RSI(14) adds if 40–70, subtracts if &gt;75 or &lt;30.
 - **Breadth:** Starts at 50; maps **% above 200d** to tiers (e.g. ≥60 → 85); adjusts for **ratio5** (&gt;1.2 +10, &lt;0.8 −15); small bonus if new highs &gt; new lows.
 - **Momentum:** From **sector spread** and optional **pct_higher_highs** bonus.
-- **Macro:** Starts at 70; subtracts for major events in 72h, FOMC/CPI proximity; adjusts for **Fed stance** (dovish/hawkish from rate probabilities); small penalty if **10Y** 5d move is large.
+- **Macro:** **`score_macro`** starts at **70**; **−5** if the absolute **10Y** (`^TNX`) 5d change exceeds **0.15**. Inputs are only **`^TNX`** and **`DX-Y.NYB`** from `_fetch_macro`.
 
 **Market Quality Score (MQS)** = weighted sum of the five category scores.
 
@@ -253,8 +251,6 @@ Each table is a **FinViz Elite screener/export** (see `FINVIZ_SCREENER_URLS` / `
 - **FRED:** Macro Monitor only (KPIs + fiscal + history charts).
 - **Yahoo Finance:** Should I Trade? (indices, VIX, rates, FX), VIX in Market Snapshot.
 - **Stockbee (Sheets/API):** Breadth widgets, Momentum50, optional ratio lines in Should I Trade?.
-- **Forex Factory JSON:** Macro event window in Should I Trade?.
-- **rateprobability.com:** Fed stance in Should I Trade?.
 - **CNBC:** Pre-market watchlist widget only.
 
 ---
@@ -294,7 +290,6 @@ Market Metrics Dashboard/
 │   ├── should_i_trade_scoring.py
 │   ├── stockbee.py
 │   ├── cnbc_premarket.py
-│   ├── rate_watch_data.py
 │   └── cache.py
 └── assets/macro_terminal.css   # Scoped Macro Monitor styling
 ```

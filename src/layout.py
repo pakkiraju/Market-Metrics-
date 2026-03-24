@@ -1943,19 +1943,14 @@ def build_should_i_trade_content(data: dict, scores: dict, summary: str | dict) 
         (COLORS["green"] if participation == "High" else (COLORS["red"] if participation == "Low" else COLORS["yellow"]), "Participation", participation, "Narrow" if participation == "Low" else ("Broad" if participation == "High" else "Mixed"), COLORS["red"] if participation == "Low" else (COLORS["green"] if participation == "High" else COLORS["yellow"])),
     ]
 
-    fomc_status = "TODAY" if macro.get("fomc_today") else ("72h" if macro.get("fomc_within_72h") else "Clear")
     tnx = macro.get("tnx")
     dxy = macro.get("dxy")
-    fed = macro.get("fed_stance", "neutral")
-    fed_rate = macro.get("fed_rate_str", "")
     tnx_trend = macro.get("tnx_5d_trend")
     dxy_trend = macro.get("dxy_trend")
 
     macro_rows = [
-        (COLORS["red"] if macro.get("fomc_today") else (COLORS["yellow"] if macro.get("fomc_within_72h") else COLORS["green"]), "FOMC", fomc_status, "Event risk!" if macro.get("fomc_today") else ("Watch" if macro.get("fomc_within_72h") else "Clear"), COLORS["red"] if macro.get("fomc_today") else (COLORS["yellow"] if macro.get("fomc_within_72h") else COLORS["green"])),
         (COLORS["red"] if tnx_trend and tnx_trend > 0.1 else (COLORS["green"] if tnx_trend and tnx_trend < -0.05 else COLORS["yellow"]), "10Y Yield", f"{tnx:.2f}%" if tnx is not None else "—", "Rising" if tnx_trend and tnx_trend > 0.05 else ("Falling" if tnx_trend and tnx_trend < -0.05 else "Stable"), COLORS["orange"] if tnx_trend and tnx_trend > 0.05 else (COLORS["green"] if tnx_trend and tnx_trend < -0.05 else COLORS["yellow"])),
         (COLORS["orange"] if dxy_trend and dxy_trend > 0.3 else (COLORS["green"] if dxy_trend and dxy_trend < -0.3 else COLORS["yellow"]), "DXY", f"{dxy:.2f}" if dxy is not None else "—", "Strengthening" if dxy_trend and dxy_trend > 0.2 else ("Weakening" if dxy_trend and dxy_trend < -0.2 else "Stable"), COLORS["orange"] if dxy_trend and dxy_trend > 0.2 else (COLORS["green"] if dxy_trend and dxy_trend < -0.2 else COLORS["yellow"])),
-        (COLORS["blue_tml"] if fed == "neutral" else (COLORS["green"] if fed == "dovish" else COLORS["orange"]), "Fed Stance", f"{fed.title()} ({fed_rate})" if fed_rate else fed.title(), fed.title(), COLORS["blue_tml"] if fed == "neutral" else (COLORS["green"] if fed == "dovish" else COLORS["orange"])),
         (COLORS["text_faint"], "Geopolitical", "—", "Monitor", COLORS["text_muted"]),
     ]
 
@@ -2116,20 +2111,6 @@ def build_should_i_trade_content(data: dict, scores: dict, summary: str | dict) 
     ], style={"padding": "12px", "background": COLORS["surface2"], "borderRadius": "6px", "border": f"1px solid {COLORS['border']}", "display": "flex", "flexDirection": "column", "height": "100%"})
 
     alert_banner = html.Div()
-    if macro.get("major_event_within_72h"):
-        events = macro.get("events_72h", [])
-        evt_str = "; ".join(e.get("title", "") for e in events[:3])
-        fomc_note = "FOMC DECISION TODAY: " if macro.get("fomc_today") else "Major event within 72h: "
-        fed_rate = macro.get("fed_rate_str", "")
-        hold_str = f" at {fed_rate}" if fed_rate else ""
-        fomc_detail = f"Rate decision at 2:00 PM ET. Fed widely expected to hold{hold_str}. Press conference at 2:30 PM." if macro.get("fomc_today") else evt_str
-        alert_banner = html.Div([
-            html.Span("⚠ ", style={"color": COLORS["orange"], "fontSize": "14px"}),
-            html.Span(f"{fomc_note}{fomc_detail}", style={"fontSize": "11px", "color": COLORS["orange"]}),
-        ], style={
-            "padding": "8px 12px", "background": "rgba(249,115,22,0.15)", "borderRadius": "4px",
-            "border": f"1px solid {COLORS['orange']}", "marginBottom": "12px",
-        })
 
     summary_text = summary.get("text", summary) if isinstance(summary, dict) else summary
     suggested_action = summary.get("suggested_action", "") if isinstance(summary, dict) else ""

@@ -413,20 +413,9 @@ BREADTH_CHART_WRAP_STYLE = {
     "maxWidth": "100%",
 }
 
-# Macro Monitor widgets (Rate Watch, CPI, Core Inflation): 300px card, no scrollbar
+# Macro Monitor KPI charts: 300px card, no scrollbar
 MACRO_WIDGET_BODY_HEIGHT = 280  # 300px card - 20px header
 MACRO_CHART_HEIGHT = 240  # Plotly chart height (fits in body minus padding/toolbar)
-# Rate Watch probabilities/rate-path: slightly taller chart to avoid cutoff
-RATE_WATCH_CHART_HEIGHT = 260
-RATE_WATCH_CHART_BODY_HEIGHT = 300  # 320px card - 20px header
-RATE_WATCH_CHART_BODY_STYLE = {
-    "overflow": "hidden",
-    "height": f"{RATE_WATCH_CHART_BODY_HEIGHT}px",
-    "minHeight": RATE_WATCH_CHART_BODY_HEIGHT,
-    "maxHeight": RATE_WATCH_CHART_BODY_HEIGHT,
-    "backgroundColor": COLORS["surface"],
-    "position": "relative",
-}
 MACRO_CHART_BODY_STYLE = {
     "overflow": "hidden",
     "height": f"{MACRO_WIDGET_BODY_HEIGHT}px",
