@@ -865,7 +865,7 @@ def build_cnbc_premarket_watchlist_table(data: list[dict], article_url: str = ""
 def build_top_gainers_table(data: list[dict]) -> html.Div:
     """Top gainers on the day — from thematics universe (same data as Thematics Tracker)."""
     if not data:
-        return html.Div("No data. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
+        return html.Div("No data (same universe as Thematics). Try Refresh.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
     cell = {**TABLE_CELL_STYLE, "padding": "0px 3px 1px 3px", "lineHeight": 1.25}
@@ -889,7 +889,7 @@ def build_top_gainers_table(data: list[dict]) -> html.Div:
 def build_top_losers_table(data: list[dict]) -> html.Div:
     """Top losers on the day — from thematics universe (same data as Thematics Tracker)."""
     if not data:
-        return html.Div("No data. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
+        return html.Div("No data (same universe as Thematics). Try Refresh.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
     cell = {**TABLE_CELL_STYLE, "padding": "0px 3px 1px 3px", "lineHeight": 1.25}
@@ -1186,7 +1186,7 @@ def build_thematics_sector_table(data: list[dict], widget_id: str = None, sort_c
     from src.sortable_table import sort_data, THEMATICS_SECTOR_SORT_KEYS
 
     if not data:
-        return html.Div("No thematics data. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
+        return html.Div("No thematics-by-sector rows. Try Refresh if Key Metrics has data; otherwise check FINVIZ_API_KEY.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
 
@@ -1438,6 +1438,13 @@ def build_4pct_daily_table(data: list[dict], widget_id: str = None, sort_col: st
 def build_leading_industries_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     from src.sortable_table import sort_data, LEADING_SORT_KEYS
 
+    if not data:
+        return html.Div([
+            "No leading-industry rows (same USA v152 universe as Thematics — liquidity filter). ",
+            html.Span("If Key Metrics loads, try Refresh; otherwise check FINVIZ_API_KEY.", style={"color": COLORS["text_muted"]}),
+        ], style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
     if widget_id and sort_col:
         data = sort_data(data, sort_col, sort_asc, LEADING_SORT_KEYS)
     headers = [("Industry", None), ("1st", None), ("2nd", None), ("3rd", None), ("4th", None)]
@@ -1448,9 +1455,8 @@ def build_thematics_table(data: list[dict], widget_id: str = None, sort_col: str
     """Thematics Tracker: Theme, top 4 stocks. Same layout as leading industries."""
     if not data:
         return html.Div([
-            "No thematics data. ",
-            html.Span("Set FINVIZ_API_KEY in .env for FinViz Elite.", style={"color": COLORS["text_muted"]}),
-            " Other FinViz widgets working? Try Refresh.",
+            "No thematics rows to show (liquidity filter or parsing). ",
+            html.Span("If Key Metrics loads, try Refresh; otherwise set FINVIZ_API_KEY in .env.", style={"color": COLORS["text_muted"]}),
         ], style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })

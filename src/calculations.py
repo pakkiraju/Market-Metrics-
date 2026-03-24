@@ -19,6 +19,7 @@ from src.data_fetcher import (
     fetch_screener_from_url,
     fetch_benchmark_performance,
     fetch_thematics_data,
+    fetch_usa_thematics_universe_indicators,
 )
 from src.constants import (
     SECTOR_ETFS,
@@ -472,7 +473,7 @@ def classify_stage(ind: dict) -> str:
 
 def compute_stage_analysis(tickers: list[str],
                            cache_key: str = "stage_analysis") -> dict:
-    """Return stage counts and per-ticker stages. Fetches from export.ashx (geo_usa, avgvol 1000+, price $1+), does stage math."""
+    """Return stage counts and per-ticker stages. USA v152 parsed cache (price > $1, avg vol >= 1000 sh), stage math in-app."""
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
@@ -669,23 +670,22 @@ def compute_4pct_daily(tickers: list[str]) -> list[dict]:
 
 def compute_leading_industries(tickers: list[str],
                                industry_map: dict[str, str]) -> list[dict]:
-    """Top 20% industries by weekly+monthly relative strength. Data from FinViz: $1B+, USA, RSI>60.
+    """Top 20% industries by weekly+monthly relative strength. Same universe as Thematics (`fetch_usa_thematics_universe_indicators`).
     Green = top 20% on BOTH weekly and monthly RS. Shows 4 best-performing stocks for the day per industry."""
     cached = cache.get("leading_industries")
     if cached is not None:
         return cached
 
-    # Use ind_$1B+ (same universe as 97 Club). ind_1b export includes Industry/Sector, so no need for club97 URL.
-    indicators = compute_group_indicators([], cache_key="ind_$1B+")
+    indicators = fetch_usa_thematics_universe_indicators()
     if indicators.empty:
         cache.put("leading_industries", [], ttl=FAST)  # cache empty to avoid refetching every interval
         return []
 
-    # Industry from ind_1b (has Industry, Sector). Only fetch club97 if indicators lacks industry.
+    # Industry from v152 export (Industry, Sector). Overview map only if export lacks names.
     if industry_map:
         indicators["industry"] = indicators["ticker"].map(industry_map)
     elif "industry" in indicators.columns and indicators["industry"].fillna("").astype(str).str.strip().str.len().gt(0).any():
-        pass  # Use industry from ind_1b — avoids redundant club97 URL (same filters as ind_1b)
+        pass
     else:
         overview_map = fetch_industry_map_from_overview()
         if overview_map:
@@ -749,7 +749,7 @@ def _is_stale_thematics_cache(cached: list) -> bool:
 
 def compute_top_gainers_losers(top_n: int = 12) -> tuple[list[dict], list[dict]]:
     """Top gainers and top losers from thematics universe (same data as Thematics Tracker).
-    Uses fetch_thematics_data (ind_USA) — no extra API call when thematics is refreshed."""
+    Uses fetch_thematics_data (same USA v152 as Key Metrics) — no extra FinViz URL when thematics is refreshed."""
     df = fetch_thematics_data(cache_key="thematics_data", ttl=MEDIUM)
     if not isinstance(df, pd.DataFrame) or df.empty:
         return [], []
@@ -768,7 +768,7 @@ def compute_top_gainers_losers(top_n: int = 12) -> tuple[list[dict], list[dict]]
 
 
 def compute_thematics(tickers: list[str]) -> list[dict]:
-    """Top 20% themes by weekly+monthly relative strength. USA, avg vol 1K+, price $1+.
+    """Top 20% themes by weekly+monthly relative strength. Same universe as Leading / Thematics by Sector (price > $1, avg vol >= 1M sh).
     Green = top 20% on BOTH weekly and monthly. Shows top 4 stocks per theme by day change."""
     cached = cache.get("thematics")
     if cached is not None and not _is_stale_thematics_cache(cached):
@@ -827,12 +827,12 @@ def compute_thematics(tickers: list[str]) -> list[dict]:
 
 def compute_thematics_sector_data(cache_key: str = "thematics_sector_data") -> list[dict]:
     """Thematics aggregated by theme (industry), Sector SPDR-style: Chg, O Chg, Week, Month, Qtr, H.Year, Year.
-    Uses ind_USA (same as Thematics Tracker) for Industry/Sector. Filtered by top YTD (year) change. Feeds RRG."""
+    Same USA v152 + liquid filter as Thematics Tracker. Filtered by top YTD (year) change. Feeds RRG."""
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
-    indicators = fetch_group_indicators([], cache_key="ind_USA")
+    indicators = fetch_usa_thematics_universe_indicators()
     if indicators.empty:
         return []
 

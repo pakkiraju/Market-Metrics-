@@ -113,9 +113,39 @@ ET = timezone(timedelta(hours=-5))
 # Per-widget refresh: cache keys to invalidate when btn-refresh-{widget_id} is clicked
 WIDGET_CACHE_KEYS = {
     "should-i-trade": ["should_i_trade_aggregate"],
-    "key-metrics": ["all_key_metrics", "usa_full_v152"],
-    "chart2": ["all_key_metrics"],
-    "chart3": ["all_key_metrics"],
+    "key-metrics": [
+        "all_key_metrics",
+        "usa_full_v152",
+        "usa_v152_parsed_df",
+        "sector_data",
+        "rrg_data",
+        "rrg_benchmark",
+        "sp500_landscape",
+        "ind_stage",
+        "stage_analysis",
+    ],
+    "chart2": [
+        "all_key_metrics",
+        "usa_full_v152",
+        "usa_v152_parsed_df",
+        "sector_data",
+        "rrg_data",
+        "rrg_benchmark",
+        "sp500_landscape",
+        "ind_stage",
+        "stage_analysis",
+    ],
+    "chart3": [
+        "all_key_metrics",
+        "usa_full_v152",
+        "usa_v152_parsed_df",
+        "sector_data",
+        "rrg_data",
+        "rrg_benchmark",
+        "sp500_landscape",
+        "ind_stage",
+        "stage_analysis",
+    ],
     "club97": ["97_club"],
     "movers": ["9m_movers"],
     "weekly": ["20pct_weekly"],
@@ -125,12 +155,37 @@ WIDGET_CACHE_KEYS = {
     "pre_market": ["pre_market_scanner"],
     "cnbc_premarket": ["cnbc_premarket_watchlist"],
     "live_index": ["live_index_quotes"],
-    "leading": ["leading_industries"],
-    "thematics": ["thematics", "thematics_data"],
-    "thematics-sector": ["thematics_sector_data"],
+    # Same USA v152 blob as Key Metrics: invalidate bundle so manual refresh stays consistent across Leading / Thematics / Sector / RRG.
+    "leading": [
+        "usa_full_v152",
+        "usa_v152_parsed_df",
+        "leading_industries",
+        "thematics",
+        "thematics_data",
+        "thematics_sector_data",
+        "thematics_rrg_data",
+    ],
+    "thematics": [
+        "usa_full_v152",
+        "usa_v152_parsed_df",
+        "leading_industries",
+        "thematics",
+        "thematics_data",
+        "thematics_sector_data",
+        "thematics_rrg_data",
+    ],
+    "thematics-sector": [
+        "usa_full_v152",
+        "usa_v152_parsed_df",
+        "leading_industries",
+        "thematics",
+        "thematics_data",
+        "thematics_sector_data",
+        "thematics_rrg_data",
+    ],
     "top_gainers": ["thematics_data"],
     "top_losers": ["thematics_data"],
-    "stage": ["stage_analysis"],
+    "stage": ["stage_analysis", "ind_stage", "usa_v152_parsed_df", "usa_full_v152"],
     "thematics-rrg": ["thematics_rrg_data"],
     "macro-monitor": ["macro_fred_bundle"],
     "qulla": ["qulla_episodic_v2", "qulla_parabolic_v2", "qulla_breakouts_v2"],
@@ -148,7 +203,7 @@ WIDGET_CACHE_KEYS = {
     "jeff_sun_high_short_float": ["jeff_sun_high_short_float"],
     "jeff_sun_liquid_etfs": ["jeff_sun_liquid_etfs"],
     "julian_komar_strongest": ["julian_komar_strongest"],
-    "sector": ["sector_data"],
+    "sector": ["sector_data", "usa_v152_parsed_df", "rrg_data", "rrg_benchmark", "usa_full_v152"],
     "stockbee": ["stockbee_momentum50"],
     "breadth": ["stockbee_breadth"],
     "breadth-primary": ["stockbee_breadth_history"],
@@ -156,7 +211,7 @@ WIDGET_CACHE_KEYS = {
     "breadth-secondary": ["stockbee_breadth_history"],
     "breadth-sp500": ["stockbee_breadth_history"],
     "rrg": ["rrg_data"],
-    "sp500-landscape": ["sp500_landscape"],
+    "sp500-landscape": ["sp500_landscape", "usa_v152_parsed_df", "usa_full_v152"],
     "earnings-calendar-week": ["earnings_this_week"],
 }
 
@@ -648,18 +703,15 @@ def register_callbacks(app):
             except Exception as e:
                 logger.exception("Watchlist sector fetch failed: %s", e)
                 return _err_div(e), [], view_store
-        # Custom watchlist view
-        if btn_w and wl_data:
-            cache.invalidate(f"watchlist_quotes_{','.join(sorted(wl_data))}")
+        # Custom watchlist view (quotes from USA v152 cache; no per-list export URL)
         if not wl_data:
             return html.Div("No tickers in watchlist. Add some above.", style={
                 "color": COLORS["text_muted"], "fontSize": "9px",
                 "padding": "8px",
             }), [], view_store
         try:
-            from src.data_fetcher import fetch_tickers_bulk_csv
-            cache_key = f"watchlist_quotes_{','.join(sorted(wl_data))}"
-            data = fetch_tickers_bulk_csv(wl_data, cache_key=cache_key)
+            from src.data_fetcher import fetch_watchlist_quotes_from_usa_v152
+            data = fetch_watchlist_quotes_from_usa_v152(wl_data)
             if not data:
                 # Fallback: show tickers with placeholder when Finviz returns no data
                 data = [{"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"} for t in wl_data]

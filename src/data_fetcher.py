@@ -30,6 +30,11 @@ WATCHLIST_FILE = ROOT / "watchlist.csv"
 
 # Single FinViz USA export (v=152 all columns) for Key Metrics — cached, then filtered per index in Python.
 USA_FULL_V152_CACHE_KEY = "usa_full_v152"
+USA_V152_PARSED_DF_CACHE_KEY = "usa_v152_parsed_df"
+
+# Leading Industries + Thematics bundle: same cached USA v=152 as Key Metrics (FINVIZ_USA_FULL_V152_EXPORT), then in-app filter.
+_THEMATICS_LIQUID_MIN_PRICE = 1.0
+_THEMATICS_LIQUID_MIN_AVG_VOL = 1_000_000  # shares (not dollar volume)
 
 
 def load_watchlist() -> list[str]:
@@ -710,8 +715,7 @@ def fetch_4pct_daily_from_url(ttl: int = MEDIUM) -> list[dict]:
 
 
 def fetch_thematics_data(cache_key: str = "thematics_data", ttl: int = MEDIUM) -> pd.DataFrame:
-    """Fetch thematics universe (geo_usa, sh_avgvol_o1000, sh_price_o1).
-    Uses ind_USA export (same as leading industries) for Industry, Sector, PerfWeek, PerfMonth, etc."""
+    """Thematics universe: Key Metrics USA v152 + in-app filter; same source as Leading / Thematics by Sector."""
     cached = cache.get(cache_key)
     if cached is not None and isinstance(cached, pd.DataFrame):
         return cached
@@ -719,7 +723,7 @@ def fetch_thematics_data(cache_key: str = "thematics_data", ttl: int = MEDIUM) -
         cache.invalidate(cache_key)  # Bad cache (e.g. string from disk)
 
     try:
-        indicators = fetch_group_indicators([], cache_key="ind_USA")
+        indicators = fetch_usa_thematics_universe_indicators()
         if indicators.empty:
             return pd.DataFrame()
 
@@ -967,63 +971,23 @@ def fetch_metric_count(url: str, cache_key: str, skip_delay: bool = False) -> in
 
 
 def fetch_sp500_landscape_data(cache_key: str = "sp500_landscape", ttl: int = MEDIUM) -> list[dict]:
-    """Fetch S&P 500 stocks with Revenue, Net Income, Market Cap, Price, 12M Change, Profit Margin.
-    Uses FinViz Overview (P/E, P/S, Market Cap) + ind_sp500 (Price, Perf Year). Derives Revenue, Net Income, Profit Margin."""
+    """S&P 500 stocks: Revenue, Net Income, Market Cap, Price, 12M Change, Profit Margin — from USA v152 only (no extra exports)."""
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
     try:
-        from src.finviz_elite import fetch_export_from_url, is_elite_configured
-        from src.constants import FINVIZ_EXPORT_URLS
+        from src.finviz_elite import is_elite_configured
 
         if not is_elite_configured():
             logger.warning("FinViz Elite not configured - S&P 500 Landscape unavailable")
             return []
 
-        # 1. Overview: Market Cap, P/E
-        overview_url = FINVIZ_EXPORT_URLS.get("sp500_landscape_overview")
-        if not overview_url:
-            return []
-        time.sleep(_FINVIZ_DELAY_SEC)
-        overview_data = fetch_export_from_url(overview_url, caller="sp500_landscape_overview")
-        if not overview_data:
+        raw = fetch_usa_full_v152_raw()
+        if not raw:
             return []
 
-        # 2. Valuation: P/S (for Revenue = Mcap/P/S)
-        valuation_url = FINVIZ_EXPORT_URLS.get("sp500_landscape_valuation")
-        ps_map = {}
-        if valuation_url:
-            time.sleep(_FINVIZ_DELAY_SEC)
-            valuation_data = fetch_export_from_url(valuation_url, caller="sp500_landscape_valuation")
-            if valuation_data:
-                v_keys = list(valuation_data[0].keys())
-                v_ticker_col = _find_csv_col(v_keys, exact="Ticker") or _find_csv_col(v_keys, "ticker") or "Ticker"
-                v_ps_col = _find_csv_col(v_keys, exact="P/S") or _find_csv_col(v_keys, "p/s") or _find_csv_col(v_keys, "price", "sales")
-                for row in valuation_data:
-                    t = str(row.get(v_ticker_col, "") or "").strip().upper()
-                    if t:
-                        ps_raw = row.get(v_ps_col) if v_ps_col else _get_csv_val(row, "P/S", "PS", "Price/Sales")
-                        ps_val = _parse_num(ps_raw)
-                        if ps_val is not None and ps_val > 0:
-                            ps_map[t] = ps_val
-
-        # 3. Performance data: Price, Perf Year (12M change)
-        ind_df = fetch_group_indicators([], cache_key="ind_sp500")
-        if ind_df.empty:
-            return []
-
-        perf_map = {}
-        for _, row in ind_df.iterrows():
-            t = str(row.get("ticker", "")).strip().upper()
-            if not t:
-                continue
-            perf_map[t] = {
-                "price": row.get("close"),
-                "year_chg": row.get("year_chg"),
-            }
-
-        keys = list(overview_data[0].keys())
+        keys = list(raw[0].keys())
         ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
         mcap_col = _find_csv_col(keys, "market", "cap") or _find_csv_col(keys, "marketcap")
         pe_col = _find_csv_col(keys, "p/e", "pe") or _find_csv_col(keys, "price", "earnings")
@@ -1038,20 +1002,21 @@ def fetch_sp500_landscape_data(cache_key: str = "sp500_landscape", ttl: int = ME
             return _get_csv_val(row, *alts) if alts else ""
 
         rows = []
-        for row in overview_data:
+        for row in raw:
+            if not _row_matches_key_metrics_group(row, "SPY500"):
+                continue
             t = str(row.get(ticker_col, "") or "").strip().upper()
             if not t:
                 continue
 
             mcap_str = _v(row, mcap_col, "Market Cap", "market_cap", "Market Cap.")
             market_cap = _parse_num(mcap_str) if mcap_str else None
-            # FinViz Overview export may return Market Cap as raw number in millions (e.g. 4380075 = 4.38T)
             if market_cap and market_cap > 0 and "B" not in str(mcap_str or "").upper() and "M" not in str(mcap_str or "").upper() and "T" not in str(mcap_str or "").upper():
                 if market_cap >= 1000:
                     market_cap = market_cap * 1e6
 
             pe_val = _parse_num(_v(row, pe_col, "P/E", "PE", "Price/Earnings"))
-            ps_val = ps_map.get(t) or _parse_num(_v(row, ps_col, "P/S", "PS", "Price/Sales"))
+            ps_val = _parse_num(_v(row, ps_col, "P/S", "PS", "Price/Sales"))
 
             revenue = None
             net_income = None
@@ -1062,17 +1027,18 @@ def fetch_sp500_landscape_data(cache_key: str = "sp500_landscape", ttl: int = ME
                 if pe_val is not None and pe_val > 0:
                     net_income = market_cap / pe_val
                 elif pe_val is not None and pe_val < 0:
-                    net_income = market_cap / pe_val  # negative P/E = losses
+                    net_income = market_cap / pe_val
                 if revenue and revenue > 0 and net_income is not None:
                     profit_margin = (net_income / revenue) * 100
 
-            perf = perf_map.get(t, {})
-            price = perf.get("price")
-            year_chg = perf.get("year_chg")
-            if price is None or (isinstance(price, float) and (pd.isna(price) or price <= 0)):
+            price = _parse_num(_v(row, "Price", "price", "Last", "Close"))
+            if price is None or price <= 0:
                 continue
-            if year_chg is None or (isinstance(year_chg, float) and pd.isna(year_chg)):
-                year_chg = 0.0
+            ychg = _parse_pct(_v(row, "Performance (YTD)", "Performance (Year)", "Perf Year", "Perf Y", "Perf YTD", "Perf. Year", "Perf 1Y", "1Y"))
+            if ychg is None or pd.isna(ychg):
+                ychg = 0.0
+            else:
+                ychg = float(ychg)
 
             sector = str(_v(row, sector_col, "Sector", "sector") or "").strip() or "Unknown"
             rows.append({
@@ -1083,7 +1049,7 @@ def fetch_sp500_landscape_data(cache_key: str = "sp500_landscape", ttl: int = ME
                 "net_income": net_income,
                 "market_cap": market_cap,
                 "price": float(price),
-                "change_12m": float(year_chg) if not pd.isna(year_chg) else 0.0,
+                "change_12m": ychg,
                 "profit_margin": profit_margin,
             })
 
@@ -1124,7 +1090,7 @@ _SECTOR_NAME_ALIASES = {
 
 
 def fetch_stocks_by_sector(sector_name: str, ttl: int = MEDIUM) -> list[dict]:
-    """Fetch S&P 500 stocks in a given sector with quotes. Returns list of dicts for watchlist table."""
+    """S&P 500 names in a sector — sliced from parsed USA v152 (no extra export)."""
     if not sector_name or not str(sector_name).strip():
         return []
     sector_name = str(sector_name).strip()
@@ -1133,41 +1099,64 @@ def fetch_stocks_by_sector(sector_name: str, ttl: int = MEDIUM) -> list[dict]:
     if cached is not None:
         return cached
     try:
-        data = fetch_sp500_landscape_data()
+        df = get_parsed_usa_v152_df()
+        if df.empty:
+            return []
+        raw = fetch_usa_full_v152_raw()
+        sp500_tickers: set[str] = set()
+        if raw:
+            keys = list(raw[0].keys())
+            tc = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+            for row in raw:
+                if not _row_matches_key_metrics_group(row, "SPY500"):
+                    continue
+                t = str(row.get(tc, "") or "").strip().upper()
+                if t:
+                    sp500_tickers.add(t)
+        if not sp500_tickers:
+            return []
         sector_matches = {sector_name}
         sector_matches.update(_SECTOR_NAME_ALIASES.get(sector_name, []))
-        tickers = [
-            str(r.get("ticker", "") or "").strip().upper()
-            for r in data
-            if str(r.get("sector", "") or "").strip() in sector_matches
-        ]
-        if not tickers:
-            return []
-        return fetch_tickers_bulk_csv(tickers[:100], cache_key=cache_key, ttl=ttl)
+        sec_s = df["sector"].fillna("").astype(str).str.strip()
+        mask = df["ticker"].isin(sp500_tickers) & sec_s.isin(sector_matches)
+        sub = df.loc[mask]
+        rows = []
+        for _, r in sub.iterrows():
+            rows.append({
+                "ticker": r["ticker"],
+                "price": r["close"],
+                "change": r["day_chg"],
+                "volume": r["volume"],
+                "avg_vol": r["avg_volume"],
+                "rel_vol": r["rel_volume"],
+                "atr_pct": r["atr_pct"],
+            })
+        rows.sort(key=lambda x: x["ticker"])
+        if rows:
+            cache.put(cache_key, rows, ttl=ttl)
+        return rows
     except Exception as e:
         logger.warning("fetch_stocks_by_sector failed: %s", e)
         return []
 
 
 def fetch_stage_indicators(cache_key: str = "ind_stage") -> pd.DataFrame:
-    """Fetch stage analysis data from single export URL (geo_usa, avgvol 1000+, price $1+). Returns DataFrame with close, ema10, sma20, sma50, week_chg, month_chg."""
+    """Stage universe from USA v152: price > $1, avg volume >= 1000 shares (Finviz screener equivalent)."""
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
     try:
-        from src.finviz_elite import fetch_export_from_url, is_elite_configured
-        from src.constants import FINVIZ_EXPORT_URLS
+        from src.finviz_elite import is_elite_configured
         if not is_elite_configured():
             return pd.DataFrame()
-        url = FINVIZ_EXPORT_URLS.get("ind_stage")
-        if not url:
+        df = get_parsed_usa_v152_df()
+        if df.empty:
             return pd.DataFrame()
-        data = fetch_export_from_url(url, caller="stage")
-        rows = _parse_group_indicators_rows(data, None)
-        if rows:
-            result = pd.DataFrame(rows)
+        m = (df["close"] > 1.0) & (df["avg_volume"].fillna(0) >= 1000)
+        result = df.loc[m].copy()
+        if not result.empty:
             cache.put(cache_key, result, ttl=MEDIUM)
-            return result
+        return result
     except Exception as e:
         logger.warning("fetch_stage_indicators failed: %s", e)
     return pd.DataFrame()
@@ -1179,8 +1168,8 @@ _GROUP_INDICATOR_URL_KEYS = {
     "ind_97_club": ["ind_1b"],  # ind_1b has Avg Vol, Rel Vol, Volume (ind_1b_km v=152 does not)
     "ind_9m_movers": ["ind_9m"],
     "ind_leading": ["ind_1b"],
-    # ind_USA: use legacy Overview+Performance+Technical merge (has Industry/Sector + Perf Quarter/YTD)
-    "ind_USA": None,
+    # ind_USA: single v=141 export (same columns as legacy 3-merge; one HTTP request)
+    "ind_USA": ["ind_usa"],
     "ind_thematics_rrg": ["ind_thematics_rrg"],
     "ind_NQ100": ["ind_ndx"],
     "ind_RSP": ["ind_sp500"],
@@ -1263,6 +1252,7 @@ def fetch_usa_full_v152_raw(ttl: int | None = None) -> list[dict]:
 
         if not is_elite_configured():
             return []
+        cache.invalidate(USA_V152_PARSED_DF_CACHE_KEY)
         data = fetch_export_from_url(
             FINVIZ_USA_FULL_V152_EXPORT,
             caller="usa_full_v152",
@@ -1316,6 +1306,9 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
         change = _parse_pct(_v(row, "Change", "change", "Change %", "Change%"))
         if pd.isna(change):
             change = 0.0
+        open_price = _parse_num(_v(row, "Open", "open"))
+        if open_price is None or open_price <= 0:
+            open_price = price
         open_chg_val = _parse_pct(_v(row, "Change from Open", "Change from Open %", "Change from Open%"))
         open_chg = float(open_chg_val) if not pd.isna(open_chg_val) else change
 
@@ -1370,11 +1363,13 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
         new_lo = bool(
             l20p is not None and l20p > 0 and price <= l20p * 1.001
         )
+        prev_close = float(price / (1 + change / 100)) if change != -100 else float(price)
         rows.append({
             "ticker": t,
             "close": float(price),
-            "prev_close": float(price / (1 + change / 100)) if change != -100 else price,
-            "open": price,
+            "prev_close": prev_close,
+            "open_price": float(open_price),
+            "open": float(open_price),
             "day_chg": float(change),
             "open_chg": float(open_chg),
             "week_chg": week_chg,
@@ -1404,6 +1399,41 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
             "sector": sector,
         })
     return rows
+
+
+def get_parsed_usa_v152_df() -> pd.DataFrame:
+    """Parsed USA v=152 rows as DataFrame. Cached; invalidated when `usa_full_v152` is refreshed."""
+    cached = cache.get(USA_V152_PARSED_DF_CACHE_KEY)
+    if cached is not None:
+        return cached
+    raw = fetch_usa_full_v152_raw()
+    if not raw:
+        return pd.DataFrame()
+    rows = _parse_group_indicators_rows(raw, None)
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    cache.put(USA_V152_PARSED_DF_CACHE_KEY, df, ttl=KEY_METRICS_TTL)
+    return df
+
+
+def fetch_usa_thematics_universe_indicators() -> pd.DataFrame:
+    """Key Metrics USA v152 parsed cache, filtered in-app. No separate FinViz export."""
+    df = get_parsed_usa_v152_df()
+    if df.empty:
+        return pd.DataFrame()
+    close = pd.to_numeric(df["close"], errors="coerce")
+    avgv = pd.to_numeric(df.get("avg_volume"), errors="coerce")
+    vol = pd.to_numeric(df.get("volume"), errors="coerce")
+    # v152 often has NaN avg_volume in the sheet; use volume when avg is missing (same idea as parser row).
+    liq = avgv.where(avgv.notna(), vol).fillna(0)
+    m = (close > _THEMATICS_LIQUID_MIN_PRICE) & (liq >= _THEMATICS_LIQUID_MIN_AVG_VOL)
+    out = df.loc[m].copy()
+    if not out.empty:
+        return out
+    # If everyone failed (e.g. all liq NaN/0), match Finviz screener floor sh_avgvol_o1000 ≈ ≥1k shares
+    m2 = (close > _THEMATICS_LIQUID_MIN_PRICE) & (liq >= 1000)
+    return df.loc[m2].copy()
 
 
 def fetch_single_indicator_url(group_cache_key: str, url_key: str) -> pd.DataFrame:
@@ -1637,9 +1667,9 @@ def get_single_ticker_df(raw: pd.DataFrame, ticker: str) -> pd.DataFrame:
 
 
 def fetch_sector_data(cache_key: str = "sector_data") -> list[dict]:
-    """Fetch sector ETF data via Elite quote.ashx. Returns list of dicts for sector table."""
+    """Sector SPDR ETF rows from USA v152 parsed cache (no quote.ashx per ticker)."""
     from src.constants import SECTOR_ETFS
-    from src.finviz_elite import fetch_elite_stock, is_elite_configured
+    from src.finviz_elite import is_elite_configured
 
     if not is_elite_configured():
         logger.warning("FinViz Elite not configured - sector data unavailable")
@@ -1649,60 +1679,50 @@ def fetch_sector_data(cache_key: str = "sector_data") -> list[dict]:
     if cached is not None:
         return cached
 
+    df = get_parsed_usa_v152_df()
+    if df.empty:
+        return []
+
+    def _sf(v):
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return 0.0
+        return float(v)
+
     rows = []
     for ticker in SECTOR_ETFS:
-        try:
-            s = fetch_elite_stock(ticker)
-            if not s:
-                continue
-            price = _parse_num(s.get("Price", ""))
-            if price is None:
-                continue
-            change = _parse_pct(s.get("Change", ""))
-            prev = price / (1 + change / 100) if not pd.isna(change) and change != -100 else price
-            open_p = price
-            gap = 0.0
-            if prev and prev != 0:
-                gap = (open_p - prev) / prev * 100
-            atr_val = _parse_num(s.get("ATR (14)", s.get("ATR", "")))
-            atr_pct = round((atr_val / price * 100), 2) if atr_val and price and price != 0 else None
-
-            def _safe_pct(val):
-                p = _parse_pct(val)
-                return 0.0 if pd.isna(p) else float(p)
-
-            def _q(key, *fallbacks):
-                v = s.get(key)
-                if v is not None and str(v).strip() and str(v).strip() != "-":
-                    return v
-                for k in fallbacks:
-                    v = s.get(k)
-                    if v is not None and str(v).strip() and str(v).strip() != "-":
-                        return v
-                return ""
-
-            rows.append({
-                "sector": ticker,
-                "ticker": ticker,
-                "gap": round(gap, 2),
-                "chg": round(change if not pd.isna(change) else 0, 2),
-                "ochg": round(change if not pd.isna(change) else 0, 2),
-                "week": round(_safe_pct(_q("Perf Week", "Week")), 1),
-                "month": round(_safe_pct(_q("Perf Month", "Month")), 1),
-                "qtr": round(_safe_pct(_q("Perf Quarter", "Perf Quarter", "Quarter")), 1),
-                "hyear": round(_safe_pct(_q("Perf Half Y", "Perf Half Y", "Half Y")), 1),
-                "year": round(_safe_pct(_q("Perf Year", "Perf Y", "Perf YTD", "Return% 1Y", "1Y")), 1),
-                "last": round(price, 2),
-                "ema10": round(price, 2),
-                "sma20": round(_parse_num(s.get("SMA20", "")) or price, 2),
-                "sma50": round(_parse_num(s.get("SMA50", "")) or price, 2),
-                "sma200": round(_parse_num(s.get("SMA200", "")) or price, 2),
-                "high_52w": round(_parse_num(s.get("52W High", "")) or price, 2),
-                "low_52w": round(_parse_num(s.get("52W Low", "")) or price, 2),
-                "atr_pct": atr_pct,
-            })
-        except Exception as e:
-            logger.warning("FinViz Elite quote %s failed: %s", ticker, e)
+        sub = df.loc[df["ticker"] == ticker.upper()]
+        if sub.empty:
+            continue
+        r = sub.iloc[0]
+        price = _sf(r.get("close"))
+        if price <= 0:
+            continue
+        change = _sf(r.get("day_chg"))
+        prev_close = _sf(r.get("prev_close")) or (price / (1 + change / 100) if change != -100 else price)
+        open_px = _sf(r.get("open_price")) if r.get("open_price") is not None else price
+        open_px = open_px if open_px > 0 else price
+        gap = ((open_px - prev_close) / prev_close * 100) if prev_close and prev_close != 0 else 0.0
+        open_chg = _sf(r.get("open_chg"))
+        rows.append({
+            "sector": ticker,
+            "ticker": ticker,
+            "gap": round(gap, 2),
+            "chg": round(change, 2),
+            "ochg": round(open_chg, 2),
+            "week": round(_sf(r.get("week_chg")), 1),
+            "month": round(_sf(r.get("month_chg")), 1),
+            "qtr": round(_sf(r.get("qtr_chg")), 1),
+            "hyear": round(_sf(r.get("half_chg")), 1),
+            "year": round(_sf(r.get("year_chg")), 1),
+            "last": round(price, 2),
+            "ema10": round(_sf(r.get("ema10")), 2) if r.get("ema10") is not None else round(price, 2),
+            "sma20": round(_sf(r.get("sma20")), 2) if r.get("sma20") is not None else round(price, 2),
+            "sma50": round(_sf(r.get("sma50")), 2) if r.get("sma50") is not None else round(price, 2),
+            "sma200": round(_sf(r.get("sma200")), 2) if r.get("sma200") is not None else round(price, 2),
+            "high_52w": round(_sf(r.get("high_52w")), 2) if r.get("high_52w") is not None else round(price, 2),
+            "low_52w": round(_sf(r.get("low_52w")), 2) if r.get("low_52w") is not None else round(price, 2),
+            "atr_pct": r.get("atr_pct"),
+        })
 
     if rows:
         cache.put(cache_key, rows, ttl=MEDIUM)
@@ -1710,13 +1730,34 @@ def fetch_sector_data(cache_key: str = "sector_data") -> list[dict]:
 
 
 def fetch_benchmark_performance(benchmark: str = "VTI", cache_key: str = "rrg_benchmark") -> dict | None:
-    """Fetch benchmark (VTI) performance from FinViz via same quote.ashx as sector ETFs.
-    Returns {chg, week, month, qtr, hyear, year} or None if unavailable."""
+    """Benchmark (e.g. VTI) perf from USA v152 row; quote.ashx only if ticker missing from export."""
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
+    def _row_to_bench(r) -> dict:
+        def _sf(v):
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                return 0.0
+            return float(v)
+        return {
+            "chg": _sf(r.get("day_chg")),
+            "week": _sf(r.get("week_chg")),
+            "month": _sf(r.get("month_chg")),
+            "qtr": _sf(r.get("qtr_chg")),
+            "hyear": _sf(r.get("half_chg")),
+            "year": _sf(r.get("year_chg")),
+        }
+
     try:
+        df = get_parsed_usa_v152_df()
+        if not df.empty:
+            row = df.loc[df["ticker"] == benchmark.upper()]
+            if not row.empty:
+                result = _row_to_bench(row.iloc[0])
+                cache.put(cache_key, result, ttl=MEDIUM)
+                return result
+
         from src.finviz_elite import fetch_elite_stock, is_elite_configured
         if not is_elite_configured():
             return None
@@ -1779,6 +1820,37 @@ def fetch_gainers_screener(cache_key: str = "finviz_gainers", ttl: int = MEDIUM)
     except Exception as e:
         logger.warning("FinViz gainers failed: %s", e)
         return []
+
+
+def fetch_watchlist_quotes_from_usa_v152(tickers: list[str]) -> list[dict]:
+    """Watchlist rows from parsed USA v152; sorted by sector then ticker. Same shape as fetch_tickers_bulk_csv."""
+    if not tickers:
+        return []
+    df = get_parsed_usa_v152_df()
+    if df.empty:
+        return [{"ticker": str(t).upper().strip(), "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"} for t in tickers if t]
+    tset = {str(t).upper().strip() for t in tickers if t}
+    sub = df[df["ticker"].isin(tset)]
+    by_t = {r["ticker"]: r for _, r in sub.iterrows()}
+    rows = []
+    for t in tickers:
+        tu = str(t).upper().strip()
+        r = by_t.get(tu)
+        if r is None:
+            rows.append({"ticker": tu, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"})
+            continue
+        rows.append({
+            "ticker": tu,
+            "price": r["close"],
+            "change": r["day_chg"],
+            "volume": r["volume"],
+            "avg_vol": r["avg_volume"],
+            "rel_vol": r["rel_volume"],
+            "atr_pct": r["atr_pct"],
+            "sector": str(r.get("sector") or "").strip(),
+        })
+    rows.sort(key=lambda x: (str(x.get("sector") or ""), x["ticker"]))
+    return rows
 
 
 def fetch_tickers_bulk_csv(tickers: list[str], cache_key: str | None = None, ttl: int = MEDIUM) -> list[dict]:
