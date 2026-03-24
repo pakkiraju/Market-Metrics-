@@ -162,7 +162,7 @@
   border: 1px solid hsl(var(--term-border));
   border-radius: 2px;
   padding: 8px 8px 4px;
-  cursor: pointer;
+  cursor: default;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   min-height: 0;
   overflow: hidden;
@@ -172,8 +172,8 @@
 }
 
 #macro-monitor-root .macro-kpi-card:hover {
-  border-color: hsl(142 70% 55% / 0.45);
-  box-shadow: 0 0 0 1px hsl(142 70% 55% / 0.12), 0 4px 20px hsl(0 0% 0% / 0.35);
+  border-color: hsl(142 70% 55% / 0.25);
+  box-shadow: 0 0 0 1px hsl(142 70% 55% / 0.08);
 }
 
 #macro-monitor-root .macro-kpi-label {
@@ -368,109 +368,4 @@
   color: hsl(var(--term-red));
   padding: 8px 0;
   font-size: 11px;
-}
-
-/*
- * Inline KPI history panel (not a modal — no backdrop, no blocking the rest of the app).
- */
-#macro-monitor-root .macro-history-panel {
-  background: hsl(220 20% 6%);
-  border: 1px solid hsl(220 15% 18%);
-  border-radius: 4px;
-  padding: 14px 12px 12px;
-  margin-top: 16px;
-  color: hsl(142 70% 70%);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  max-width: 1680px;
-  margin-left: auto;
-  margin-right: auto;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.macro-history-panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid hsl(220 15% 16%);
-}
-
-.macro-history-title {
-  font-size: 13px;
-  font-weight: 700;
-  flex: 1;
-  min-width: 0;
-}
-
-.macro-history-close {
-  flex-shrink: 0;
-  background: hsl(220 15% 14%);
-  border: 1px solid hsl(220 15% 22%);
-  color: hsl(142 70% 70%);
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: 3px;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.macro-history-close:hover {
-  background: hsl(220 15% 20%);
-}
-
-.macro-history-lookback-row {
-  display: flex;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.macro-history-source {
-  font-size: 9px;
-  color: hsl(var(--muted-foreground));
-  margin-top: 6px;
-}
-
-#macro-monitor-root .macro-history-panel .Select-control,
-#macro-monitor-root .macro-history-panel .Select-menu-outer {
-  background: hsl(220 20% 8%) !important;
-  border-color: hsl(220 15% 20%) !important;
-  color: hsl(142 70% 70%) !important;
-  font-family: "JetBrains Mono", monospace !important;
-  font-size: 11px !important;
-}
-
-#macro-monitor-root .macro-history-panel .Select-value-label,
-#macro-monitor-root .macro-history-panel .Select-placeholder {
-  color: hsl(142 65% 72%) !important;
-}
-
-.macro-history-graph-wrap {
-  width: 100%;
-  max-width: 100%;
-  height: 400px;
-  max-height: min(400px, 52vh);
-  min-height: 260px;
-  overflow: hidden;
-  position: relative;
-  border-radius: 2px;
-  border: 1px solid hsl(220 15% 16%);
-  background: hsl(220 20% 5%);
-}
-
-.macro-history-graph-inner {
-  height: 400px !important;
-  max-height: min(400px, 52vh) !important;
-}
-
-.macro-history-graph-wrap .js-plotly-plot,
-.macro-history-graph-wrap .plotly,
-.macro-history-graph-wrap .plotly-graph-div,
-.macro-history-graph-wrap .svg-container {
-  height: 400px !important;
-  max-height: min(400px, 52vh) !important;
-  width: 100% !important;
-  max-width: 100% !important;
 }

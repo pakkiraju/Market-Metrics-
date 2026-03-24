@@ -2,6 +2,7 @@
 
 import logging
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -25,10 +26,33 @@ from src import cache
 # Preload cache from disk so widgets show instantly on restart
 cache.warm_from_disk()
 
+
+def _warm_macro_history_cache_bg() -> None:
+    """Warm Macro Monitor history cache in background without delaying startup."""
+    try:
+        from src.macro_data import warm_macro_series_cache
+        warm_macro_series_cache()
+    except Exception:
+        pass
+
+
+threading.Thread(target=_warm_macro_history_cache_bg, daemon=True).start()
+
+# Console: warnings and errors only (no DEBUG/INFO noise from app or libraries)
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARNING,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+for _log_name in (
+    "urllib3",
+    "urllib3.connectionpool",
+    "requests",
+    "yfinance",
+    "werkzeug",
+    "dash",
+    "dash_renderer",
+):
+    logging.getLogger(_log_name).setLevel(logging.WARNING)
 
 app = Dash(
     __name__,
@@ -49,6 +73,7 @@ app.index_string = f"""<!DOCTYPE html>
     {{%favicon%}}
     {{%css%}}
     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -99,6 +124,11 @@ app.index_string = f"""<!DOCTYPE html>
         @keyframes sit-marquee {{
             0% {{ transform: translateX(0); }}
             100% {{ transform: translateX(-50%); }}
+        }}
+        @media (prefers-reduced-motion: reduce) {{
+            .sit-ticker-marquee-inner {{
+                animation: none !important;
+            }}
         }}
 
         /* Dropdown dark theme — easier on eyes */

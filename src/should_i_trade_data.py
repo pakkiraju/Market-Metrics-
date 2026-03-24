@@ -176,6 +176,61 @@ def _fetch_trend() -> dict:
     return out
 
 
+def _extract_universe_1b_metrics(metrics: dict | None) -> dict:
+    """$1B+ FinViz universe from Key Metrics: MA participation, new highs/lows, liquidity breadth.
+
+    Used by Should I Trade execution window (breakout health) alongside StockBee ratio5.
+    """
+    empty = {
+        "pct_sma20": None,
+        "pct_sma50": None,
+        "pct_sma200": None,
+        "pct_new_highs": None,
+        "pct_new_lows": None,
+        "new_highs_n": None,
+        "new_lows_n": None,
+        "stocks_n": None,
+        "nh_nl_ratio": None,
+        "pct_up4_of_universe": None,
+    }
+    if not metrics:
+        return {**empty}
+    rows = metrics.get("$1B+")
+    if not rows:
+        return {**empty}
+    idx = {r: i for i, r in enumerate(KEY_METRIC_ROWS)}
+
+    def cell(name: str) -> dict:
+        i = idx.get(name)
+        if i is None or i >= len(rows):
+            return {}
+        r = rows[i]
+        return r if isinstance(r, dict) else {}
+
+    r20 = cell("Price to SMA20")
+    r50 = cell("Price to SMA50")
+    r200 = cell("Price to SMA200")
+    rnh = cell("New 20-Day Highs")
+    rnl = cell("New 20-Day Lows")
+    r4 = cell("4% Up vs 4% Down")
+    rst = cell("Stocks")
+    nh = rnh.get("above")
+    nl = rnl.get("above")
+    out = {**empty}
+    out["pct_sma20"] = r20.get("pct")
+    out["pct_sma50"] = r50.get("pct")
+    out["pct_sma200"] = r200.get("pct")
+    out["pct_new_highs"] = rnh.get("pct")
+    out["pct_new_lows"] = rnl.get("pct")
+    out["new_highs_n"] = nh
+    out["new_lows_n"] = nl
+    out["stocks_n"] = rst.get("above")
+    out["pct_up4_of_universe"] = r4.get("pct")
+    if nh is not None and nl is not None and (nh + nl) > 0:
+        out["nh_nl_ratio"] = round(nh / (nh + nl), 4)
+    return out
+
+
 def _fetch_breadth() -> dict:
     """Fetch breadth data: % above 20/50/200, A/D ratio, new highs vs lows."""
     out = {
@@ -188,6 +243,7 @@ def _fetch_breadth() -> dict:
         "down4": None,
         "new_highs": None,
         "new_lows": None,
+        "universe_1b": {},
         "direction": "→",
     }
     # Key metrics for SPY500
@@ -195,6 +251,7 @@ def _fetch_breadth() -> dict:
     if metrics is None:
         from src.calculations import compute_all_key_metrics
         metrics = compute_all_key_metrics()
+    out["universe_1b"] = _extract_universe_1b_metrics(metrics)
     sp500 = metrics.get("SPY500", [])
     if sp500:
         idx = {r: i for i, r in enumerate(KEY_METRIC_ROWS)}

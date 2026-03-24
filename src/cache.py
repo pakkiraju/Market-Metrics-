@@ -51,10 +51,11 @@ _DISK_PERSISTENT_KEYS = frozenset({
     "sp500_landscape",
     "stockbee_momentum50",
     "stockbee_breadth",
+    "macro_fred_bundle",
 })
 
 # Key prefixes that persist to disk (e.g. watchlist_quotes_AAPL,MSFT)
-_DISK_PERSISTENT_PREFIXES = frozenset({"watchlist_quotes_"})
+_DISK_PERSISTENT_PREFIXES = frozenset({"watchlist_quotes_", "macro_series_"})
 
 _store: dict[str, tuple[object, float]] = {}
 _lock = threading.Lock()

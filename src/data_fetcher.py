@@ -5,6 +5,7 @@ Requires FINVIZ_API_KEY in .env. FinViz data is delayed ~15-20 min.
 """
 
 import logging
+import os
 import re
 import time
 from pathlib import Path
@@ -19,8 +20,10 @@ logger = logging.getLogger(__name__)
 # Live index snapshot: QQQ, SPY, DIA, IWM, VIX (5-min cache for intraday)
 LIVE_INDEX_TICKERS = ["QQQ", "SPY", "DIA", "IWM", "VIX"]
 
-# Delay between FinViz fetches to avoid 429 rate limit
-_FINVIZ_DELAY_SEC = 2.0
+# Delay between FinViz fetches to avoid 429 rate limit (override via FINVIZ_DELAY_SEC in .env)
+_FINVIZ_DELAY_SEC = float(os.environ.get("FINVIZ_DELAY_SEC", "1.25"))
+# Set FINVIZ_PARALLEL_WORKERS=2 (or higher) to overlap multi-screener fetches; default 0 = sequential
+_FINVIZ_PARALLEL_WORKERS = int(os.environ.get("FINVIZ_PARALLEL_WORKERS", "0"))
 
 ROOT = Path(__file__).resolve().parent.parent
 WATCHLIST_FILE = ROOT / "watchlist.csv"
@@ -139,14 +142,46 @@ def _merge_perf_tech(perf_df: pd.DataFrame, tech_df: pd.DataFrame) -> pd.DataFra
 def _fetch_screener_multi(filter_sets: list[list[str]], table: str,
                           cache_key: str | None, order: str = "",
                           ttl: int = MEDIUM) -> pd.DataFrame:
-    """Run multiple Screener calls (e.g. idx_sp500 + idx_ndx) and merge."""
-    dfs = []
-    seen = set()
-    for i, filters in enumerate(filter_sets):
-        if i > 0:
+    """Run multiple Screener calls (e.g. idx_sp500 + idx_ndx) and merge.
+
+    Sequential by default. Set FINVIZ_PARALLEL_WORKERS>=2 to run fetches in parallel
+    (staggered by index to reduce burst rate); may trigger 429 if FinViz limits are strict.
+    """
+    if not filter_sets:
+        return pd.DataFrame()
+
+    n = len(filter_sets)
+    parallel = min(_FINVIZ_PARALLEL_WORKERS, n) if _FINVIZ_PARALLEL_WORKERS >= 2 else 0
+
+    def _fetch_idx(i: int, filters: list[str]) -> tuple[int, pd.DataFrame]:
+        if parallel > 1:
+            time.sleep(i * (_FINVIZ_DELAY_SEC / max(n, 1)))
+        elif i > 0:
             time.sleep(_FINVIZ_DELAY_SEC)
         ck = f"{cache_key}_{i}_{table}" if cache_key else None
         df = _fetch_screener(filters=filters, table=table, cache_key=ck, order=order, ttl=ttl)
+        return i, df
+
+    ordered_dfs: list[pd.DataFrame]
+    if parallel > 1:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        by_idx: dict[int, pd.DataFrame] = {}
+        with ThreadPoolExecutor(max_workers=parallel) as ex:
+            futs = [ex.submit(_fetch_idx, i, f) for i, f in enumerate(filter_sets)]
+            for fut in as_completed(futs):
+                i, df = fut.result()
+                by_idx[i] = df
+        ordered_dfs = [by_idx[i] for i in range(n)]
+    else:
+        ordered_dfs = []
+        for i, filters in enumerate(filter_sets):
+            _, df = _fetch_idx(i, filters)
+            ordered_dfs.append(df)
+
+    dfs_rows = []
+    seen = set()
+    for df in ordered_dfs:
         if df.empty:
             continue
         ticker_col = "Ticker" if "Ticker" in df.columns else "ticker"
@@ -154,10 +189,10 @@ def _fetch_screener_multi(filter_sets: list[list[str]], table: str,
             t = str(row.get(ticker_col, "")).strip().upper()
             if t and t not in seen:
                 seen.add(t)
-                dfs.append(row)
-    if not dfs:
+                dfs_rows.append(row)
+    if not dfs_rows:
         return pd.DataFrame()
-    return pd.DataFrame(dfs)
+    return pd.DataFrame(dfs_rows)
 
 
 def _get_csv_val(row, *candidates: str):

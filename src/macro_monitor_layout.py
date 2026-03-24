@@ -13,9 +13,6 @@ from src.macro_fred_series import KPI_ORDER
 # Sparks must not use responsive Plotly — otherwise the first card (Fed funds) can expand vertically.
 SPARK_GRAPH_CONFIG = {**GRAPH_CONFIG, "displayModeBar": False, "responsive": False}
 
-# History panel chart: responsive so it fills the panel width (figure layout has no fixed width).
-HISTORY_GRAPH_CONFIG = {**GRAPH_CONFIG, "responsive": True}
-
 # Hex for HTML + Plotly (terminal-style red/green/amber on dark)
 _TERM_HEX = {
     "hawkish": "#f87171",
@@ -60,81 +57,21 @@ def _spark_fig(dates: list, vals: list, color: str) -> go.Figure | None:
 
 
 def build_macro_monitor_tab() -> html.Div:
-    """Full Macro Monitor tab: interval, stores, shell (content + inline history panel)."""
+    """Full Macro Monitor tab: interval + shell (KPI sparklines only; no full-width history chart)."""
     return html.Div(
         [
             dcc.Interval(id="interval-macro", interval=1_800_000, n_intervals=0),  # 30 min
-            dcc.Store(id="macro-selected-metric", data=None),
             build_macro_monitor_shell(),
         ],
         id="macro-monitor-tab-wrapper",
     )
 
 
-def _build_macro_history_panel() -> html.Div:
-    """KPI history block (sits inside #macro-monitor-root so it matches terminal frame alignment)."""
-    return html.Div(
-        [
-            html.Div(
-                [
-                    html.Div(id="macro-history-title", children="History", className="macro-history-title"),
-                    html.Button(
-                        "Close",
-                        id="macro-history-close",
-                        n_clicks=0,
-                        type="button",
-                        className="macro-history-close",
-                    ),
-                ],
-                className="macro-history-panel-header",
-            ),
-            html.Div(
-                [
-                    html.Label("Lookback: ", style={"fontSize": "10px", "marginRight": "6px"}),
-                    dcc.Dropdown(
-                        id="macro-lookback",
-                        options=[
-                            {"label": "5 years", "value": 5},
-                            {"label": "10 years", "value": 10},
-                            {"label": "20 years", "value": 22},
-                        ],
-                        value=10,
-                        clearable=False,
-                        style={"width": "140px", "fontSize": "11px"},
-                    ),
-                ],
-                className="macro-history-lookback-row",
-            ),
-            html.Div(
-                dcc.Graph(
-                    id="macro-history-graph",
-                    config=HISTORY_GRAPH_CONFIG,
-                    style={
-                        "height": "400px",
-                        "width": "100%",
-                        "maxHeight": "400px",
-                        "minHeight": "280px",
-                    },
-                    className="macro-history-graph-inner",
-                ),
-                className="macro-history-graph-wrap",
-            ),
-            html.Div(
-                "Source: FRED (St. Louis Fed).",
-                className="macro-history-source",
-            ),
-        ],
-        id="macro-history-panel",
-        className="macro-history-panel",
-    )
-
-
 def build_macro_monitor_shell() -> html.Div:
-    """Outer shell; body filled by callback. History panel shares #macro-monitor-root padding with main frame."""
+    """Outer shell; body filled by callback."""
     return html.Div(
         [
             html.Div(id="macro-monitor-content", className="macro-monitor-shell", children=_loading_placeholder()),
-            _build_macro_history_panel(),
         ],
         id="macro-monitor-root",
         className="macro-monitor-root",
@@ -243,10 +180,7 @@ def build_macro_monitor_content(bundle: dict[str, Any]) -> html.Div:
         kpi_cards.append(
             html.Div(
                 inner,
-                id={"type": "macro-kpi", "index": mid},
-                n_clicks=0,
                 className="macro-kpi-card",
-                title="Click for history",
             )
         )
 
@@ -413,58 +347,5 @@ def _donut_fig(labels: list[str], values: list[float], colors: list[str], headin
         legend=dict(orientation="v", font=dict(size=9, color="hsl(220, 10%, 55%)")),
         font=dict(family="JetBrains Mono, monospace", size=9, color="hsl(142, 65%, 72%)"),
         height=240,
-    )
-    return fig
-
-
-def build_macro_history_figure(chart: dict[str, Any]) -> go.Figure:
-    """Line chart from get_series_for_chart."""
-    title = chart.get("title") or "Series"
-    dates = chart.get("dates") or []
-    vals = chart.get("values") or []
-    y_label = chart.get("y_label") or ""
-
-    xd, yd = [], []
-    for d, v in zip(dates, vals):
-        if v is None or (isinstance(v, float) and v != v):
-            continue
-        xd.append(d)
-        yd.append(v)
-
-    _tbg = "hsl(220, 20%, 5%)"
-    _tline = "hsl(142, 65%, 55%)"
-    _tm = "hsl(220, 10%, 50%)"
-    _tf = "hsl(220, 10%, 42%)"
-    fig = go.Figure(
-        data=[
-            go.Scatter(
-                x=xd,
-                y=yd,
-                mode="lines",
-                line=dict(color=_tline, width=1.5),
-                name="",
-            )
-        ]
-    )
-    fig.update_layout(
-        title=dict(text=title, font=dict(size=12, color="hsl(142, 70%, 70%)")),
-        paper_bgcolor=_tbg,
-        plot_bgcolor=_tbg,
-        margin=dict(l=48, r=16, t=48, b=48),
-        xaxis=dict(
-            title=dict(text="Date", font=dict(size=10, color=_tm)),
-            tickfont=dict(size=9, color=_tf),
-            gridcolor="rgba(74, 222, 128, 0.08)",
-            zerolinecolor="rgba(74, 222, 128, 0.12)",
-        ),
-        yaxis=dict(
-            title=dict(text=y_label, font=dict(size=10, color=_tm)),
-            tickfont=dict(size=9, color=_tf),
-            gridcolor="rgba(74, 222, 128, 0.08)",
-            zerolinecolor="rgba(74, 222, 128, 0.12)",
-        ),
-        font=dict(family="JetBrains Mono, monospace", size=10, color="hsl(142, 70%, 70%)"),
-        height=400,
-        autosize=True,
     )
     return fig

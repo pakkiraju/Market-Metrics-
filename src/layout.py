@@ -2986,7 +2986,7 @@ def build_layout() -> html.Div:
         dcc.Interval(id="interval-refresh", interval=3600_000, n_intervals=0),
         dcc.Interval(id="interval-live-snapshot", interval=300_000, n_intervals=0),
         dcc.Interval(id="market-hours-check", interval=60_000, n_intervals=0),
-        dcc.Interval(id="interval-header-clock", interval=1000, n_intervals=0),
+        dcc.Interval(id="interval-header-clock", interval=60_000, n_intervals=0),
         dcc.Interval(id="interval-chart-resize", interval=500, n_intervals=0, max_intervals=1),
         dcc.Store(id="watchlist-store", data=_initial_watchlist()),
         dcc.Store(id="chart-resize-trigger"),
@@ -3244,7 +3244,7 @@ def build_layout() -> html.Div:
                                     extra_header=html.Span([
                                         _finviz_link("FinViz", "thematics", {"marginLeft": "8px"}),
                                     ])),
-                        ], style=SNAPSHOT_MOVERS_ROW_STYLE),
+                        ], id="row-intraday-snapshot", style=SNAPSHOT_MOVERS_ROW_STYLE),
                         html.Div([
                             _widget("in_play", "Stocks In Play",
                                     _sortable_table_wrap("in_play"),
@@ -3260,7 +3260,7 @@ def build_layout() -> html.Div:
                                     extra_header=html.Span([
                                         _finviz_link("FinViz", "earnings_yesterday_today", {"marginLeft": "8px"}),
                                     ])),
-                        ], style=HALF_ROW_STYLE),
+                        ], id="row-intraday-earnings", style=HALF_ROW_STYLE),
                         html.Div([
                             _widget("pre_market", "Pre-market Scanner",
                                     _sortable_table_wrap("pre_market", default_sort_col="Gap", default_sort_asc=False),

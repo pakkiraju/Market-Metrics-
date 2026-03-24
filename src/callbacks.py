@@ -241,8 +241,31 @@ def register_callbacks(app):
     def update_header_datetime(n):
         now = datetime.now(ZoneInfo("America/New_York"))
         date_str = now.strftime("%A, %B %d, %Y")
-        time_str = now.strftime("%I:%M:%S %p")
+        time_str = now.strftime("%I:%M %p")
         return f"{date_str} · {time_str}"
+
+    # ------------------------------------------------------------------
+    # 0b1. Pause tab-specific intervals when their tab is hidden (fewer round-trips).
+    # ------------------------------------------------------------------
+    app.clientside_callback(
+        """
+        function(tab) {
+            var t = tab || "market-metrics";
+            return [
+                t !== "should-i-trade",
+                t !== "macro-monitor",
+                t !== "intraday",
+            ];
+        }
+        """,
+        [
+            Output("sit-interval", "disabled"),
+            Output("interval-macro", "disabled"),
+            Output("interval-live-snapshot", "disabled"),
+        ],
+        Input("main-tabs", "data"),
+        prevent_initial_call=False,
+    )
 
     # ------------------------------------------------------------------
     # 0b2. Should I Trade? — aggregate data, score, build content (45s refresh)
@@ -257,10 +280,13 @@ def register_callbacks(app):
             Input("sit-interval", "n_intervals"),
             Input("btn-refresh-should-i-trade", "n_clicks"),
             Input("sit-mode-toggle", "value"),
+            Input("main-tabs", "data"),
         ],
         prevent_initial_call=False,
     )
-    def refresh_should_i_trade(n_interval, n_refresh, mode):
+    def refresh_should_i_trade(n_interval, n_refresh, mode, active_tab):
+        if active_tab != "should-i-trade":
+            raise PreventUpdate
         if ctx.triggered_id == "btn-refresh-should-i-trade":
             _invalidate_widget_cache("should-i-trade")
         try:
@@ -300,7 +326,10 @@ def register_callbacks(app):
         """
         function(tabValue, nResize, settingsDisplay) {
             function doResize() {
-                var graphs = document.querySelectorAll('.js-plotly-plot');
+                var tab = tabValue || "market-metrics";
+                var pane = document.getElementById("tab-pane-" + tab);
+                if (!pane) return;
+                var graphs = pane.querySelectorAll(".js-plotly-plot");
                 if (window.Plotly && window.Plotly.Plots) {
                     for (var i = 0; i < graphs.length; i++) {
                         try {
@@ -308,11 +337,10 @@ def register_callbacks(app):
                         } catch (e) {}
                     }
                 }
-                window.dispatchEvent(new Event('resize'));
+                window.dispatchEvent(new Event("resize"));
             }
-            setTimeout(doResize, 400);
-            setTimeout(doResize, 900);
-            setTimeout(doResize, 1500);
+            setTimeout(doResize, 50);
+            setTimeout(doResize, 200);
             return Date.now();
         }
         """,
@@ -325,35 +353,46 @@ def register_callbacks(app):
     )
 
     # ------------------------------------------------------------------
-    # 0d. Tab switch — server callback (Dash 4 clientside inline hash can fail to register →
-    #     undefined.apply in dash_renderer). Keeps main-tabs in sync for other callbacks.
+    # 0d. Tab switch — clientside (instant UX; no server round-trip per click)
     # ------------------------------------------------------------------
-    _TAB_PANE_HIDE = {"display": "none"}
-    _TAB_PANE_SHOW = {
-        "display": "flex",
-        "flexDirection": "column",
-        "flex": "1",
-        "minHeight": "0",
-        "minWidth": "0",
-        "overflow": "auto",
-        "backgroundColor": COLORS["bg"],
-    }
-    _TAB_ORDER = (
-        "should-i-trade",
-        "macro-monitor",
-        "market-metrics",
-        "super-scanners",
-        "intraday",
-    )
-    _NAV_TO_TAB = {
-        "nav-tab-should-i-trade": "should-i-trade",
-        "nav-tab-macro-monitor": "macro-monitor",
-        "nav-tab-market-metrics": "market-metrics",
-        "nav-tab-super-scanners": "super-scanners",
-        "nav-tab-intraday": "intraday",
-    }
-
-    @app.callback(
+    _TAB_BG = COLORS["bg"]
+    app.clientside_callback(
+        f"""
+        function(n1, n2, n3, n4, n5) {{
+            var nu = window.dash_clientside.no_update;
+            var ctx = window.dash_clientside.callback_context;
+            if (!ctx || !ctx.triggered || !ctx.triggered.length) {{
+                return Array(11).fill(nu);
+            }}
+            var tid = ctx.triggered[0].prop_id.split(".")[0];
+            if (tid.indexOf("nav-tab-") !== 0) {{
+                return Array(11).fill(nu);
+            }}
+            var tab = tid.replace("nav-tab-", "");
+            var TAB_ORDER = ["should-i-trade", "macro-monitor", "market-metrics", "super-scanners", "intraday"];
+            if (TAB_ORDER.indexOf(tab) === -1) {{
+                return Array(11).fill(nu);
+            }}
+            var BG = "{_TAB_BG}";
+            var SHOW = {{
+                display: "flex",
+                flexDirection: "column",
+                flex: "1",
+                minHeight: "0",
+                minWidth: "0",
+                overflow: "auto",
+                backgroundColor: BG,
+            }};
+            var HIDE = {{ display: "none" }};
+            var paneStyles = TAB_ORDER.map(function(t) {{
+                return t === tab ? Object.assign({{}}, SHOW) : Object.assign({{}}, HIDE);
+            }});
+            var navClasses = TAB_ORDER.map(function(t) {{
+                return t === tab ? "nav-tab-btn nav-tab-active" : "nav-tab-btn";
+            }});
+            return [tab].concat(paneStyles).concat(navClasses);
+        }}
+        """,
         [
             Output("main-tabs", "data"),
             Output("tab-pane-should-i-trade", "style"),
@@ -376,16 +415,6 @@ def register_callbacks(app):
         ],
         prevent_initial_call=True,
     )
-    def switch_main_tab(_n1, _n2, _n3, _n4, _n5):
-        tid = ctx.triggered_id
-        if tid not in _NAV_TO_TAB:
-            return [no_update] * 11
-        tab = _NAV_TO_TAB[tid]
-        pane_styles = [{**_TAB_PANE_SHOW} if tab == t else {**_TAB_PANE_HIDE} for t in _TAB_ORDER]
-        nav_classes = [
-            "nav-tab-btn nav-tab-active" if tab == t else "nav-tab-btn" for t in _TAB_ORDER
-        ]
-        return [tab, *pane_styles, *nav_classes]
 
     @app.callback(
         Output("nav-sidebar", "className"),
@@ -648,92 +677,67 @@ def register_callbacks(app):
     #  Each group loads independently; widgets appear as soon as ready.
     # ==================================================================
 
-    # Key Metrics widgets: split callbacks so each widget loads independently.
+    # Key Metrics + bar charts: single callback so compute_all_key_metrics() runs once per refresh.
     @app.callback(
         [
             Output("key-metrics-content", "children"),
+            Output("chart2-content", "children"),
+            Output("chart3-content", "children"),
             Output("last-update", "children"),
         ],
         [
             Input("interval-refresh", "n_intervals"),
             Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-key-metrics", "n_clicks"),
-            Input("main-tabs", "data"),
-        ],
-        prevent_initial_call=False,
-    )
-    def refresh_key_metrics(_n_intervals, _n_clicks, btn_km, main_tab):
-        if main_tab != "market-metrics":
-            raise PreventUpdate
-        if ctx.triggered_id == "btn-refresh-key-metrics" and btn_km:
-            _invalidate_widget_cache("key-metrics")
-        try:
-            metrics = compute_all_key_metrics()
-            return build_key_metrics_table(metrics), _now_str()
-        except Exception as e:
-            logger.exception("Key Metrics failed: %s", e)
-            return _err_div(e), f"Error at {_now_str()}"
-
-    @app.callback(
-        Output("chart2-content", "children"),
-        [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-chart2", "n_clicks"),
-            Input("main-tabs", "data"),
-        ],
-        prevent_initial_call=False,
-    )
-    def refresh_chart2(_n_intervals, _n_clicks, btn_c2, main_tab):
-        if main_tab != "market-metrics":
-            raise PreventUpdate
-        if ctx.triggered_id == "btn-refresh-chart2" and btn_c2:
-            _invalidate_widget_cache("chart2")
-        try:
-            metrics = compute_all_key_metrics()
-            chart2_fig = build_metrics_bar_chart([
-                (metrics.get("NQ100", []), "NQ100", "#991b1b", "#dc2626"),
-                (metrics.get("SPY500", []), "SPY500", "#166534", "#22c55e"),
-                (metrics.get("DJIA", []), "DJIA", "#1e3a5f", "#3b82f6"),
-            ])
-            return dcc.Graph(
-                figure=chart2_fig,
-                config=GRAPH_CONFIG,
-                style={"height": "100%", "width": "100%"},
-            )
-        except Exception as e:
-            logger.exception("Chart2 failed: %s", e)
-            return _err_div(e)
-
-    @app.callback(
-        Output("chart3-content", "children"),
-        [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
             Input("btn-refresh-chart3", "n_clicks"),
             Input("main-tabs", "data"),
         ],
         prevent_initial_call=False,
     )
-    def refresh_chart3(_n_intervals, _n_clicks, btn_c3, main_tab):
+    def refresh_key_metrics_and_charts(
+        _n_intervals, n_refresh, btn_km, btn_c2, btn_c3, main_tab
+    ):
         if main_tab != "market-metrics":
             raise PreventUpdate
-        if ctx.triggered_id == "btn-refresh-chart3" and btn_c3:
+        tid = ctx.triggered_id
+        if tid == "btn-refresh-key-metrics" and btn_km:
+            _invalidate_widget_cache("key-metrics")
+        elif tid == "btn-refresh-chart2" and btn_c2:
+            _invalidate_widget_cache("chart2")
+        elif tid == "btn-refresh-chart3" and btn_c3:
+            _invalidate_widget_cache("chart3")
+        elif tid == "btn-refresh" and n_refresh:
+            _invalidate_widget_cache("key-metrics")
+            _invalidate_widget_cache("chart2")
             _invalidate_widget_cache("chart3")
         try:
             metrics = compute_all_key_metrics()
+            table = build_key_metrics_table(metrics)
+            chart2_fig = build_metrics_bar_chart([
+                (metrics.get("NQ100", []), "NQ100", "#991b1b", "#dc2626"),
+                (metrics.get("SPY500", []), "SPY500", "#166534", "#22c55e"),
+                (metrics.get("DJIA", []), "DJIA", "#1e3a5f", "#3b82f6"),
+            ])
             chart3_fig = build_metrics_bar_chart([
                 (metrics.get("RUS2000", []), "RUS2000", "#7f1d1d", "#ef4444"),
                 (metrics.get("$1B+", []), "$1B+", "#14532d", "#4ade80"),
             ])
-            return dcc.Graph(
+            g2 = dcc.Graph(
+                figure=chart2_fig,
+                config=GRAPH_CONFIG,
+                style={"height": "100%", "width": "100%"},
+            )
+            g3 = dcc.Graph(
                 figure=chart3_fig,
                 config=GRAPH_CONFIG,
                 style={"height": "100%", "width": "100%"},
             )
+            return table, g2, g3, _now_str()
         except Exception as e:
-            logger.exception("Chart3 failed: %s", e)
-            return _err_div(e)
+            logger.exception("Key Metrics / charts failed: %s", e)
+            err = _err_div(e)
+            return err, err, err, f"Error at {_now_str()}"
 
     # Qullamaggie: enabled
     _disabled_msg = html.Div("Widget disabled", style={
@@ -1126,7 +1130,7 @@ def register_callbacks(app):
             return _err_div(e), []
 
     # ------------------------------------------------------------------
-    # Macro Monitor — FRED-backed panel + history modal
+    # Macro Monitor — FRED-backed KPI strip + donut (no full-width history chart)
     # ------------------------------------------------------------------
     @app.callback(
         Output("macro-monitor-content", "children"),
@@ -1153,97 +1157,6 @@ def register_callbacks(app):
         except Exception as e:
             logger.exception("Macro Monitor failed: %s", e)
             return html.Div(str(e), style={"color": COLORS["red"], "padding": "16px", "fontSize": "11px"})
-
-    @app.callback(
-        Output("macro-selected-metric", "data"),
-        Input({"type": "macro-kpi", "index": ALL}, "n_clicks"),
-        prevent_initial_call=True,
-    )
-    def macro_kpi_clicked(_clicks):
-        trig = ctx.triggered_id
-        if isinstance(trig, dict) and trig.get("type") == "macro-kpi":
-            return trig["index"]
-        return no_update
-
-    @app.callback(
-        Output("macro-selected-metric", "data", allow_duplicate=True),
-        Input("macro-history-close", "n_clicks"),
-        prevent_initial_call=True,
-    )
-    def macro_history_close(_n):
-        return None
-
-    @app.callback(
-        Output("macro-selected-metric", "data", allow_duplicate=True),
-        Input("main-tabs", "data"),
-        prevent_initial_call=True,
-    )
-    def clear_macro_metric_when_leaving_macro_tab(tab):
-        if tab != "macro-monitor":
-            return None
-        return no_update
-
-    @app.callback(
-        Output("macro-history-panel", "style"),
-        Input("macro-selected-metric", "data"),
-        prevent_initial_call=False,
-    )
-    def macro_history_panel_visibility(sel):
-        if sel is None:
-            return {"display": "none"}
-        return {
-            "display": "block",
-            "marginTop": "14px",
-        }
-
-    @app.callback(
-        [
-            Output("macro-history-graph", "figure"),
-            Output("macro-history-title", "children"),
-        ],
-        [
-            Input("macro-selected-metric", "data"),
-            Input("macro-lookback", "value"),
-        ],
-        prevent_initial_call=False,
-    )
-    def macro_history_chart(metric_id, lookback):
-        def _empty_fig(msg: str):
-            fig = go.Figure()
-            fig.update_layout(
-                paper_bgcolor=COLORS["surface"],
-                plot_bgcolor=COLORS["surface"],
-                margin=dict(l=40, r=20, t=40, b=40),
-                annotations=[
-                    dict(
-                        text=msg,
-                        xref="paper",
-                        yref="paper",
-                        x=0.5,
-                        y=0.5,
-                        showarrow=False,
-                        font=dict(size=12, color=COLORS["text_muted"]),
-                    )
-                ],
-                height=400,
-                autosize=True,
-            )
-            return fig
-
-        if not metric_id:
-            return _empty_fig("Select a KPI card to view history"), "History"
-        try:
-            from src.macro_data import get_series_for_chart
-            from src.macro_monitor_layout import build_macro_history_figure
-
-            yrs = int(lookback or 10)
-            chart = get_series_for_chart(metric_id, yrs)
-            if chart.get("error"):
-                return _empty_fig(str(chart.get("error", "No data"))), chart.get("title", metric_id)
-            return build_macro_history_figure(chart), chart.get("title", metric_id)
-        except Exception as e:
-            logger.exception("Macro history chart: %s", e)
-            return _empty_fig(str(e)), "Error"
 
     @app.callback(
         Output("cnbc_premarket-content", "children"),

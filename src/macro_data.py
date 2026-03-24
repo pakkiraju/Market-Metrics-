@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 MACRO_CACHE_KEY = "macro_fred_bundle"
 MACRO_TTL = 1800  # 30 minutes
+MACRO_SERIES_TTL = 86400  # 24 hours; refreshed incrementally
+# Parallel FRED fetches (was sequential ~20 HTTP round-trips = very slow first load)
+_MACRO_FETCH_WORKERS = 10
 
 _CBO_CACHE: dict[str, Any] | None = None
 
@@ -225,13 +229,63 @@ def _collect_series_ids() -> set[str]:
     return ids
 
 
+def _fetch_one_series_raw(sid: str) -> tuple[str, pd.DataFrame]:
+    """Single series for parallel fetch (I/O-bound HTTP to FRED)."""
+    obs = _fetch_series_obs_cached(sid, years_back=24)
+    return sid, _df(obs)
+
+
 def _fetch_all_raw() -> dict[str, pd.DataFrame]:
-    start = default_start_years(24)
-    raw: dict[str, pd.DataFrame] = {}
-    for sid in _collect_series_ids():
-        obs = fetch_observations(sid, observation_start=start, sort_order="asc")
-        raw[sid] = _df(obs)
-    return raw
+    sids = sorted(_collect_series_ids())
+    if not sids:
+        return {}
+    n_workers = min(_MACRO_FETCH_WORKERS, len(sids))
+    with ThreadPoolExecutor(max_workers=n_workers) as ex:
+        pairs = list(ex.map(_fetch_one_series_raw, sids))
+    return {sid: df for sid, df in pairs}
+
+
+def _series_cache_key(series_id: str) -> str:
+    return f"macro_series_{series_id}"
+
+
+def _merge_obs(existing: list[dict[str, Any]], incoming: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Merge observations by date, preserving latest value for duplicates."""
+    merged: dict[str, dict[str, Any]] = {}
+    for row in existing or []:
+        d = str(row.get("date", ""))
+        if not d:
+            continue
+        merged[d] = {"date": d, "value": row.get("value")}
+    for row in incoming or []:
+        d = str(row.get("date", ""))
+        if not d:
+            continue
+        merged[d] = {"date": d, "value": row.get("value")}
+    return [merged[d] for d in sorted(merged.keys())]
+
+
+def _fetch_series_obs_cached(series_id: str, *, years_back: int = 24) -> list[dict[str, Any]]:
+    """
+    Return observations for a FRED series from local cache when possible.
+    Performs incremental update from the latest cached date only.
+    """
+    key = _series_cache_key(series_id)
+    cached = cache.get(key)
+    if isinstance(cached, list) and cached:
+        last_date = str(cached[-1].get("date", ""))[:10]
+        if last_date:
+            inc = fetch_observations(series_id, observation_start=last_date, sort_order="asc")
+            if inc:
+                merged = _merge_obs(cached, inc)
+                cache.put(key, merged, ttl=MACRO_SERIES_TTL)
+                return merged
+        return cached
+
+    start = default_start_years(years_back)
+    full = fetch_observations(series_id, observation_start=start, sort_order="asc")
+    cache.put(key, full or [], ttl=MACRO_SERIES_TTL)
+    return full
 
 
 def _fmt_fiscal_value(v: float, usd_unit: str) -> str:
@@ -326,76 +380,25 @@ def fetch_macro_bundle(ttl: int = MACRO_TTL, force: bool = False) -> dict[str, A
         return err
 
 
-def get_series_for_chart(metric_id: str, lookback_years: int) -> dict[str, Any]:
-    """Build dates + y values for modal chart (levels or YoY % as appropriate)."""
-    if metric_id not in METRICS:
-        return {"error": "unknown metric", "title": "", "dates": [], "values": [], "y_label": ""}
-    cfg = METRICS[metric_id]
-    transform = cfg["transform"]
-    start = default_start_years(lookback_years)
-
-    if transform == "range_pair":
-        sid = "DFF"
-        title = cfg["label"] + " — effective rate"
-        y_label = "%"
-    else:
-        sid = cfg["fred_ids"][0]
-        title = cfg["label"]
-        y_label = ""
-
-    obs = fetch_observations(sid, observation_start=start, sort_order="asc")
-    d = _df(obs)
-    if d.empty:
-        return {"error": "no data", "title": title, "dates": [], "values": [], "y_label": y_label}
-
-    if transform == "yoy_pct_index":
-        dates, vals = [], []
-        for i in range(12, len(d)):
-            a, b = float(d["value"].iloc[i]), float(d["value"].iloc[i - 12])
-            if b and b != 0:
-                dates.append(d["date"].iloc[i])
-                vals.append((a / b - 1) * 100)
-        return {
-            "error": None,
-            "title": title + " (YoY %)",
-            "dates": [str(x.date()) for x in dates],
-            "values": vals,
-            "y_label": "% YoY",
-            "fred_id": sid,
-        }
-
-    if transform == "diff_1m_thousands":
-        dates = [str(d["date"].iloc[i].date()) for i in range(1, len(d))]
-        vals = [float(d["value"].iloc[i] - d["value"].iloc[i - 1]) for i in range(1, len(d))]
-        return {
-            "error": None,
-            "title": title + " (monthly change, thousands)",
-            "dates": dates,
-            "values": vals,
-            "y_label": "K jobs",
-            "fred_id": sid,
-        }
-
-    dates = [str(x.date()) for x in d["date"]]
-    vals = [float(x) for x in d["value"]]
-    if transform == "pct_level":
-        y_label = "%"
-    elif transform == "level" and metric_id == "deficit":
-        y_label = "Millions USD"
-    elif transform == "price_index":
-        y_label = "Index"
-    else:
-        y_label = y_label or "Value"
-
-    return {
-        "error": None,
-        "title": title,
-        "dates": dates,
-        "values": vals,
-        "y_label": y_label,
-        "fred_id": sid,
-    }
-
-
 def invalidate_macro_cache():
     cache.invalidate(MACRO_CACHE_KEY)
+    for sid in _collect_series_ids():
+        cache.invalidate(_series_cache_key(sid))
+
+
+def warm_macro_series_cache() -> None:
+    """
+    Preload raw FRED series cache so KPI sparklines and bundle build stay fast.
+    Safe to call in a background thread at app startup.
+    """
+    if not get_api_key():
+        return
+    try:
+        sids = sorted(_collect_series_ids())
+        if not sids:
+            return
+        n_workers = min(_MACRO_FETCH_WORKERS, len(sids))
+        with ThreadPoolExecutor(max_workers=n_workers) as ex:
+            list(ex.map(_fetch_one_series_raw, sids))
+    except Exception as e:
+        logger.debug("Macro series warm-up failed: %s", e)

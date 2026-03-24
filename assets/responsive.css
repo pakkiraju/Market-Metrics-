@@ -1,0 +1,81 @@
+/*
+ * Breakpoint overrides for dashboard grids (inline styles use !important).
+ * Primary goal: single-column stacks on narrow viewports without horizontal scroll.
+ */
+
+html {
+  overflow-x: hidden;
+}
+
+@media (max-width: 1280px) {
+  #row-primary {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@media (max-width: 1100px) {
+  #row-breadth-charts,
+  #row-super-middle4,
+  #row-jeff-sun,
+  #row-jeff-sun-movers,
+  #row-jeff-sun-weekly {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 900px) {
+  #row-stockbee,
+  #row-bottom,
+  #row-sector,
+  #row-thematics {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 768px) {
+  #row-primary {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  #row-breadth-charts,
+  #row-super-middle4,
+  #row-jeff-sun,
+  #row-jeff-sun-movers,
+  #row-jeff-sun-weekly {
+    grid-template-columns: 1fr !important;
+  }
+
+  #row-super-screeners {
+    grid-template-columns: 1fr !important;
+  }
+
+  #row-intraday-snapshot,
+  #row-intraday-earnings {
+    grid-template-columns: 1fr !important;
+  }
+
+  #app-layout-row {
+    min-width: 0;
+  }
+
+  #nav-sidebar {
+    width: 140px !important;
+    min-width: 0 !important;
+  }
+
+  #nav-sidebar.nav-sidebar-collapsed {
+    width: 40px !important;
+    min-width: 40px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  #nav-sidebar:not(.nav-sidebar-collapsed) {
+    width: 120px !important;
+  }
+
+  .nav-tab-btn {
+    font-size: 9px !important;
+    padding: 6px 6px !important;
+  }
+}
