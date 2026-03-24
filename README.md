@@ -101,11 +101,11 @@ Separate blended score for “can I execute?” Uses **breakout health**: weight
 | Brent | `DCOILBRENTEU` | Latest **$/bbl** level. |
 | S&P 500 | `SP500` | Latest **index level**; trend vs ~21 sessions ago. |
 | Michigan sentiment | `UMCSENT` | Latest **index** (%). |
-| Deficit | `FYFSDF` | **FY** surplus/deficit; millions USD; negative = deficit in FRED convention; display scales to trillions. |
+| Deficit | `FYFSD` | **FY** surplus/deficit; millions USD; negative = deficit in FRED convention; display scales to trillions. |
 
 ### Fiscal block
 
-Rows use: `GFDEBTN`, `FYFSDF`, `GFDEGDQ188S`, `FGRECPT`, `FGEXPND`, `FYOINT` with documented USD units (millions vs billions) per series.
+Rows use: `GFDEBTN`, `FYFSD`, `GFDEGDQ188S`, `FGRECPT`, `FGEXPND`, `FYOINT` with documented USD units (millions vs billions) per series.
 
 ### Signal donut & narrative
 

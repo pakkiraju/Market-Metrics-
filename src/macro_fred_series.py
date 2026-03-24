@@ -116,7 +116,7 @@ METRICS: dict[str, dict[str, Any]] = {
     "deficit": {
         "label": "Deficit",
         "short": "Deficit",
-        "fred_ids": ("FYFSDF",),
+        "fred_ids": ("FYFSD",),
         "transform": "level",
         "freq": "a",
         "source": "Treasury via FRED",
@@ -124,10 +124,10 @@ METRICS: dict[str, dict[str, Any]] = {
     },
 }
 
-# usd_unit: FRED units for dollar series — "millions" (GFDEBTN, FYFSDF), "billions" (FGRECPT, FGEXPND)
+# usd_unit: FRED units for dollar series — "millions" (GFDEBTN, FYFSD), "billions" (FGRECPT, FGEXPND)
 FISCAL_ROWS: list[dict[str, Any]] = [
     {"id": "total_debt", "label": "Total federal debt", "fred_id": "GFDEBTN", "usd_unit": "millions"},
-    {"id": "deficit_fy", "label": "Surplus/deficit (FY)", "fred_id": "FYFSDF", "usd_unit": "millions"},
+    {"id": "deficit_fy", "label": "Surplus/deficit (FY)", "fred_id": "FYFSD", "usd_unit": "millions"},
     {"id": "debt_gdp", "label": "Gross debt / GDP", "fred_id": "GFDEGDQ188S", "usd_unit": "percent"},
     {"id": "receipts", "label": "Federal receipts", "fred_id": "FGRECPT", "usd_unit": "billions"},
     {"id": "outlays", "label": "Federal expenditures", "fred_id": "FGEXPND", "usd_unit": "billions"},

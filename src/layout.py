@@ -1258,12 +1258,56 @@ def build_jeff_sun_ipo_thisweek_table(data: list[dict], widget_id: str = None, s
 
 
 def build_jeff_sun_high_short_float_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
-    """Jeff Sun High Short Float: small+ cap, float <100M, short >30%. Cached weekly."""
+    """Jeff Sun High Short Float: Ticker, Short float %, then standard screener columns."""
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    return _build_screener_table(data, widget_id or "jeff_sun_high_short_float", sort_col, sort_asc)
+    from src.sortable_table import sort_data, SCREENER_SORT_KEYS
+
+    wid = widget_id or "jeff_sun_high_short_float"
+    if wid and sort_col and sort_col in SCREENER_SORT_KEYS:
+        data = sort_data(data, sort_col, sort_asc, SCREENER_SORT_KEYS)
+    headers = [
+        ("Ticker", "ticker"),
+        ("Sh float %", "short_float_pct"),
+        ("Price", "price"),
+        ("Avg Vol", "avg_vol"),
+        ("Rel Vol", "rel_vol"),
+        ("Change", "change"),
+        ("Vol", "volume"),
+        ("ATR %", "atr_pct"),
+    ]
+    rows = []
+    for r in data:
+        chg_val = r.get("change")
+        try:
+            chg_num = float(str(chg_val).replace("%", "")) if chg_val not in (None, "") else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        atr_pct = r.get("atr_pct")
+        atr_str = f"{atr_pct:.2f}%" if atr_pct is not None else ""
+        rows.append([
+            {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
+             "style": TABLE_CELL_STYLE},
+            str(r.get("short_float_pct", "") or "—"),
+            str(r.get("price", "")),
+            avg_str,
+            str(r.get("rel_vol", "")),
+            {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
+             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
+            atr_str,
+        ])
+    return _table(
+        headers,
+        rows,
+        col_widths=["62px", "52px", "50px", "60px", "48px", "48px", "58px", "48px"],
+        widget_id=wid,
+        sort_col=sort_col,
+        sort_asc=sort_asc,
+    )
 
 
 def build_jeff_sun_liquid_etfs_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:

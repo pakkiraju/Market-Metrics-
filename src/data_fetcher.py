@@ -439,6 +439,12 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
         avg_vol_col = _find_csv_col(keys, "average", "vol") or _find_csv_col(keys, "avg", "vol")
         rel_vol_col = _find_csv_col(keys, "relative", "vol") or _find_csv_col(keys, "rel", "vol")
         atr_col = _find_csv_col(keys, exact="ATR") or _find_csv_col(keys, "atr") or _find_csv_col(keys, "average", "true", "range")
+        mcap_col = _find_csv_col(keys, "market", "cap") or _find_csv_col(keys, "marketcap")
+        short_float_col = (
+            _find_csv_col(keys, "short", "float")
+            or _find_csv_col(keys, exact="Short Float")
+            or _find_csv_col(keys, "short", "interest")
+        )
         # Prefer News Title/Headline (actual news text). "News" alone is often a count (1,2,3). Exclude "No." (row number).
         _exclude_news = frozenset({"no", "no.", "#", "rank"})
         news_col = _find_csv_col(keys, "news", "title") or _find_csv_col(keys, "headline")
@@ -494,6 +500,16 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
                 "rel_vol": rel_vol,
                 "atr_pct": atr_pct,
             }
+            if mcap_col:
+                mc_raw = _val(row, mcap_col, "Market Cap", "market_cap")
+                if mc_raw not in (None, "", "-"):
+                    row_dict["mkt_cap"] = str(mc_raw).strip()
+            if short_float_col:
+                sf_raw = _val(row, short_float_col, "Short Float", "Short Interest")
+                if sf_raw not in (None, "", "-"):
+                    sfs = str(sf_raw).strip().rstrip("%").strip()
+                    if sfs:
+                        row_dict["short_float_pct"] = f"{sfs}%"
             if earnings_date_col:
                 ed = _val(row, earnings_date_col, "Earnings Date")
                 coerced = _coerce_earnings_date_str(ed)

@@ -316,8 +316,8 @@ FINVIZ_EXPORT_URLS = {
     "jeff_sun_26w100": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_26w100o,ta_volatility_mo5&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
     # Jeff Sun IPO: cap_midover, fa_epsyoy1_pos, geo_usa, ipodate_prevyear, sh_avgvol_o1000
     "jeff_sun_ipo_thisweek": "https://elite.finviz.com/export.ashx?v=141&f=cap_midover,fa_epsyoy1_pos,geo_usa,ipodate_prevyear,sh_avgvol_o1000&ft=4&o=industry&c=1,47,61,62,63,64,65",
-    # Jeff Sun High Short Float: Ownership view v=131 for Short Float column
-    "jeff_sun_high_short_float": "https://elite.finviz.com/export.ashx?v=131&f=cap_smallover,ind_stocksonly,sh_avgvol_o1000,sh_float_u100,sh_short_o30&ft=4&c=1,47,61,62,63,64,65",
+    # Jeff Sun High Short Float: v=131 + Short Float (32) with standard perf/vol columns
+    "jeff_sun_high_short_float": "https://elite.finviz.com/export.ashx?v=131&f=cap_smallover,ind_stocksonly,sh_avgvol_o1000,sh_float_u100,sh_short_o30&ft=4&c=1,32,47,61,62,63,64,65",
     # Jeff Sun Liquid ETFs: Overview v=111 + performance columns
     "jeff_sun_liquid_etfs": "https://elite.finviz.com/export.ashx?v=111&f=ind_exchangetradedfund,sh_avgvol_o1000,ta_volatility_wo3&ft=4&o=-volume&c=1,47,61,62,63,64,65",
     # Julian Komar: v=141 export (same filters as screener, no chart params)

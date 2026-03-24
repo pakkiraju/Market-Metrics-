@@ -178,7 +178,7 @@ def compute_kpi(metric_id: str, raw: dict[str, pd.DataFrame]) -> dict[str, Any]:
             return out
         v = float(d["value"].iloc[-1])
         if metric_id == "deficit":
-            # FYFSDF (millions USD): negative = deficit in published FRED convention
+            # FYFSD (millions USD): negative = deficit in published FRED convention
             mag = abs(v) / 1e6
             if v < 0:
                 out["display"] = f"${mag:.2f}T deficit"
@@ -311,7 +311,7 @@ def _fiscal_block(raw: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
             rows_out.append({**row, "display": "—", "date": ""})
             continue
         v = float(d["value"].iloc[-1])
-        if sid == "FYFSDF":
+        if sid == "FYFSD":
             mag = abs(v) / 1e6
             disp = f"${mag:.2f}T deficit" if v < 0 else f"${mag:.2f}T surplus"
         else:
