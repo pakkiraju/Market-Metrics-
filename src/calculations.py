@@ -16,7 +16,7 @@ from src.data_fetcher import (
     fetch_4pct_daily_from_url,
     fetch_earnings_yesterday_today,
     fetch_pre_market_scanner,
-    fetch_screener_from_url,
+    fetch_stocks_in_play_from_usa_v152,
     fetch_benchmark_performance,
     fetch_thematics_data,
     fetch_usa_thematics_universe_indicators,
@@ -634,18 +634,17 @@ def compute_20pct_weekly(tickers: list[str]) -> list[dict]:
 # -----------------------------------------------------------------------
 
 def compute_earnings_yesterday_today(tickers: list[str]) -> list[dict]:
-    """Earnings yesterday or today from FinViz. USA, avg vol 1K+, price $1+. Merges Performance view for avg_vol/rel_vol."""
+    """Earnings yesterday or today (ET) from USA v152 (same cache as Key Metrics)."""
     return fetch_earnings_yesterday_today(ttl=MEDIUM)
 
 
 def compute_stocks_in_play(tickers: list[str]) -> list[dict]:
-    """Stocks In Play: news yesterday|today, avg vol 1K+, price $1+, rel vol 2+. Sorted by change desc.
-    Uses v=141 with c=1,137,47,61,62,63,64,65 for Ticker,News/Link,ATR,AvgVol,RelVol,Price,Change,Volume."""
-    return fetch_screener_from_url("stocks_in_play", "stocks_in_play", ttl=MEDIUM)
+    """Stocks In Play from USA v152: price > $1, liq ≥ 1K sh, rel vol ≥ 2; ranked by |day change|."""
+    return fetch_stocks_in_play_from_usa_v152(ttl=MEDIUM)
 
 
 def compute_pre_market_scanner(tickers: list[str]) -> list[dict]:
-    """Pre-market Scanner: USA, avg vol 1K+, price $1+, rel vol 1+, up 3%. Returns all columns from export."""
+    """Pre-market Scanner from USA v152: gap vs prior close ±3%, rel vol ≥ 1, same liquidity floor."""
     return fetch_pre_market_scanner(ttl=MEDIUM)
 
 

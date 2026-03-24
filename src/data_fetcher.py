@@ -8,7 +8,9 @@ import logging
 import os
 import re
 import time
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -289,6 +291,8 @@ def _pick_earnings_date_column(keys: list[str], sample_rows: list[dict]) -> str 
             candidates.append(k)
         elif "next" in lk and "earnings" in lk and "date" in lk:
             candidates.append(k)
+        elif lk == "earnings" or lk.startswith("earnings "):
+            candidates.append(k)
     best_k, best_score = None, 0
     for k in candidates:
         score = sum(1 for row in sample_rows[:40] if _coerce_earnings_date_str(row.get(k)))
@@ -312,6 +316,62 @@ def _pick_earnings_date_column(keys: list[str], sample_rows: list[dict]) -> str 
             return k
     if len(candidates) == 1:
         return candidates[0]
+    return None
+
+
+def _parse_display_date_to_date(val) -> date | None:
+    """Parse coerced earnings display string (e.g. Feb 24, 2025) to a calendar date."""
+    s = str(val).strip() if val is not None else ""
+    if not s:
+        return None
+    # ISO or m/d with time suffix
+    if " " in s and re.match(r"\d{4}-\d{2}-\d{2}", s):
+        s = s.split()[0]
+    if " " in s and re.match(r"\d{1,2}/\d{1,2}/\d{4}", s):
+        s = s.split()[0]
+    for fmt in ("%b %d, %Y", "%b %d %Y", "%m/%d/%Y", "%Y-%m-%d", "%b %d, %y", "%m/%d/%y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _strip_earnings_time_suffix(s: str) -> str:
+    """Remove BMO/AMC and similar so the leading token is parseable as a date."""
+    s = str(s).strip()
+    if not s:
+        return s
+    s = re.split(r"(?:\s+|\s*[/-]\s*)(?:BMO|AMC|A\.?H\.?|before\s+market|after\s+hours)\b", s, maxsplit=1, flags=re.I)[0].strip()
+    return s
+
+
+def _earnings_cell_to_calendar_date(
+    ed_coerced: str,
+    today_et: date,
+    yesterday_et: date,
+) -> date | None:
+    """Turn FinViz earnings cell text into a calendar date (ET). Handles year-less Mon DD."""
+    s = _strip_earnings_time_suffix(ed_coerced)
+    if not s:
+        return None
+    d = _parse_display_date_to_date(s)
+    if d is not None:
+        return d if d in (today_et, yesterday_et) else None
+    # Month + day only (e.g. Mar 24, Mar 24,) — match ET today/yesterday
+    m = re.match(r"^([A-Za-z]{3})\s+(\d{1,2})\b", s)
+    if m:
+        mon_s, day_i = m.group(1), int(m.group(2))
+        try:
+            md = datetime.strptime(f"{mon_s} {day_i}", "%b %d")
+        except ValueError:
+            return None
+        month, day = md.month, md.day
+        if (today_et.month, today_et.day) == (month, day):
+            return today_et
+        if (yesterday_et.month, yesterday_et.day) == (month, day):
+            return yesterday_et
+        return None
     return None
 
 
@@ -456,52 +516,59 @@ def fetch_screener_from_url(url_key: str, cache_key: str, ttl: int = MEDIUM) -> 
         return []
 
 
-def _normalize_pre_market_rows(data: list[dict]) -> list[dict]:
-    """Normalize pre-market rows: preserve all columns, ensure ticker key and Change column."""
-    rows = []
-    seen = set()
-    for row in data:
-        ticker_val = row.get("Ticker") or row.get("ticker") or ""
-        t = str(ticker_val).strip().upper()
-        if not t or t in seen:
-            continue
-        seen.add(t)
-        out = dict(row)
-        out["ticker"] = t
-        if "Ticker" not in out:
-            out["Ticker"] = t
-        rows.append(out)
-    return rows
-
-
 def fetch_pre_market_scanner(ttl: int = MEDIUM) -> list[dict]:
-    """Pre-market Scanner: USA, avg vol 1K+, price $1+, rel vol 1+, up 3% AND down 3%.
-    Returns raw rows with ALL columns from FinViz export (no normalization)."""
+    """Pre-market Scanner: USA v152 — gap vs prior close ≥ 3% or ≤ −3%, price > $1, liq ≥1K sh, rel vol ≥ 1."""
     cached = cache.get("pre_market_scanner")
     if cached is not None:
         return cached
 
-    try:
-        from src.finviz_elite import fetch_export_from_url, is_elite_configured
-        from src.constants import FINVIZ_EXPORT_URLS
-
-        if not is_elite_configured():
-            return []
-        url_up = FINVIZ_EXPORT_URLS.get("pre_market_scanner")
-        url_down = FINVIZ_EXPORT_URLS.get("pre_market_scanner_down")
-        if not url_up:
-            return []
-        data_up = fetch_export_from_url(url_up, caller="pre_market_scanner") or []
-        data_down = fetch_export_from_url(url_down, caller="pre_market_scanner_down") or [] if url_down else []
-        rows_up = _normalize_pre_market_rows(data_up)
-        rows_down = _normalize_pre_market_rows(data_down)
-        rows = rows_up + rows_down
-        if rows:
-            cache.put("pre_market_scanner", rows, ttl=ttl)
-        return rows
-    except Exception as e:
-        logger.warning("fetch_pre_market_scanner failed: %s", e)
+    df = get_parsed_usa_v152_df()
+    if df.empty:
         return []
+    close = pd.to_numeric(df["close"], errors="coerce")
+    prev = pd.to_numeric(df["prev_close"], errors="coerce")
+    op = pd.to_numeric(df["open_price"], errors="coerce")
+    avgv = pd.to_numeric(df.get("avg_volume"), errors="coerce")
+    vol = pd.to_numeric(df.get("volume"), errors="coerce")
+    liq = avgv.where(avgv.notna(), vol).fillna(0)
+    rel = pd.to_numeric(df["rel_volume"], errors="coerce").fillna(0)
+    gap_pct = (op - prev) / prev * 100.0
+    gap_pct = gap_pct.where(prev.notna() & (prev > 0))
+    m = (
+        (close > 1.0)
+        & (liq >= 1000)
+        & (rel >= 1.0)
+        & gap_pct.notna()
+        & ((gap_pct >= 3.0) | (gap_pct <= -3.0))
+    )
+    sub = df.loc[m].copy()
+    if sub.empty:
+        return []
+    sub["_gap"] = gap_pct.loc[m]
+    sub["_ag"] = sub["_gap"].abs()
+    sub = sub.sort_values("_ag", ascending=False)
+    rows: list[dict] = []
+    for _, r in sub.iterrows():
+        t = str(r["ticker"]).strip().upper()
+        g = float(r["_gap"])
+        c = float(pd.to_numeric(r.get("close"), errors="coerce") or 0)
+        dc = float(pd.to_numeric(r.get("day_chg"), errors="coerce") or 0)
+        v_raw = r.get("volume")
+        a_raw = r.get("avg_volume")
+        rv = float(pd.to_numeric(r.get("rel_volume"), errors="coerce") or 0)
+        rows.append({
+            "Ticker": t,
+            "ticker": t,
+            "Gap": f"{g:.2f}%",
+            "Price": f"{c:.2f}",
+            "Change": f"{dc:.2f}%",
+            "Volume": v_raw,
+            "Avg Volume": a_raw,
+            "Rel Volume": f"{rv:.2f}" if rv else "",
+        })
+    if rows:
+        cache.put("pre_market_scanner", rows, ttl=ttl)
+    return rows
 
 
 def fetch_oneil_from_url(cache_key: str = "oneil_table", ttl: int = MEDIUM) -> list[dict]:
@@ -885,7 +952,7 @@ def fetch_earnings_this_week(ttl: int = MEDIUM) -> list[dict]:
 
 
 def _merge_earnings_dates_from_financial(rows: list[dict], fin_url_key: str) -> list[dict]:
-    """Attach Earnings Date from v=161 Financial export (same universe) — matches Super Scanners / this-week behavior."""
+    """Attach Earnings Date from v=161 Financial export when perf export omits it."""
     if not rows:
         return rows
     try:
@@ -929,23 +996,90 @@ def _merge_earnings_dates_from_financial(rows: list[dict], fin_url_key: str) -> 
         return rows
 
 
-def fetch_earnings_yesterday_today(ttl: int = MEDIUM) -> list[dict]:
-    """Earnings yesterday or today: v=141 perf + v=161 financial merge for Earnings Date (intraday table)."""
-    cached = cache.get("earnings_yesterday_today")
-    if cached:
-        s = cached[0]
-        if not s.get("avg_vol") and not s.get("rel_vol"):
-            cache.invalidate("earnings_yesterday_today")
-        elif not any(r.get("earnings_date") for r in cached[: min(12, len(cached))]):
-            cache.invalidate("earnings_yesterday_today")
-        else:
-            return cached
-
-    rows = fetch_screener_from_url("earnings_yesterday_today_perf", "earnings_yesterday_today", ttl=ttl)
+def fetch_earnings_yesterday_today_via_finviz_filtered(ttl: int = MEDIUM) -> list[dict]:
+    """FinViz `earningsdate_today|yesterday` universe + perf columns; merge Earnings Date from v=161 when needed."""
+    rows = fetch_screener_from_url("earnings_yesterday_today_perf", "earnings_yesterday_today_perf_fetch", ttl=ttl)
     rows = _merge_earnings_dates_from_financial(rows, "earnings_yesterday_today_financial")
     if rows:
         cache.put("earnings_yesterday_today", rows, ttl=ttl)
     return rows
+
+
+def fetch_earnings_yesterday_today(ttl: int = MEDIUM) -> list[dict]:
+    """Earnings yesterday or today (ET): prefer USA v152 + Earnings Date column; else FinViz filtered exports."""
+    cached = cache.get("earnings_yesterday_today")
+    if cached is not None:
+        return cached
+
+    raw = fetch_usa_full_v152_raw()
+    if not raw:
+        return fetch_earnings_yesterday_today_via_finviz_filtered(ttl)
+    keys = list(raw[0].keys())
+    ed_col = _pick_earnings_date_column(keys, raw)
+    if not ed_col:
+        logger.info(
+            "earnings_yesterday_today: no earnings date column in v152 export; using FinViz earningsdate_today|yesterday exports (sample keys: %s)",
+            keys[:20],
+        )
+        return fetch_earnings_yesterday_today_via_finviz_filtered(ttl)
+    ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+    df = get_parsed_usa_v152_df()
+    if df.empty:
+        return fetch_earnings_yesterday_today_via_finviz_filtered(ttl)
+    idx = df.set_index("ticker")
+    et = ZoneInfo("America/New_York")
+    today = datetime.now(et).date()
+    yesterday = today - timedelta(days=1)
+    rows_out: list[dict] = []
+    seen: set[str] = set()
+    for row in raw:
+        ed_raw = row.get(ed_col)
+        ed = _coerce_earnings_date_str(ed_raw)
+        if not ed:
+            continue
+        d = _earnings_cell_to_calendar_date(ed, today, yesterday)
+        if d is None:
+            continue
+        t = str(row.get(ticker_col, "") or "").strip().upper()
+        if not t or t in seen:
+            continue
+        if t not in idx.index:
+            continue
+        sel = idx.loc[t]
+        ser = sel.iloc[0] if isinstance(sel, pd.DataFrame) else sel
+        close = pd.to_numeric(ser.get("close"), errors="coerce")
+        avgv = pd.to_numeric(ser.get("avg_volume"), errors="coerce")
+        vol = pd.to_numeric(ser.get("volume"), errors="coerce")
+        liq = float(avgv) if avgv is not None and not pd.isna(avgv) else None
+        if liq is None or pd.isna(liq):
+            liq = float(vol) if vol is not None and not pd.isna(vol) else 0.0
+        if close is None or pd.isna(close) or close <= 1.0 or liq < 1000:
+            continue
+        rdict = _intraday_screener_dict_from_parsed_row(ser)
+        if not rdict:
+            continue
+        rdict["earnings_date"] = ed
+        rows_out.append(rdict)
+        seen.add(t)
+    rows_out.sort(key=lambda r: (r.get("earnings_date") or "", r.get("ticker") or ""))
+    if not rows_out:
+        sample_ed = [
+            _coerce_earnings_date_str(raw[i].get(ed_col))
+            for i in range(min(8, len(raw)))
+        ]
+        logger.debug(
+            "earnings_yesterday_today: 0 tickers for ET today=%s yesterday=%s; ed_col=%r; sample cells=%s",
+            today,
+            yesterday,
+            ed_col,
+            sample_ed,
+        )
+        fb = fetch_earnings_yesterday_today_via_finviz_filtered(ttl)
+        if fb:
+            return fb
+    else:
+        cache.put("earnings_yesterday_today", rows_out, ttl=ttl)
+    return rows_out
 
 
 def fetch_metric_count(url: str, cache_key: str, skip_delay: bool = False) -> int:
@@ -1415,6 +1549,66 @@ def get_parsed_usa_v152_df() -> pd.DataFrame:
     df = pd.DataFrame(rows)
     cache.put(USA_V152_PARSED_DF_CACHE_KEY, df, ttl=KEY_METRICS_TTL)
     return df
+
+
+def _intraday_screener_dict_from_parsed_row(r: pd.Series) -> dict | None:
+    """Normalize one parsed v152 row for intraday screener tables (Stocks in Play / Earnings)."""
+    t = str(r.get("ticker", "")).strip().upper()
+    if not t:
+        return None
+    close = pd.to_numeric(r.get("close"), errors="coerce")
+    if close is None or pd.isna(close) or close <= 0:
+        return None
+    day_chg = float(pd.to_numeric(r.get("day_chg"), errors="coerce") or 0)
+    vol = r.get("volume")
+    avg_vol = r.get("avg_volume")
+    v_num = float(pd.to_numeric(vol, errors="coerce")) if vol is not None and not pd.isna(vol) else None
+    a_num = float(pd.to_numeric(avg_vol, errors="coerce")) if avg_vol is not None and not pd.isna(avg_vol) else None
+    rel = r.get("rel_volume")
+    rel_f = float(pd.to_numeric(rel, errors="coerce")) if rel is not None and not pd.isna(rel) else None
+    if rel_f is None and v_num and a_num and a_num != 0:
+        rel_f = v_num / a_num
+    rel_str = f"{rel_f:.2f}" if rel_f is not None else ""
+    atr_raw = r.get("atr_pct")
+    atr_pct = float(atr_raw) if atr_raw is not None and not pd.isna(atr_raw) else None
+    return {
+        "ticker": t,
+        "price": f"{float(close):.2f}",
+        "change": f"{day_chg:.2f}%",
+        "volume": vol,
+        "avg_vol": avg_vol,
+        "rel_vol": rel_str,
+        "atr_pct": atr_pct,
+    }
+
+
+def fetch_stocks_in_play_from_usa_v152(ttl: int = MEDIUM) -> list[dict]:
+    """Stocks In Play: USA v152 only — price > $1, liq ≥1K sh, rel vol ≥ 2; top rows by |day change|."""
+    cached = cache.get("stocks_in_play")
+    if cached is not None:
+        return cached
+    df = get_parsed_usa_v152_df()
+    if df.empty:
+        return []
+    close = pd.to_numeric(df["close"], errors="coerce")
+    avgv = pd.to_numeric(df.get("avg_volume"), errors="coerce")
+    vol = pd.to_numeric(df.get("volume"), errors="coerce")
+    liq = avgv.where(avgv.notna(), vol).fillna(0)
+    rel = pd.to_numeric(df["rel_volume"], errors="coerce").fillna(0)
+    m = (close > 1.0) & (liq >= 1000) & (rel >= 2.0)
+    sub = df.loc[m].copy()
+    if sub.empty:
+        return []
+    sub["abs_day"] = pd.to_numeric(sub["day_chg"], errors="coerce").fillna(0).abs()
+    sub = sub.nlargest(75, "abs_day")
+    rows: list[dict] = []
+    for _, row in sub.iterrows():
+        d = _intraday_screener_dict_from_parsed_row(row)
+        if d:
+            rows.append(d)
+    if rows:
+        cache.put("stocks_in_play", rows, ttl=ttl)
+    return rows
 
 
 def fetch_usa_thematics_universe_indicators() -> pd.DataFrame:

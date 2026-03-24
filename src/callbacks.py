@@ -49,7 +49,6 @@ from src.screeners import (
     julian_komar_strongest_screener,
 )
 from src.layout import (
-    build_cnbc_premarket_watchlist_table,
     build_should_i_trade_content,
     build_key_metrics_table,
     build_live_index_snapshot,
@@ -123,6 +122,12 @@ WIDGET_CACHE_KEYS = {
         "sp500_landscape",
         "ind_stage",
         "stage_analysis",
+        "thematics_data",
+        "thematics",
+        "leading_industries",
+        "stocks_in_play",
+        "earnings_yesterday_today",
+        "pre_market_scanner",
     ],
     "chart2": [
         "all_key_metrics",
@@ -134,6 +139,12 @@ WIDGET_CACHE_KEYS = {
         "sp500_landscape",
         "ind_stage",
         "stage_analysis",
+        "thematics_data",
+        "thematics",
+        "leading_industries",
+        "stocks_in_play",
+        "earnings_yesterday_today",
+        "pre_market_scanner",
     ],
     "chart3": [
         "all_key_metrics",
@@ -145,15 +156,20 @@ WIDGET_CACHE_KEYS = {
         "sp500_landscape",
         "ind_stage",
         "stage_analysis",
+        "thematics_data",
+        "thematics",
+        "leading_industries",
+        "stocks_in_play",
+        "earnings_yesterday_today",
+        "pre_market_scanner",
     ],
     "club97": ["97_club"],
     "movers": ["9m_movers"],
     "weekly": ["20pct_weekly"],
     "daily": ["4pct_daily"],
-    "in_play": ["stocks_in_play"],
-    "intraday-earnings": ["earnings_yesterday_today"],
-    "pre_market": ["pre_market_scanner"],
-    "cnbc_premarket": ["cnbc_premarket_watchlist"],
+    "in_play": ["stocks_in_play", "usa_full_v152", "usa_v152_parsed_df"],
+    "intraday-earnings": ["earnings_yesterday_today", "usa_full_v152", "usa_v152_parsed_df"],
+    "pre_market": ["pre_market_scanner", "usa_full_v152", "usa_v152_parsed_df"],
     "live_index": ["live_index_quotes"],
     # Same USA v152 blob as Key Metrics: invalidate bundle so manual refresh stays consistent across Leading / Thematics / Sector / RRG.
     "leading": [
@@ -183,8 +199,8 @@ WIDGET_CACHE_KEYS = {
         "thematics_sector_data",
         "thematics_rrg_data",
     ],
-    "top_gainers": ["thematics_data"],
-    "top_losers": ["thematics_data"],
+    "top_gainers": ["thematics_data", "usa_full_v152", "usa_v152_parsed_df", "leading_industries", "thematics"],
+    "top_losers": ["thematics_data", "usa_full_v152", "usa_v152_parsed_df", "leading_industries", "thematics"],
     "stage": ["stage_analysis", "ind_stage", "usa_v152_parsed_df", "usa_full_v152"],
     "thematics-rrg": ["thematics_rrg_data"],
     "macro-monitor": ["macro_fred_bundle"],
@@ -1209,30 +1225,6 @@ def register_callbacks(app):
         except Exception as e:
             logger.exception("Macro Monitor failed: %s", e)
             return html.Div(str(e), style={"color": COLORS["red"], "padding": "16px", "fontSize": "11px"})
-
-    @app.callback(
-        Output("cnbc_premarket-content", "children"),
-        [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
-            Input("btn-refresh-cnbc_premarket", "n_clicks"),
-            Input("main-tabs", "data"),
-        ],
-        prevent_initial_call=False,
-    )
-    def refresh_cnbc_premarket(n_intervals, n_clicks, btn_widget, main_tab):
-        if main_tab != "intraday":
-            raise PreventUpdate
-        if btn_widget:
-            _invalidate_widget_cache("cnbc_premarket")
-        try:
-            from src.cnbc_premarket import fetch_cnbc_premarket_watchlist
-            data = fetch_cnbc_premarket_watchlist()
-            article_url = data[0].get("url", "") if data else ""
-            return build_cnbc_premarket_watchlist_table(data, article_url)
-        except Exception as e:
-            logger.exception("CNBC Pre-Market Watchlist failed: %s", e)
-            return _err_div(e)
 
     @app.callback(
         Output("live_index-content", "children"),

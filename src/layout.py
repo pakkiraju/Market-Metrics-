@@ -109,14 +109,13 @@ INTRADAY_WIDGETS = [
     ("top_gainers",    "Top Gainers",                False),
     ("top_losers",     "Top Losers",                 False),
     ("pre_market",     "Pre-market Scanner",         False),
-    ("cnbc_premarket", "CNBC Pre-Market Watchlist", False),
 ]
 # Combined for backward compatibility and visibility callback
 WIDGETS = MARKET_METRICS_WIDGETS + SUPER_SCANNERS_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "jeff_sun_canslim", "jeff_sun_high_adr", "jeff_sun_extended_bases", "jeff_sun_1w20", "jeff_sun_4w30", "jeff_sun_4w50", "jeff_sun_13w50", "jeff_sun_26w100", "jeff_sun_ipo_thisweek", "jeff_sun_high_short_float", "jeff_sun_liquid_etfs", "julian_komar_strongest", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "pre_market", "cnbc_premarket") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "jeff_sun_canslim", "jeff_sun_high_adr", "jeff_sun_extended_bases", "jeff_sun_1w20", "jeff_sun_4w30", "jeff_sun_4w50", "jeff_sun_13w50", "jeff_sun_26w100", "jeff_sun_ipo_thisweek", "jeff_sun_high_short_float", "jeff_sun_liquid_etfs", "julian_komar_strongest", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "pre_market") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -651,7 +650,7 @@ def build_earnings_calendar_table(data: list[dict], widget_id: str = None, sort_
 def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     """Pre-market Scanner: USA, avg vol 1K+, price $1+, rel vol 1+, up 3% and down 3%."""
     if not data:
-        return html.Div("No results. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
+        return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
     from src.sortable_table import sort_data_pre_market
@@ -806,60 +805,6 @@ def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col
         rows.append(row_cells)
     return _table(headers, rows, col_widths=col_widths,
                   widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
-
-
-def build_cnbc_premarket_watchlist_table(data: list[dict], article_url: str = "") -> html.Div:
-    """CNBC Pre-Market Watchlist: Ticker, News from latest CNBC Market Insider premarket report."""
-    if not data:
-        return html.Div("No premarket data. Check CNBC Market Insider.", style={
-            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
-        })
-    headers = [("Ticker", None), ("News", None), ("", None)]
-    rows = []
-    for r in data:
-        url = r.get("url", article_url)
-        link_cell = ""
-        if url:
-            link_cell = {"text": html.A("Article", href=url, target="_blank", rel="noopener noreferrer",
-                                       style={"color": COLORS["accent"], "textDecoration": "underline", "fontSize": "9px"}),
-                        "style": TABLE_CELL_STYLE}
-        rows.append([
-            {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}),
-             "style": TABLE_CELL_STYLE},
-            {"text": r.get("news", ""),
-             "style": {**TABLE_CELL_STYLE, "fontSize": "12px", "lineHeight": "1.45",
-                       "whiteSpace": "normal", "wordWrap": "break-word", "textAlign": "left",
-                       "minWidth": "320px", "maxWidth": "none"}},
-            link_cell or "",
-        ])
-    col_widths = ["70px", "1fr", "50px"]
-    def _cell(content):
-        if isinstance(content, dict):
-            return html.Td(content.get("text", ""), style=content.get("style", TABLE_CELL_STYLE))
-        return html.Td(content, style=TABLE_CELL_STYLE)
-
-    table = html.Table(
-        [html.Thead(html.Tr([html.Th(h[0], style=TABLE_HEADER_STYLE) for h in headers])),
-         html.Tbody([html.Tr([_cell(c) for c in row]) for row in rows])],
-        style={**TABLE_STYLE, "tableLayout": "fixed"},
-    )
-    article_date = data[0].get("article_date", "") if data else ""
-    if not article_date and data:
-        import re
-        url = data[0].get("url", "")
-        m = re.search(r"/(\d{4})/(\d{2})/(\d{2})/", url)
-        if m:
-            from datetime import datetime
-            try:
-                dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-                article_date = dt.strftime("%b %d, %Y")
-            except (ValueError, TypeError):
-                article_date = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
-    date_label = html.Span(article_date, style={"fontSize": "10px", "color": COLORS["text_muted"], "marginBottom": "4px"}) if article_date else html.Div()
-    return html.Div([
-        html.Div([date_label], style={"marginBottom": "4px"}) if article_date else html.Div(),
-        table,
-    ], style={"display": "flex", "flexDirection": "column"})
 
 
 def build_top_gainers_table(data: list[dict]) -> html.Div:
@@ -3257,18 +3202,6 @@ def build_layout() -> html.Div:
                                         _finviz_link("+3%", "pre_market_scanner", {"marginRight": "6px"}),
                                         html.Span(" | ", style={"color": COLORS["text_faint"], "fontSize": "8px", "margin": "0 2px"}),
                                         _finviz_link("-3%", "pre_market_scanner_down"),
-                                    ])),
-                        ], style=WIDE_ROW_STYLE),
-                        html.Div([
-                            _widget("cnbc_premarket", "CNBC Pre-Market Watchlist",
-                                    _loading_wrap("cnbc_premarket-content"),
-                                    variant="teal",
-                                    initial_hidden=not DEFAULT_VISIBILITY.get("cnbc_premarket", True),
-                                    extra_header=html.Span([
-                                        html.A("Market Insider", href="https://www.cnbc.com/market-insider/",
-                                               target="_blank", rel="noopener noreferrer",
-                                               style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
-                                                      "textDecoration": "none", "marginLeft": "8px"}),
                                     ])),
                         ], style=WIDE_ROW_STYLE),
                         ], style=CONTENT_AREA_STYLE),
