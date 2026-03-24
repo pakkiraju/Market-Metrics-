@@ -2,6 +2,7 @@
 
 import logging
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -25,17 +26,40 @@ from src import cache
 # Preload cache from disk so widgets show instantly on restart
 cache.warm_from_disk()
 
+
+def _warm_macro_history_cache_bg() -> None:
+    """Warm Macro Monitor history cache in background without delaying startup."""
+    try:
+        from src.macro_data import warm_macro_series_cache
+        warm_macro_series_cache()
+    except Exception:
+        pass
+
+
+threading.Thread(target=_warm_macro_history_cache_bg, daemon=True).start()
+
+# Console: warnings and errors only (no DEBUG/INFO noise from app or libraries)
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+for _log_name in (
+    "urllib3",
+    "urllib3.connectionpool",
+    "requests",
+    "yfinance",
+    "werkzeug",
+    "dash",
+    "dash_renderer",
+):
+    logging.getLogger(_log_name).setLevel(logging.WARNING)
 
 app = Dash(
     __name__,
     title="Pradly Portal",
     update_title="Loading...",
     suppress_callback_exceptions=True,
-    serve_locally=True,
+    serve_locally=True,  # Offline use: serve Plotly.js from local package
 )
 
 app.index_string = f"""<!DOCTYPE html>
@@ -49,7 +73,8 @@ app.index_string = f"""<!DOCTYPE html>
     {{%favicon%}}
     {{%css%}}
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         html, body {{
@@ -76,6 +101,34 @@ app.index_string = f"""<!DOCTYPE html>
         .tv-ticker:hover {{
             opacity: 0.75;
             text-decoration: underline;
+        }}
+
+        /* Should I Trade? — Bloomberg terminal style */
+        #should-i-trade-content .sit-mono {{
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+        }}
+
+        /* Ticker tape marquee — scroll right to left */
+        .sit-ticker-marquee {{
+            overflow: hidden;
+            white-space: nowrap;
+            width: 100%;
+        }}
+        .sit-ticker-marquee-inner {{
+            display: inline-flex;
+            animation: sit-marquee 40s linear infinite;
+        }}
+        .sit-ticker-marquee:hover .sit-ticker-marquee-inner {{
+            animation-play-state: paused;
+        }}
+        @keyframes sit-marquee {{
+            0% {{ transform: translateX(0); }}
+            100% {{ transform: translateX(-50%); }}
+        }}
+        @media (prefers-reduced-motion: reduce) {{
+            .sit-ticker-marquee-inner {{
+                animation: none !important;
+            }}
         }}
 
         /* Dropdown dark theme — easier on eyes */
@@ -246,4 +299,10 @@ def _disable_browser_cache(response):
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 8050))
-    app.run(debug=True, host="127.0.0.1", port=port)
+    app.run(
+        debug=True,
+        host="127.0.0.1",
+        port=port,
+        dev_tools_ui=True,  # Show Dev Tools panel in app (bottom-right) for callback errors
+        dev_tools_props_check=False,  # Avoid noisy prop validation errors
+    )

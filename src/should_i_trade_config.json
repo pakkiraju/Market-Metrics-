@@ -1,0 +1,17 @@
+{
+  "weights": {
+    "volatility": 0.25,
+    "momentum": 0.25,
+    "trend": 0.20,
+    "breadth": 0.20,
+    "macro": 0.10
+  },
+  "swing_thresholds": {
+    "yes_min": 80,
+    "caution_min": 60
+  },
+  "day_thresholds": {
+    "yes_min": 85,
+    "caution_min": 65
+  }
+}

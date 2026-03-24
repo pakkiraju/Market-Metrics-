@@ -1,0 +1,371 @@
+/*
+ * Macro Monitor tab — Perplexity-style terminal theme:
+ * dark graphite bg, green primary text, red/green/amber/cyan accents, JetBrains Mono.
+ * Scoped to #macro-monitor-tab-wrapper so other tabs stay unchanged.
+ */
+
+/* Tab pane background / scroll: see assets/app_nav.css */
+
+#macro-monitor-tab-wrapper {
+  /* Mirror Macro Monitor :root */
+  --background: 220 20% 4%;
+  --foreground: 142 70% 70%;
+  --card: 220 20% 6%;
+  --muted-foreground: 220 10% 50%;
+  --border: 220 15% 15%;
+  --term-green: 142 70% 55%;
+  --term-red: 0 72% 55%;
+  --term-amber: 45 90% 55%;
+  --term-cyan: 185 70% 55%;
+  --term-dim: 220 10% 40%;
+  --term-bg: 220 20% 4%;
+  --term-surface: 220 20% 7%;
+  --term-surface2: 220 20% 5%;
+  --term-border: 220 15% 14%;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  min-height: min-content;
+}
+
+#macro-monitor-root {
+  overflow-x: hidden;
+  overflow-y: visible;
+  padding: 8px 12px 20px 8px;
+  background: hsl(var(--term-bg));
+  color: hsl(var(--foreground));
+  font-family: inherit;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Outer frame — terminal window */
+#macro-monitor-root .macro-terminal-frame {
+  position: relative;
+  border: 1px solid hsl(var(--term-border));
+  border-radius: 2px;
+  background: linear-gradient(180deg, hsl(220 20% 5%) 0%, hsl(var(--term-bg)) 100%);
+  box-shadow: inset 0 1px 0 hsl(142 70% 55% / 0.12);
+  padding: 20px 16px 18px;
+  overflow: visible;
+}
+
+/* Top accent line (CRT-style highlight) */
+#macro-monitor-root .macro-terminal-frame::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    hsl(142 70% 55% / 0.45),
+    hsl(185 70% 55% / 0.35),
+    transparent
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Subtle CRT scanlines */
+#macro-monitor-root .macro-terminal-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    transparent,
+    transparent 2px,
+    hsl(0 0% 0% / 0.11) 2px,
+    hsl(0 0% 0% / 0.11) 3px
+  );
+  opacity: 0.4;
+  z-index: 1;
+}
+
+#macro-monitor-root .macro-monitor-inner {
+  max-width: 1680px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 2;
+}
+
+/* Header */
+#macro-monitor-root .macro-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid hsl(var(--term-border));
+}
+
+#macro-monitor-root .macro-header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+#macro-monitor-root .macro-header-icon {
+  font-size: 20px;
+  line-height: 1;
+  color: hsl(var(--term-cyan));
+  text-shadow: 0 0 12px hsl(185 70% 55% / 0.35);
+  user-select: none;
+}
+
+#macro-monitor-root .macro-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: hsl(var(--foreground));
+  text-shadow: 0 0 14px hsl(142 70% 55% / 0.25);
+}
+
+#macro-monitor-root .macro-subtitle {
+  font-size: 11px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+
+#macro-monitor-root .macro-header-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+#macro-monitor-root .macro-clock {
+  font-size: 10px;
+  color: hsl(var(--term-green));
+  font-weight: 600;
+}
+
+#macro-monitor-root .macro-next {
+  font-size: 10px;
+  color: hsl(var(--term-dim));
+}
+
+/* KPI strip */
+#macro-monitor-root .macro-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+#macro-monitor-root .macro-kpi-card {
+  background: hsl(var(--term-surface));
+  border: 1px solid hsl(var(--term-border));
+  border-radius: 2px;
+  padding: 8px 8px 4px;
+  cursor: default;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+#macro-monitor-root .macro-kpi-card:hover {
+  border-color: hsl(142 70% 55% / 0.25);
+  box-shadow: 0 0 0 1px hsl(142 70% 55% / 0.08);
+}
+
+#macro-monitor-root .macro-kpi-label {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: hsl(var(--term-dim));
+  margin-bottom: 4px;
+}
+
+#macro-monitor-root .macro-kpi-value {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+#macro-monitor-root .macro-kpi-sub {
+  font-size: 8px;
+  color: hsl(var(--muted-foreground));
+  margin-top: 2px;
+  min-height: 1.1em;
+}
+
+/* Sparkline: fixed box inside each KPI card (stops Plotly responsive from eating the layout). */
+#macro-monitor-root .macro-kpi-spark-shell {
+  flex: 0 0 auto;
+  height: 40px;
+  max-height: 40px;
+  min-height: 40px;
+  width: 100%;
+  margin-top: 4px;
+  overflow: hidden;
+  position: relative;
+  border-radius: 2px;
+}
+
+#macro-monitor-root .macro-kpi-spark-graph {
+  height: 40px !important;
+  max-height: 40px !important;
+  min-height: 40px !important;
+}
+
+#macro-monitor-root .macro-kpi-spark-shell .js-plotly-plot,
+#macro-monitor-root .macro-kpi-spark-shell .plotly,
+#macro-monitor-root .macro-kpi-spark-shell .plotly-graph-div,
+#macro-monitor-root .macro-kpi-spark-shell .svg-container {
+  height: 40px !important;
+  max-height: 40px !important;
+  min-height: 40px !important;
+}
+
+/* Middle: donut + narrative */
+#macro-monitor-root .macro-mid-row {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+  align-items: stretch;
+}
+
+@media (max-width: 960px) {
+  #macro-monitor-root .macro-mid-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+#macro-monitor-root .macro-donut-wrap {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--term-border));
+  border-radius: 2px;
+  padding: 8px 6px 4px;
+}
+
+#macro-monitor-root .macro-donut-wrap .macro-section-title {
+  margin-bottom: 6px;
+}
+
+#macro-monitor-root .macro-donut-head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--term-red));
+  text-shadow: 0 0 10px hsl(0 72% 55% / 0.25);
+  margin-bottom: 2px;
+  padding: 0 4px;
+}
+
+#macro-monitor-root .macro-bottom-line {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--term-border));
+  border-left: 3px solid hsl(var(--term-amber));
+  border-radius: 2px;
+  padding: 12px 14px;
+  min-height: 140px;
+  box-shadow: inset 0 0 24px hsl(45 90% 55% / 0.04);
+}
+
+#macro-monitor-root .macro-bl-title {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: hsl(var(--term-amber));
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+#macro-monitor-root .macro-bl-text {
+  font-size: 11px;
+  line-height: 1.65;
+  color: hsl(142 65% 72%);
+}
+
+/* Fiscal */
+#macro-monitor-root .macro-fiscal-block {
+  margin-top: 6px;
+}
+
+#macro-monitor-root .macro-section-title {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: hsl(var(--term-dim));
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+#macro-monitor-root .macro-fiscal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  #macro-monitor-root .macro-fiscal-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+#macro-monitor-root .macro-fiscal-col {
+  background: hsl(var(--term-surface2));
+  border: 1px solid hsl(var(--term-border));
+  border-radius: 2px;
+  padding: 10px 10px 8px;
+}
+
+#macro-monitor-root .macro-fiscal-col-title {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: hsl(var(--term-cyan));
+  margin-bottom: 8px;
+  font-weight: 700;
+  border-bottom: 1px solid hsl(var(--term-border));
+  padding-bottom: 6px;
+}
+
+#macro-monitor-root .macro-fiscal-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid hsl(220 15% 12%);
+}
+
+#macro-monitor-root .macro-fiscal-row:last-child {
+  border-bottom: none;
+}
+
+#macro-monitor-root .macro-fiscal-label {
+  color: hsl(var(--muted-foreground));
+  flex: 1;
+}
+
+#macro-monitor-root .macro-fiscal-val {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Loading / errors */
+#macro-monitor-root .macro-loading-msg {
+  color: hsl(var(--muted-foreground));
+  padding: 28px 16px;
+  font-size: 12px;
+}
+
+#macro-monitor-root .macro-err-msg {
+  color: hsl(var(--term-red));
+  padding: 8px 0;
+  font-size: 11px;
+}

@@ -7,7 +7,8 @@ DASHBOARD_STYLE = {
     "display": "flex",
     "flexDirection": "column",
     "minHeight": "100vh",
-    "width": "100vw",
+    "width": "100%",
+    "maxWidth": "100%",
     "backgroundColor": COLORS["bg"],
     "color": COLORS["text"],
     "fontFamily": "'Inter', -apple-system, 'Segoe UI', sans-serif",
@@ -127,11 +128,56 @@ QUARTER_ROW_STYLE = {
     "marginBottom": "4px",
 }
 
+# Super Scanners: 5–6 Jeff Sun / CANSLIM-style widgets in first row
+FIVE_COL_ROW_STYLE = {
+    "display": "grid",
+    "gridTemplateColumns": "1fr 1fr 1fr 1fr 1fr",
+    "gap": "4px",
+    "marginBottom": "4px",
+}
+SIX_COL_ROW_STYLE = {
+    "display": "grid",
+    "gridTemplateColumns": "1fr 1fr 1fr 1fr 1fr 1fr",
+    "gap": "4px",
+    "marginBottom": "4px",
+}
+
 THIRD_ROW_STYLE = {
     "display": "grid",
     "gridTemplateColumns": "1fr 1fr 1fr",
     "gap": "4px",
     "marginBottom": "4px",
+}
+
+# Intraday: Market Snapshot + Top Gainers + Top Losers — equal columns, same card height
+SNAPSHOT_MOVERS_ROW_STYLE = {
+    "display": "grid",
+    "gridTemplateColumns": "1fr 1fr 1fr",
+    "gap": "4px",
+    "marginBottom": "4px",
+    "alignItems": "stretch",
+}
+
+# Tight body (~12 table rows) — not SECTION_BODY_STYLE (360px) which left empty space below short tables
+INTRADAY_TOP_MOVERS_BODY_HEIGHT_PX = 200
+_INTRADAY_TOP_MOVERS_BODY = {
+    "flex": 1,
+    "display": "flex",
+    "flexDirection": "column",
+    "overflow": "auto",
+    "minHeight": 0,
+    "maxHeight": f"{INTRADAY_TOP_MOVERS_BODY_HEIGHT_PX}px",
+    "backgroundColor": COLORS["surface"],
+    "padding": "2px 4px 1px 4px",
+    "position": "relative",
+    "isolation": "isolate",
+}
+INTRADAY_TOP_MOVERS_BODY_STYLE = _INTRADAY_TOP_MOVERS_BODY
+INTRADAY_SNAPSHOT_BODY_STYLE = {
+    **_INTRADAY_TOP_MOVERS_BODY,
+    "overflow": "hidden",
+    "display": "flex",
+    "flexDirection": "column",
 }
 
 # ---------- Widget card ----------
@@ -143,6 +189,15 @@ WIDGET_STYLE = {
     "flexDirection": "column",
     "overflow": "hidden",
     "isolation": "isolate",
+}
+
+# Header ~20px + body 200px — fixed row so snapshot aligns with gainers/losers (must follow WIDGET_STYLE)
+INTRADAY_INDEX_ROW_CARD_STYLE = {
+    **WIDGET_STYLE,
+    "minHeight": "222px",
+    "maxHeight": "222px",
+    "width": "100%",
+    "minWidth": 0,
 }
 
 WIDGET_PRIMARY_STYLE = {
@@ -358,20 +413,9 @@ BREADTH_CHART_WRAP_STYLE = {
     "maxWidth": "100%",
 }
 
-# Macro Monitor widgets (Rate Watch, CPI, Core Inflation): 300px card, no scrollbar
+# Macro Monitor KPI charts: 300px card, no scrollbar
 MACRO_WIDGET_BODY_HEIGHT = 280  # 300px card - 20px header
 MACRO_CHART_HEIGHT = 240  # Plotly chart height (fits in body minus padding/toolbar)
-# Rate Watch probabilities/rate-path: slightly taller chart to avoid cutoff
-RATE_WATCH_CHART_HEIGHT = 260
-RATE_WATCH_CHART_BODY_HEIGHT = 300  # 320px card - 20px header
-RATE_WATCH_CHART_BODY_STYLE = {
-    "overflow": "hidden",
-    "height": f"{RATE_WATCH_CHART_BODY_HEIGHT}px",
-    "minHeight": RATE_WATCH_CHART_BODY_HEIGHT,
-    "maxHeight": RATE_WATCH_CHART_BODY_HEIGHT,
-    "backgroundColor": COLORS["surface"],
-    "position": "relative",
-}
 MACRO_CHART_BODY_STYLE = {
     "overflow": "hidden",
     "height": f"{MACRO_WIDGET_BODY_HEIGHT}px",

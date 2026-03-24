@@ -1,0 +1,5 @@
+# Optional CBO-style labels for the Macro Monitor KPI strip (edit when CBO publishes new outlook).
+# deficit_display overrides FYFSDF-only label when set.
+deficit_label: "CBO FY26 est"
+deficit_note: "Federal deficit (CBO outlook; update manually when new projection released)"
+source_url: "https://www.cbo.gov/publication/budget-economic-outlook"

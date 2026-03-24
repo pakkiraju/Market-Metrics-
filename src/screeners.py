@@ -11,9 +11,10 @@ from src.data_fetcher import (
     load_watchlist,
     fetch_group_indicators,
     fetch_screener_from_url,
+    fetch_tickers_bulk_csv,
 )
 from src import cache
-from src.cache import MEDIUM
+from src.cache import MEDIUM, WEEKLY
 
 
 def _get_atr_pct_from_row(row: dict) -> float | None:
@@ -244,6 +245,127 @@ def oneil_screener(indicators=None) -> list[dict]:
     """O'Neil / CANSLIM screener. Single export URL with c= for all columns. Filters ROE + Net Margin >= 25%."""
     from src.data_fetcher import fetch_oneil_from_url
     return fetch_oneil_from_url(cache_key="oneil_table", ttl=MEDIUM)
+
+
+def jeff_sun_canslim_screener() -> list[dict]:
+    """Jeff Sun CANSLIM screener. Mid+ cap, high sales growth, volume, institutional buying, near highs."""
+    try:
+        return fetch_screener_from_url("jeff_sun_canslim", "jeff_sun_canslim", ttl=MEDIUM) or []
+    except Exception:
+        return []
+
+
+def jeff_sun_high_adr_screener() -> list[dict]:
+    """Jeff Sun High ADR% Hottest Stock: High volatility (ADR%), strong relative volume."""
+    try:
+        return fetch_screener_from_url("jeff_sun_high_adr", "jeff_sun_high_adr", ttl=MEDIUM) or []
+    except Exception:
+        return []
+
+
+def jeff_sun_extended_bases_screener() -> list[dict]:
+    """Jeff Sun Extended Bases/Prolonged Consolidations: near highs, YTD down, SMA200 -20 to +20."""
+    try:
+        return fetch_screener_from_url("jeff_sun_extended_bases", "jeff_sun_extended_bases", ttl=MEDIUM) or []
+    except Exception:
+        return []
+
+
+def jeff_sun_1w20_screener() -> list[dict]:
+    """Jeff Sun Strongest 1-Week Mover Exceeding 20%: cap_smallover, avg vol 300K+, cur vol 100+, ta_perf_1w20o, ta_volatility_wo4."""
+    try:
+        return fetch_screener_from_url("jeff_sun_1w20", "jeff_sun_1w20", ttl=MEDIUM) or []
+    except Exception:
+        return []
+
+
+def jeff_sun_4w30_screener() -> list[dict]:
+    """Jeff Sun Strongest 1-Month Mover Exceeding 30%: cap_smallover, avg vol 300K+, cur vol 100+, ta_perf_4w30o, ta_volatility_mo5."""
+    try:
+        return fetch_screener_from_url("jeff_sun_4w30", "jeff_sun_4w30", ttl=MEDIUM) or []
+    except Exception:
+        return []
+
+
+def jeff_sun_4w50_screener() -> list[dict]:
+    """Jeff Sun Strongest 1-Month Mover Exceeding 50%: cap_smallover, avg vol 300K+, cur vol 100+, ta_perf_4w50o, ta_volatility_mo5."""
+    try:
+        return fetch_screener_from_url("jeff_sun_4w50", "jeff_sun_4w50", ttl=MEDIUM) or []
+    except Exception:
+        return []
+
+
+def jeff_sun_13w50_screener() -> list[dict]:
+    """Jeff Sun Strongest 3-Month Mover Exceeding 50%: cap_smallover, avg vol 300K+, cur vol 100+, ta_perf_13w50o, ta_volatility_mo5."""
+    try:
+        return fetch_screener_from_url("jeff_sun_13w50", "jeff_sun_13w50", ttl=MEDIUM) or []
+    except Exception:
+        return []
+
+
+def jeff_sun_26w100_screener() -> list[dict]:
+    """Jeff Sun Strongest 6-Month Mover Exceeding 100%: cap_smallover, avg vol 300K+, cur vol 100+, ta_perf_26w100o, ta_volatility_mo5."""
+    try:
+        return fetch_screener_from_url("jeff_sun_26w100", "jeff_sun_26w100", ttl=MEDIUM) or []
+    except Exception:
+        return []
+
+
+def jeff_sun_ipo_thisweek_screener() -> list[dict]:
+    """Jeff Sun IPO: mid+ cap, EPS growth, USA, IPO previous year, avg vol 1000+. Cached weekly."""
+    try:
+        return fetch_screener_from_url("jeff_sun_ipo_thisweek", "jeff_sun_ipo_thisweek", ttl=WEEKLY) or []
+    except Exception:
+        return []
+
+
+def jeff_sun_high_short_float_screener() -> list[dict]:
+    """Jeff Sun High Short Float: small+ cap, stocks only, avg vol 1000+, float under 100M, short over 30%. Cached weekly."""
+    try:
+        return fetch_screener_from_url("jeff_sun_high_short_float", "jeff_sun_high_short_float", ttl=WEEKLY) or []
+    except Exception:
+        return []
+
+
+def jeff_sun_liquid_etfs_screener() -> list[dict]:
+    """Jeff Sun Liquid ETFs: exchange-traded funds, avg vol 1000+, week volatility over 3%."""
+    try:
+        cached = cache.get("jeff_sun_liquid_etfs")
+        if cached is not None:
+            sample = cached[0] if cached else {}
+            if sample.get("avg_vol") or sample.get("rel_vol"):
+                return cached
+            cache.invalidate("jeff_sun_liquid_etfs")
+
+        rows = fetch_screener_from_url("jeff_sun_liquid_etfs", "jeff_sun_liquid_etfs", ttl=MEDIUM) or []
+        if rows and not any(r.get("avg_vol") or r.get("rel_vol") for r in rows[:3]):
+            tickers = [r.get("ticker") for r in rows if r.get("ticker")]
+            bulk = fetch_tickers_bulk_csv(tickers, cache_key=f"liquid_etfs_vol_{','.join(sorted(tickers))}")
+            bulk_map = {r.get("ticker"): r for r in bulk if r.get("ticker")}
+            changed = False
+            for r in rows:
+                b = bulk_map.get(r.get("ticker"))
+                if not b:
+                    continue
+                if not r.get("avg_vol") and b.get("avg_vol"):
+                    r["avg_vol"] = b["avg_vol"]
+                    changed = True
+                if not r.get("rel_vol") and b.get("rel_vol"):
+                    r["rel_vol"] = b["rel_vol"]
+                    changed = True
+            if changed:
+                cache.put("jeff_sun_liquid_etfs", rows, ttl=MEDIUM)
+        return rows
+    except Exception:
+        return []
+
+
+def julian_komar_strongest_screener() -> list[dict]:
+    """Julian Komar Strongest Stocks: small+ stocks, 52w high proximity, SMA50, liquid."""
+    try:
+        return fetch_screener_from_url("julian_komar_strongest", "julian_komar_strongest", ttl=MEDIUM) or []
+    except Exception:
+        return []
 
 
 def watchlist_tickers() -> list[dict]:

@@ -44,6 +44,7 @@ SCREENER_SORT_KEYS = {
     "volume": lambda r: (_parse_sort_num(r.get("volume")),),
     "atr_pct": lambda r: (r.get("atr_pct") if r.get("atr_pct") is not None else 0.0,),
     "market_cap": lambda r: (r.get("market_cap") or 0,),
+    "earnings_date": lambda r: ((r.get("earnings_date") or "").lower(),),
     "week": lambda r: (r.get("week") or 0.0,),
     "roe": lambda r: (r.get("roe") if r.get("roe") is not None else 0.0,),
     "net_margin": lambda r: (r.get("net_margin") if r.get("net_margin") is not None else 0.0,),

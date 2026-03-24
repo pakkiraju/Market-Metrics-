@@ -9,6 +9,7 @@ from pathlib import Path
 FAST = 300       # 5 min
 MEDIUM = 3600    # 1 hour
 SLOW = 7200      # 2 hours
+WEEKLY = 604800  # 7 days
 
 # Key Metrics: 1 hour TTL
 KEY_METRICS_TTL = 3600
@@ -30,18 +31,6 @@ _DISK_PERSISTENT_KEYS = frozenset({
     "earnings_this_week",
     "stocks_in_play",
     "pre_market_scanner",
-    "economic_calendar_today",
-    "cpi_ytd",
-    "core_inflation_mom_ytd",
-    "core_inflation_yoy_ytd",
-    "rate_watch_USD",
-    "rate_watch_EUR",
-    "rate_watch_GBP",
-    "rate_watch_JPY",
-    "rate_watch_CAD",
-    "rate_watch_CHF",
-    "rate_watch_AUD",
-    "rate_watch_NZD",
     "leading_industries",
     "thematics",
     "thematics_data",
@@ -54,10 +43,11 @@ _DISK_PERSISTENT_KEYS = frozenset({
     "sp500_landscape",
     "stockbee_momentum50",
     "stockbee_breadth",
+    "macro_fred_bundle",
 })
 
 # Key prefixes that persist to disk (e.g. watchlist_quotes_AAPL,MSFT)
-_DISK_PERSISTENT_PREFIXES = frozenset({"watchlist_quotes_"})
+_DISK_PERSISTENT_PREFIXES = frozenset({"watchlist_quotes_", "macro_series_"})
 
 _store: dict[str, tuple[object, float]] = {}
 _lock = threading.Lock()
