@@ -297,9 +297,10 @@ def fetch_csv_from_url(url: str, caller: str = "") -> list[dict]:
         return []
 
 
-def fetch_export_from_url(url: str, caller: str = "") -> list[dict]:
+def fetch_export_from_url(url: str, caller: str = "", timeout: int = 60) -> list[dict]:
     """Fetch full CSV from export.ashx URL. Single request - export returns all rows.
-    Supports API key (auth=) or cookie auth. caller= widget/cache_key for log context."""
+    Supports API key (auth=) or cookie auth. caller= widget/cache_key for log context.
+    timeout: HTTP read timeout in seconds (use 120+ for very large USA-wide exports)."""
     auth_params = get_auth_params()
     headers = get_auth_headers()
     if not auth_params and not headers:
@@ -313,7 +314,7 @@ def fetch_export_from_url(url: str, caller: str = "") -> list[dict]:
     resp = None
     for attempt in range(4):
         try:
-            resp = requests.get(base_url, headers=req_headers, timeout=60, verify=False)
+            resp = requests.get(base_url, headers=req_headers, timeout=timeout, verify=False)
             if resp.status_code == 429:
                 wait_sec = (2 ** attempt) * 15
                 logger.warning("[%s] FinViz 429 rate limit, waiting %ds before retry %d", caller or "FinViz", wait_sec, attempt + 1)

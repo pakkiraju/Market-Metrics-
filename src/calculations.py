@@ -20,7 +20,15 @@ from src.data_fetcher import (
     fetch_benchmark_performance,
     fetch_thematics_data,
 )
-from src.constants import SECTOR_ETFS, SECTOR_SPDRS_RRG, RRG_BENCHMARK, SECTOR_NAMES, KEY_METRIC_ROWS
+from src.constants import (
+    SECTOR_ETFS,
+    SECTOR_SPDRS_RRG,
+    RRG_BENCHMARK,
+    SECTOR_NAMES,
+    KEY_METRIC_ROWS,
+    INDEX_GROUPS,
+    build_metric_screener_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -260,69 +268,49 @@ def compute_key_metrics_for_group(indicators: pd.DataFrame) -> list[dict]:
 
 
 def compute_key_metrics_single_group(name: str) -> list[dict]:
-    """Compute key metrics for one index group. Data from FinViz screeners directly."""
+    """Compute key metrics for one index group. Data from one USA-wide v=152 export, filtered in-app."""
     import time
 
-    from src.constants import build_metric_screener_url
-    from src.data_fetcher import fetch_group_indicators, fetch_metric_count
+    from src.data_fetcher import fetch_key_metrics_indicators_for_group, fetch_metric_count
 
-    _KEY_METRICS_URL_DELAY = 2.0  # seconds between each URL to avoid FinViz rate limit
+    _KEY_METRICS_URL_DELAY = 2.0  # only if 20d NH/NL columns missing from bulk CSV (rare)
 
-    groups = {
-        "NQ100": ("ind_NQ100", []),
-        "SPY500": ("ind_RSP", []),
-        "DJIA": ("ind_DJIA", []),
-        "RUS2000": ("ind_RUS2000", []),
-        "$1B+": ("ind_$1B+", []),
-    }
-    ck, tickers = groups.get(name, (None, []))
-    if not ck:
+    if name not in INDEX_GROUPS:
         return []
 
-    time.sleep(_KEY_METRICS_URL_DELAY)
-    ind = fetch_group_indicators(tickers, cache_key=ck)
+    ind, meta = fetch_key_metrics_indicators_for_group(name)
     rows = compute_key_metrics_for_group(ind)
     n = len(ind) if not ind.empty else 0
 
-    # These metrics require URL fetch (not in v=152 export): Price to SMA10, EMA10>SMA20, SMA crossovers, New 20-Day High/Low.
-    URL_FETCH_METRICS = [
-        "Price to SMA10",
-        "EMA10>SMA20", "SMA20<SMA50", "SMA50<SMA200", "SMA20<SMA50<SMA200",
-        "New 20-Day Highs", "New 20-Day Lows",
-    ]
-    url_fetch_indices = {m: KEY_METRIC_ROWS.index(m) for m in URL_FETCH_METRICS if m in KEY_METRIC_ROWS}
-
-    for metric_label, row_idx in url_fetch_indices.items():
-        above_url = build_metric_screener_url(name, metric_label, "above", for_export=True)
-        below_url = build_metric_screener_url(name, metric_label, "below", for_export=True)
-        if not above_url:
-            continue
-        time.sleep(_KEY_METRICS_URL_DELAY)
-        above = fetch_metric_count(above_url, f"km_{name}_{metric_label}_above", skip_delay=True)
-        if below_url:
+    if meta.get("use_20d_url_fallback"):
+        for metric_label in ("New 20-Day Highs", "New 20-Day Lows"):
+            row_idx = KEY_METRIC_ROWS.index(metric_label)
+            above_url = build_metric_screener_url(name, metric_label, "above", for_export=True)
+            if not above_url:
+                continue
             time.sleep(_KEY_METRICS_URL_DELAY)
-            below = fetch_metric_count(below_url, f"km_{name}_{metric_label}_below", skip_delay=True)
-        else:
-            below = None
-        pct = round(above / n * 100, 1) if n > 0 else 0
-        rows[row_idx] = {"above": above, "below": below, "pct": pct}
+            above = fetch_metric_count(above_url, f"km_{name}_{metric_label}_above", skip_delay=True)
+            below_url = build_metric_screener_url(name, metric_label, "below", for_export=True)
+            if below_url:
+                time.sleep(_KEY_METRICS_URL_DELAY)
+                below = fetch_metric_count(below_url, f"km_{name}_{metric_label}_below", skip_delay=True)
+            else:
+                below = None
+            pct = round(above / n * 100, 1) if n > 0 else 0
+            rows[row_idx] = {"above": above, "below": below, "pct": pct}
 
     return rows
 
 
 def compute_all_key_metrics() -> dict:
-    """Compute key metrics for all index groups. Fetches all URLs, caches full result, returns when done."""
-    import time
-
+    """Compute key metrics for all index groups. One USA-wide export + in-app filters; cached result."""
     groups_order = ["NQ100", "SPY500", "DJIA", "RUS2000", "$1B+"]
     cached = cache.get("all_key_metrics")
     if cached is not None:
         return cached
 
     result = {}
-    for i, name in enumerate(groups_order):
-        if i > 0:
-            time.sleep(2)
+    for name in groups_order:
         result[name] = compute_key_metrics_single_group(name)
 
     cache.put("all_key_metrics", result, ttl=cache.KEY_METRICS_TTL)

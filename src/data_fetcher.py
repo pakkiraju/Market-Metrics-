@@ -13,7 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 from src import cache
-from src.cache import MEDIUM, FAST
+from src.cache import MEDIUM, FAST, KEY_METRICS_TTL
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,9 @@ _FINVIZ_PARALLEL_WORKERS = int(os.environ.get("FINVIZ_PARALLEL_WORKERS", "0"))
 
 ROOT = Path(__file__).resolve().parent.parent
 WATCHLIST_FILE = ROOT / "watchlist.csv"
+
+# Single FinViz USA export (v=152 all columns) for Key Metrics — cached, then filtered per index in Python.
+USA_FULL_V152_CACHE_KEY = "usa_full_v152"
 
 
 def load_watchlist() -> list[str]:
@@ -1187,12 +1190,116 @@ _GROUP_INDICATOR_URL_KEYS = {
 }
 
 
+def _find_20d_high_column(keys: list[str]) -> str | None:
+    """FinViz full export: absolute 20-day high price column (not 50D/52W, not SMA)."""
+    for k in keys:
+        kl = str(k).strip().lower()
+        if "20" not in kl or "high" not in kl:
+            continue
+        if "sma" in kl or "rsi" in kl:
+            continue
+        if "52" in kl or "50-day" in kl or "50 day" in kl:
+            continue
+        return k
+    return None
+
+
+def _find_20d_low_column(keys: list[str]) -> str | None:
+    for k in keys:
+        kl = str(k).strip().lower()
+        if "20" not in kl or "low" not in kl:
+            continue
+        if "sma" in kl or "rsi" in kl:
+            continue
+        if "52" in kl or "50-day" in kl or "50 day" in kl:
+            continue
+        return k
+    return None
+
+
+def _row_matches_key_metrics_group(row: dict, group_name: str) -> bool:
+    """Subset of USA full CSV to match FinViz index / $1B+ filters (INDEX_BASE_FILTERS)."""
+    if group_name == "NQ100":
+        idx = str(_get_csv_val(row, "Index", "index") or "").upper()
+        return "NDX" in idx or "NASDAQ-100" in idx
+    if group_name == "SPY500":
+        idx = str(_get_csv_val(row, "Index", "index") or "")
+        iu = idx.replace(" ", "").upper()
+        return "S&P500" in iu or "S&P 500" in idx or "SP500" in iu
+    if group_name == "DJIA":
+        idx = str(_get_csv_val(row, "Index", "index") or "").upper()
+        return "DJIA" in idx
+    if group_name == "RUS2000":
+        idx = str(_get_csv_val(row, "Index", "index") or "").upper()
+        return "RUT" in idx or "RUSSELL 2000" in idx or "RUSSELL2000" in idx.replace(" ", "")
+    if group_name == "$1B+":
+        mcap_str = _get_csv_val(row, "Market Cap", "market_cap") or ""
+        mcap = _parse_num(mcap_str) if mcap_str else None
+        if mcap is not None and mcap > 0 and mcap < 1e7:
+            u = str(mcap_str or "").upper()
+            if "B" not in u and "M" not in u and "T" not in u:
+                mcap = mcap * 1e6
+        price = _parse_num(_get_csv_val(row, "Price", "price", "Last", "Close"))
+        avgv = _parse_num(_get_csv_val(row, "Avg Volume", "Average Volume", "avg_volume"))
+        if mcap is None or mcap < 1e9:
+            return False
+        if price is None or price <= 1.0:
+            return False
+        if avgv is None or avgv < 1000:
+            return False
+        return True
+    return False
+
+
+def fetch_usa_full_v152_raw(ttl: int | None = None) -> list[dict]:
+    """One Elite export: all US stocks, all v=152 columns. Cached (Key Metrics TTL)."""
+    ttl = KEY_METRICS_TTL if ttl is None else ttl
+    cached = cache.get(USA_FULL_V152_CACHE_KEY)
+    if cached is not None:
+        return cached
+    try:
+        from src.finviz_elite import fetch_export_from_url, is_elite_configured
+        from src.constants import FINVIZ_USA_FULL_V152_EXPORT
+
+        if not is_elite_configured():
+            return []
+        data = fetch_export_from_url(
+            FINVIZ_USA_FULL_V152_EXPORT,
+            caller="usa_full_v152",
+            timeout=120,
+        )
+        if data:
+            cache.put(USA_FULL_V152_CACHE_KEY, data, ttl=ttl)
+        return data or []
+    except Exception as e:
+        logger.warning("fetch_usa_full_v152_raw failed: %s", e)
+        return []
+
+
+def fetch_key_metrics_indicators_for_group(group_name: str) -> tuple[pd.DataFrame, dict]:
+    """Key Metrics: filter cached USA full export to one index/universe. meta may request 20d NH/NL URL fallback."""
+    meta: dict = {"use_20d_url_fallback": False}
+    raw = fetch_usa_full_v152_raw()
+    if not raw:
+        return pd.DataFrame(), meta
+    keys = list(raw[0].keys())
+    if _find_20d_high_column(keys) is None or _find_20d_low_column(keys) is None:
+        meta["use_20d_url_fallback"] = True
+    filtered = [r for r in raw if _row_matches_key_metrics_group(r, group_name)]
+    rows = _parse_group_indicators_rows(filtered, None)
+    if not rows:
+        return pd.DataFrame(), meta
+    return pd.DataFrame(rows), meta
+
+
 def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> list[dict]:
     """Parse export data into group indicator row format. Single DataFrame with all columns."""
     if not data:
         return []
     keys = list(data[0].keys())
     ticker_col = _find_csv_col(keys, exact="Ticker") or _find_csv_col(keys, "ticker") or "Ticker"
+    hi20_col = _find_20d_high_column(keys)
+    lo20_col = _find_20d_low_column(keys)
 
     def _v(row, *alts):
         return _get_csv_val(row, *alts)
@@ -1255,6 +1362,14 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
         year_chg = _pct("Performance (YTD)", "Performance (Year)", "Perf Year", "Perf Y", "Perf YTD", "Perf. Year", "Perf 1Y", "1Y")
         industry = str(_v(row, "Industry", "industry") or "").strip()
         sector = str(_v(row, "Sector", "sector") or "").strip()
+        h20p = _parse_num(row.get(hi20_col)) if hi20_col else None
+        l20p = _parse_num(row.get(lo20_col)) if lo20_col else None
+        new_hi = bool(
+            h20p is not None and h20p > 0 and price >= h20p * 0.999
+        )
+        new_lo = bool(
+            l20p is not None and l20p > 0 and price <= l20p * 1.001
+        )
         rows.append({
             "ticker": t,
             "close": float(price),
@@ -1274,8 +1389,8 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
             "ema10": ema10,
             "atr": atr_val,
             "atr_pct": round((atr_val / price * 100), 2) if atr_val and price else None,
-            "high_20": None,
-            "low_20": None,
+            "high_20": h20p,
+            "low_20": l20p,
             "price_to_20_range": 50.0,
             "high_52w": high52,
             "low_52w": low52,
@@ -1283,8 +1398,8 @@ def _parse_group_indicators_rows(data: list[dict], ticker_set: set | None) -> li
             "avg_volume": avg_vol if avg_vol is not None else vol,
             "rel_volume": rel_vol,
             "market_cap": market_cap,
-            "new_20_high": False,
-            "new_20_low": False,
+            "new_20_high": new_hi,
+            "new_20_low": new_lo,
             "industry": industry or sector,
             "sector": sector,
         })

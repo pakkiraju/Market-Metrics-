@@ -113,7 +113,7 @@ ET = timezone(timedelta(hours=-5))
 # Per-widget refresh: cache keys to invalidate when btn-refresh-{widget_id} is clicked
 WIDGET_CACHE_KEYS = {
     "should-i-trade": ["should_i_trade_aggregate"],
-    "key-metrics": ["all_key_metrics"],
+    "key-metrics": ["all_key_metrics", "usa_full_v152"],
     "chart2": ["all_key_metrics"],
     "chart3": ["all_key_metrics"],
     "club97": ["97_club"],
