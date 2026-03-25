@@ -88,12 +88,6 @@ def tickers_from_fallback(widget_id: str) -> list[str]:
             from src.calculations import compute_top_gainers_losers
             _, l = compute_top_gainers_losers(12)
             return extract_tickers_from_rows(l)
-        if widget_id == "live_index":
-            from src.should_i_trade_data import fetch_should_i_trade_data
-
-            agg = fetch_should_i_trade_data()
-            tape = agg.get("ticker_tape", []) if isinstance(agg, dict) else []
-            return [str(t.get("ticker", "")).strip().upper() for t in tape if t.get("ticker")]
         if widget_id == "stage":
             from src import cache
             data = cache.get("stage_analysis")

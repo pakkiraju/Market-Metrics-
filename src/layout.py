@@ -27,7 +27,7 @@ from src.styles import (
     CONTENT_AREA_STYLE,
     PRIMARY_ROW_STYLE, QUARTER_ROW_STYLE, THIRD_ROW_STYLE, WIDE_ROW_STYLE, HALF_ROW_STYLE,
     SNAPSHOT_MOVERS_ROW_STYLE,
-    INTRADAY_TOP_MOVERS_BODY_STYLE, INTRADAY_SNAPSHOT_BODY_STYLE, INTRADAY_INDEX_ROW_CARD_STYLE,
+    INTRADAY_TOP_MOVERS_BODY_STYLE, INTRADAY_INDEX_ROW_CARD_STYLE,
     WIDGET_STYLE, WIDGET_PRIMARY_STYLE, WIDGET_SECONDARY_STYLE, WIDGET_KEY_METRICS_STYLE,
     section_header_style, SECTION_BODY_STYLE, KEY_METRICS_BODY_STYLE,
     TICKER_GRID_STYLE, ticker_pill_style,
@@ -103,7 +103,6 @@ SUPER_SCANNERS_WIDGETS = [
 ]
 # Intraday tab widgets (in_play and earnings here)
 INTRADAY_WIDGETS = [
-    ("live_index",     "Ticker tape",                 False),
     ("in_play",        "Stocks In Play",             False),
     ("intraday-earnings", "Earnings Yesterday + Today", False),
     ("top_gainers",    "Top Gainers",                False),
@@ -115,7 +114,7 @@ WIDGETS = MARKET_METRICS_WIDGETS + SUPER_SCANNERS_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "jeff_sun_canslim", "jeff_sun_high_adr", "jeff_sun_extended_bases", "jeff_sun_1w20", "jeff_sun_4w30", "jeff_sun_4w50", "jeff_sun_13w50", "jeff_sun_26w100", "jeff_sun_ipo_thisweek", "jeff_sun_high_short_float", "jeff_sun_liquid_etfs", "julian_komar_strongest", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "pre_market") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "jeff_sun_canslim", "jeff_sun_high_adr", "jeff_sun_extended_bases", "jeff_sun_1w20", "jeff_sun_4w30", "jeff_sun_4w50", "jeff_sun_13w50", "jeff_sun_26w100", "jeff_sun_ipo_thisweek", "jeff_sun_high_short_float", "jeff_sun_liquid_etfs", "julian_komar_strongest", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "in_play", "intraday-earnings", "top_gainers", "top_losers", "pre_market") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -727,6 +726,15 @@ def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort
             elif col and (("average" in col.lower() and "volume" in col.lower()) or ("avg" in col.lower() and "vol" in col.lower())):
                 _, avg_str = _format_screener_vol(None, val)
                 cell = (avg_str or str(val)) if val not in (None, "") else ""
+            elif col and "rel" in col.lower() and "vol" in col.lower():
+                try:
+                    rv = float(str(val).replace(",", "")) if val not in (None, "") else float("nan")
+                    cell = "" if math.isnan(rv) else f"{rv:.2f}"
+                except (ValueError, TypeError):
+                    cell = str(val) if val not in (None, "") else ""
+            elif col and "volume" in col.lower() and "avg" not in col.lower() and "rel" not in col.lower():
+                vol_str, _ = _format_screener_vol(val, None)
+                cell = vol_str if vol_str else (str(val) if val not in (None, "") else "")
             elif col and "news" in col.lower() and "url" in col.lower() and val:
                 url = str(val).strip()
                 if url.startswith("/"):
@@ -847,28 +855,52 @@ def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col
                   widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
 
 
+def _build_intraday_top_movers_table(data: list[dict]) -> html.Table:
+    """Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR % — same formatting as Stocks in Play."""
+    cell = {**TABLE_CELL_STYLE, "padding": "0px 3px 1px 3px", "lineHeight": 1.25}
+    headers = [
+        ("Ticker", None), ("Price", None), ("Avg Vol", None), ("Rel Vol", None),
+        ("Change", None), ("Vol", None), ("ATR %", None),
+    ]
+    rows = []
+    for r in data:
+        chg_val = r.get("change")
+        try:
+            chg_num = float(chg_val) if chg_val is not None else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        rel_v = r.get("rel_vol")
+        try:
+            if rel_v is None or rel_v == "":
+                rel_str = ""
+            else:
+                rv = float(rel_v)
+                rel_str = "" if math.isnan(rv) else f"{rv:.2f}"
+        except (TypeError, ValueError):
+            rel_str = str(rel_v).strip() if rel_v is not None else ""
+        atr_pct = r.get("atr_pct")
+        atr_str = f"{atr_pct:.2f}%" if atr_pct is not None else ""
+        rows.append([
+            {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}), "style": cell},
+            str(r.get("price", "")),
+            avg_str,
+            rel_str,
+            {"text": f"{chg_num:+.2f}%",
+             "style": {**cell, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
+            atr_str,
+        ])
+    return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px"])
+
+
 def build_top_gainers_table(data: list[dict]) -> html.Div:
     """Top gainers on the day — from thematics universe (same data as Thematics Tracker)."""
     if not data:
         return html.Div("No data (same universe as Thematics). Try Refresh.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    cell = {**TABLE_CELL_STYLE, "padding": "0px 3px 1px 3px", "lineHeight": 1.25}
-    headers = [("Ticker", None), ("Chg", None)]
-    rows = []
-    for r in data:
-        chg = r.get("change", 0)
-        try:
-            chg_num = float(chg) if chg is not None else 0
-        except (ValueError, TypeError):
-            chg_num = 0
-        rows.append([
-            {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}),
-             "style": cell},
-            {"text": f"{chg_num:+.2f}%",
-             "style": {**cell, "color": chg_color(chg_num), "fontWeight": 600}},
-        ])
-    return _table(headers, rows, col_widths=["70px", "55px"])
+    return _build_intraday_top_movers_table(data)
 
 
 def build_top_losers_table(data: list[dict]) -> html.Div:
@@ -877,22 +909,7 @@ def build_top_losers_table(data: list[dict]) -> html.Div:
         return html.Div("No data (same universe as Thematics). Try Refresh.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    cell = {**TABLE_CELL_STYLE, "padding": "0px 3px 1px 3px", "lineHeight": 1.25}
-    headers = [("Ticker", None), ("Chg", None)]
-    rows = []
-    for r in data:
-        chg = r.get("change", 0)
-        try:
-            chg_num = float(chg) if chg is not None else 0
-        except (ValueError, TypeError):
-            chg_num = 0
-        rows.append([
-            {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}),
-             "style": cell},
-            {"text": f"{chg_num:+.2f}%",
-             "style": {**cell, "color": chg_color(chg_num), "fontWeight": 600}},
-        ])
-    return _table(headers, rows, col_widths=["70px", "55px"])
+    return _build_intraday_top_movers_table(data)
 
 
 def _parse_vol(val):
@@ -2022,8 +2039,10 @@ def build_should_i_trade_content(data: dict, scores: dict, summary: str | dict) 
         v = ew_factors.get(key, ("—", "—"))
         yes_no = v[0] if len(v) > 0 else "—"
         detail = v[1] if len(v) > 1 else "—"
-        dot = COLORS["green"] if yes_no == "Yes" else (COLORS["red"] if yes_no == "No" else COLORS["yellow"])
-        badge_c = COLORS["green"] if yes_no == "Yes" else (COLORS["red"] if yes_no == "No" else COLORS["yellow"])
+        positive = {"Yes", "Working", "Strong"}
+        negative = {"No", "Failing", "Weak"}
+        dot = COLORS["green"] if yes_no in positive else (COLORS["red"] if yes_no in negative else COLORS["yellow"])
+        badge_c = COLORS["green"] if yes_no in positive else (COLORS["red"] if yes_no in negative else COLORS["yellow"])
         return (dot, label, yes_no, detail, badge_c)
     ew_rows = [
         _ew_row("breakouts_working", "Breakouts working?"),
@@ -2938,13 +2957,12 @@ def build_layout() -> html.Div:
 
     return html.Div([
         dcc.Interval(id="interval-refresh", interval=3600_000, n_intervals=0),
-        dcc.Interval(id="interval-live-snapshot", interval=300_000, n_intervals=0),
         dcc.Interval(id="market-hours-check", interval=60_000, n_intervals=0),
         dcc.Interval(id="interval-header-clock", interval=60_000, n_intervals=0),
         dcc.Interval(id="interval-chart-resize", interval=500, n_intervals=0, max_intervals=1),
         dcc.Store(id="watchlist-store", data=_initial_watchlist()),
         dcc.Store(id="chart-resize-trigger"),
-        dcc.Store(id="main-tabs", data="market-metrics"),
+        dcc.Store(id="main-tabs", data="market-metrics", storage_type="local"),
         dcc.Download(id="download-watchlist-tv"),
 
         build_header(),
@@ -3175,12 +3193,6 @@ def build_layout() -> html.Div:
                                     [
                         html.Div([
                         html.Div([
-                            _widget("live_index", "Ticker tape",
-                                    _intraday_loading_wrap("live_index-content"),
-                                    variant="teal",
-                                    initial_hidden=not DEFAULT_VISIBILITY.get("live_index", True),
-                                    body_style=INTRADAY_SNAPSHOT_BODY_STYLE,
-                                    card_style_override=INTRADAY_INDEX_ROW_CARD_STYLE),
                             _widget("top_gainers", "Top Gainers",
                                     _intraday_loading_wrap("top_gainers-content"),
                                     variant="teal",

@@ -752,27 +752,49 @@ def _is_stale_thematics_cache(cached: list) -> bool:
 
 
 def compute_top_gainers_losers(top_n: int = 12) -> tuple[list[dict], list[dict]]:
-    """Top gainers and top losers from thematics universe (same data as Thematics Tracker).
-    Uses fetch_thematics_data (same USA v152 as Key Metrics) — no extra FinViz URL when thematics is refreshed."""
+    """Top gainers and top losers from the same liquid USA v152 universe as Thematics (see `fetch_usa_thematics_universe_indicators`).
+    Uses full parsed columns: price, avg vol, rel vol, change, vol, atr %."""
     pv = V152_PARSED
-    df = fetch_thematics_data(cache_key="thematics_data", ttl=MEDIUM)
+    df = fetch_usa_thematics_universe_indicators()
     if not isinstance(df, pd.DataFrame) or df.empty:
         return [], []
+    if pv.TICKER not in df.columns or pv.DAY_CHG not in df.columns:
+        return [], []
     df = df.dropna(subset=[pv.DAY_CHG])
-    cols = [pv.TICKER, pv.DAY_CHG]
-    for c in (pv.VOLATILITY_WEEK, pv.VOLATILITY_MONTH):
-        if c in df.columns:
-            cols.append(c)
-    gainers = (
-        df.nlargest(top_n, pv.DAY_CHG)[cols]
-        .rename(columns={pv.DAY_CHG: "change"})
-        .to_dict("records")
-    )
-    losers = (
-        df.nsmallest(top_n, pv.DAY_CHG)[cols]
-        .rename(columns={pv.DAY_CHG: "change"})
-        .to_dict("records")
-    )
+    if df.empty:
+        return [], []
+
+    def row_to_dict(row: pd.Series) -> dict:
+        t = str(row[pv.TICKER]).strip().upper()
+        dc = float(row[pv.DAY_CHG]) if pd.notna(row[pv.DAY_CHG]) else 0.0
+        out: dict = {"ticker": t, "change": dc}
+        if pv.CLOSE in row.index and pd.notna(row.get(pv.CLOSE)):
+            try:
+                out["price"] = f"{float(row[pv.CLOSE]):.2f}"
+            except (TypeError, ValueError):
+                out["price"] = ""
+        else:
+            out["price"] = ""
+        for src, dst in (
+            (pv.AVG_VOLUME, "avg_vol"),
+            (pv.REL_VOLUME, "rel_vol"),
+            (pv.VOLUME, "volume"),
+        ):
+            if src in row.index:
+                out[dst] = row[src]
+        if pv.ATR_PCT in row.index and pd.notna(row.get(pv.ATR_PCT)):
+            try:
+                out["atr_pct"] = float(row[pv.ATR_PCT])
+            except (TypeError, ValueError):
+                out["atr_pct"] = None
+        else:
+            out["atr_pct"] = None
+        return out
+
+    gainers_df = df.nlargest(top_n, pv.DAY_CHG)
+    losers_df = df.nsmallest(top_n, pv.DAY_CHG)
+    gainers = [row_to_dict(r) for _, r in gainers_df.iterrows()]
+    losers = [row_to_dict(r) for _, r in losers_df.iterrows()]
     return gainers, losers
 
 

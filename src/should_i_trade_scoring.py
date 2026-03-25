@@ -359,8 +359,12 @@ def score_execution_window(data: dict) -> tuple[float, dict]:
 
     follow = "Strong" if score >= 70 else ("Weak" if score < 40 else "Moderate")
     follow_detail = "High conviction" if follow == "Strong" else ("Low conviction" if follow == "Weak" else "Moderate")
+    breakout_detail_label = (
+        "Passing" if breakouts == "Yes" else ("Failing" if breakouts == "No" else "Unclear")
+    )
     factors = {
-        "breakouts_working": (breakouts, f"{breakouts_tag} — {breakouts_detail}"),
+        # Keep badge as Yes/No/Mixed, with concise status text beside it.
+        "breakouts_working": (breakouts, breakout_detail_label),
         "leaders_holding": (leaders, leaders_detail),
         "pullbacks_bought": (pullbacks, pullbacks_detail),
         "follow_through": (follow, follow_detail),
