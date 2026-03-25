@@ -51,7 +51,7 @@ from src.screeners import (
 from src.layout import (
     build_should_i_trade_content,
     build_key_metrics_table,
-    build_live_index_snapshot,
+    build_ticker_marquee_from_tape,
     build_metrics_bar_chart,
     build_sector_table,
     build_rrg_chart,
@@ -115,7 +115,7 @@ WIDGET_CACHE_KEYS = {
     "key-metrics": [
         "all_key_metrics",
         "usa_full_v152",
-        "usa_v152_parsed_df",
+        "usa_v152_parsed_df_v2",
         "sector_data",
         "rrg_data",
         "rrg_benchmark",
@@ -125,14 +125,14 @@ WIDGET_CACHE_KEYS = {
         "thematics_data",
         "thematics",
         "leading_industries",
-        "stocks_in_play",
+        "stocks_in_play_v2",
         "earnings_yesterday_today",
-        "pre_market_scanner",
+        "pre_market_scanner_v3",
     ],
     "chart2": [
         "all_key_metrics",
         "usa_full_v152",
-        "usa_v152_parsed_df",
+        "usa_v152_parsed_df_v2",
         "sector_data",
         "rrg_data",
         "rrg_benchmark",
@@ -142,14 +142,14 @@ WIDGET_CACHE_KEYS = {
         "thematics_data",
         "thematics",
         "leading_industries",
-        "stocks_in_play",
+        "stocks_in_play_v2",
         "earnings_yesterday_today",
-        "pre_market_scanner",
+        "pre_market_scanner_v3",
     ],
     "chart3": [
         "all_key_metrics",
         "usa_full_v152",
-        "usa_v152_parsed_df",
+        "usa_v152_parsed_df_v2",
         "sector_data",
         "rrg_data",
         "rrg_benchmark",
@@ -159,22 +159,22 @@ WIDGET_CACHE_KEYS = {
         "thematics_data",
         "thematics",
         "leading_industries",
-        "stocks_in_play",
+        "stocks_in_play_v2",
         "earnings_yesterday_today",
-        "pre_market_scanner",
+        "pre_market_scanner_v3",
     ],
     "club97": ["97_club"],
     "movers": ["9m_movers"],
     "weekly": ["20pct_weekly"],
     "daily": ["4pct_daily"],
-    "in_play": ["stocks_in_play", "usa_full_v152", "usa_v152_parsed_df"],
-    "intraday-earnings": ["earnings_yesterday_today", "usa_full_v152", "usa_v152_parsed_df"],
-    "pre_market": ["pre_market_scanner", "usa_full_v152", "usa_v152_parsed_df"],
-    "live_index": ["live_index_quotes"],
+    "in_play": ["stocks_in_play_v2", "usa_full_v152", "usa_v152_parsed_df_v2"],
+    "intraday-earnings": ["earnings_yesterday_today", "usa_full_v152", "usa_v152_parsed_df_v2"],
+    "pre_market": ["pre_market_scanner_v3", "usa_full_v152", "usa_v152_parsed_df_v2"],
+    "live_index": ["should_i_trade_aggregate", "live_index_quotes", "sector_data"],
     # Same USA v152 blob as Key Metrics: invalidate bundle so manual refresh stays consistent across Leading / Thematics / Sector / RRG.
     "leading": [
         "usa_full_v152",
-        "usa_v152_parsed_df",
+        "usa_v152_parsed_df_v2",
         "leading_industries",
         "thematics",
         "thematics_data",
@@ -183,7 +183,7 @@ WIDGET_CACHE_KEYS = {
     ],
     "thematics": [
         "usa_full_v152",
-        "usa_v152_parsed_df",
+        "usa_v152_parsed_df_v2",
         "leading_industries",
         "thematics",
         "thematics_data",
@@ -192,16 +192,16 @@ WIDGET_CACHE_KEYS = {
     ],
     "thematics-sector": [
         "usa_full_v152",
-        "usa_v152_parsed_df",
+        "usa_v152_parsed_df_v2",
         "leading_industries",
         "thematics",
         "thematics_data",
         "thematics_sector_data",
         "thematics_rrg_data",
     ],
-    "top_gainers": ["thematics_data", "usa_full_v152", "usa_v152_parsed_df", "leading_industries", "thematics"],
-    "top_losers": ["thematics_data", "usa_full_v152", "usa_v152_parsed_df", "leading_industries", "thematics"],
-    "stage": ["stage_analysis", "ind_stage", "usa_v152_parsed_df", "usa_full_v152"],
+    "top_gainers": ["thematics_data", "usa_full_v152", "usa_v152_parsed_df_v2", "leading_industries", "thematics"],
+    "top_losers": ["thematics_data", "usa_full_v152", "usa_v152_parsed_df_v2", "leading_industries", "thematics"],
+    "stage": ["stage_analysis", "ind_stage", "usa_v152_parsed_df_v2", "usa_full_v152"],
     "thematics-rrg": ["thematics_rrg_data"],
     "macro-monitor": ["macro_fred_bundle"],
     "qulla": ["qulla_episodic_v2", "qulla_parabolic_v2", "qulla_breakouts_v2"],
@@ -219,7 +219,7 @@ WIDGET_CACHE_KEYS = {
     "jeff_sun_high_short_float": ["jeff_sun_high_short_float"],
     "jeff_sun_liquid_etfs": ["jeff_sun_liquid_etfs"],
     "julian_komar_strongest": ["julian_komar_strongest"],
-    "sector": ["sector_data", "usa_v152_parsed_df", "rrg_data", "rrg_benchmark", "usa_full_v152"],
+    "sector": ["sector_data", "usa_v152_parsed_df_v2", "rrg_data", "rrg_benchmark", "usa_full_v152"],
     "stockbee": ["stockbee_momentum50"],
     "breadth": ["stockbee_breadth"],
     "breadth-primary": ["stockbee_breadth_history"],
@@ -227,7 +227,7 @@ WIDGET_CACHE_KEYS = {
     "breadth-secondary": ["stockbee_breadth_history"],
     "breadth-sp500": ["stockbee_breadth_history"],
     "rrg": ["rrg_data"],
-    "sp500-landscape": ["sp500_landscape", "usa_v152_parsed_df", "usa_full_v152"],
+    "sp500-landscape": ["sp500_landscape", "usa_v152_parsed_df_v2", "usa_full_v152"],
     "earnings-calendar-week": ["earnings_this_week"],
 }
 
@@ -1242,11 +1242,12 @@ def register_callbacks(app):
         if btn_widget:
             _invalidate_widget_cache("live_index")
         try:
-            from src.data_fetcher import fetch_live_index_quotes
-            data = fetch_live_index_quotes()
-            return build_live_index_snapshot(data)
+            from src.should_i_trade_data import fetch_should_i_trade_data
+
+            data = fetch_should_i_trade_data()
+            return build_ticker_marquee_from_tape(data.get("ticker_tape", []))
         except Exception as e:
-            logger.exception("Market Snapshot failed: %s", e)
+            logger.exception("Ticker tape failed: %s", e)
             return _err_div(e)
 
     @app.callback(

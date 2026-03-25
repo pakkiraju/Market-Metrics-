@@ -149,7 +149,7 @@ THIRD_ROW_STYLE = {
     "marginBottom": "4px",
 }
 
-# Intraday: Market Snapshot + Top Gainers + Top Losers — equal columns, same card height
+# Intraday: Ticker tape + Top Gainers + Top Losers — equal columns, same card height
 SNAPSHOT_MOVERS_ROW_STYLE = {
     "display": "grid",
     "gridTemplateColumns": "1fr 1fr 1fr",

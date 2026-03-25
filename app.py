@@ -104,7 +104,8 @@ app.index_string = f"""<!DOCTYPE html>
         }}
 
         /* Should I Trade? — Bloomberg terminal style */
-        #should-i-trade-content .sit-mono {{
+        #should-i-trade-content .sit-mono,
+        #widget-live_index .sit-mono {{
             font-family: 'JetBrains Mono', 'Consolas', monospace;
         }}
 

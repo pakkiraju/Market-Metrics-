@@ -103,7 +103,7 @@ SUPER_SCANNERS_WIDGETS = [
 ]
 # Intraday tab widgets (in_play and earnings here)
 INTRADAY_WIDGETS = [
-    ("live_index",     "Market Snapshot",             False),
+    ("live_index",     "Ticker tape",                 False),
     ("in_play",        "Stocks In Play",             False),
     ("intraday-earnings", "Earnings Yesterday + Today", False),
     ("top_gainers",    "Top Gainers",                False),
@@ -675,6 +675,9 @@ def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort
     news_url_cols = [c for c in cols if "news" in c.lower() and "url" in c.lower()]
     other_cols = [c for c in cols if c not in news_url_cols]
     cols = other_cols + news_url_cols
+    title_cols = [c for c in cols if ("news" in c.lower() and "title" in c.lower()) or ("daily digest" in c.lower())]
+    if title_cols and news_url_cols:
+        cols = [c for c in cols if c not in news_url_cols]
     if not cols:
         return html.Div("No columns", style={"color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px"})
 
@@ -736,11 +739,48 @@ def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort
                     cell = str(val)
             elif col and (("news" in col.lower() and "title" in col.lower()) or "daily digest" in col.lower()):
                 text = str(val) if val not in (None, "") else ""
-                cell = {"text": text,
-                        "style": {**TABLE_CELL_STYLE, "fontSize": "12px", "lineHeight": "1.45",
-                                  "whiteSpace": "normal", "overflow": "visible",
-                                  "textOverflow": "unset", "wordWrap": "break-word", "textAlign": "left",
-                                  "minWidth": "360px", "maxWidth": "none"}}
+                url_key = next((k for k in r.keys() if "news" in k.lower() and "url" in k.lower()), None)
+                url_val = str(r.get(url_key)).strip() if url_key else ""
+                if url_val.startswith("/"):
+                    url_val = "https://finviz.com" + url_val
+                if text and url_val.startswith(("http://", "https://")):
+                    display = text if len(text) <= 220 else (text[:217] + "...")
+                    cell = {
+                        "text": html.A(
+                            display,
+                            href=url_val,
+                            target="_blank",
+                            rel="noopener noreferrer",
+                            style={
+                                "color": COLORS["accent"],
+                                "textDecoration": "underline",
+                                "fontSize": "11px",
+                                "lineHeight": "1.45",
+                                "whiteSpace": "normal",
+                                "wordWrap": "break-word",
+                            },
+                        ),
+                        "style": {
+                            **TABLE_CELL_STYLE,
+                            "fontSize": "12px",
+                            "lineHeight": "1.45",
+                            "whiteSpace": "normal",
+                            "overflow": "visible",
+                            "textOverflow": "unset",
+                            "wordWrap": "break-word",
+                            "textAlign": "left",
+                            "minWidth": "360px",
+                            "maxWidth": "none",
+                        },
+                    }
+                elif text:
+                    cell = {"text": text,
+                            "style": {**TABLE_CELL_STYLE, "fontSize": "12px", "lineHeight": "1.45",
+                                      "whiteSpace": "normal", "overflow": "visible",
+                                      "textOverflow": "unset", "wordWrap": "break-word", "textAlign": "left",
+                                      "minWidth": "360px", "maxWidth": "none"}}
+                else:
+                    cell = ""
             else:
                 cell = str(val) if val not in (None, "") else ""
             row_cells.append(cell)
@@ -1611,73 +1651,23 @@ def build_sp500_chart(history: list[dict]) -> go.Figure:
     return fig
 
 
-def build_live_index_snapshot(data: list[dict]) -> html.Div:
-    """Live QQQ, SPY, DIA, IWM, VIX snapshot for intraday traders."""
-    if not data:
-        return html.Div("Live data unavailable. Set FINVIZ_API_KEY in .env.", style={
-            "color": COLORS["text_muted"], "fontSize": "10px", "padding": "8px",
-        })
+def build_ticker_marquee_from_tape(ticker_tape: list[dict]) -> html.Div:
+    """Horizontal ticker tape (same CSS as Should I Trade?). `ticker_tape`: {ticker, change}."""
+    def _tape_item(t):
+        chg = t.get("change", "")
+        is_pos = "+" in str(chg)
+        return html.Span([
+            html.Span(t.get("ticker", ""), style={"fontWeight": 600, "marginRight": "4px"}),
+            html.Span(chg, className="sit-mono", style={"color": COLORS["green"] if is_pos else COLORS["red"], "fontSize": "10px"}),
+        ], style={"display": "inline-flex", "marginRight": "24px", "whiteSpace": "nowrap"})
 
-    muted = {"color": COLORS["text_muted"], "fontSize": "8px", "fontWeight": 500}
-
-    def _card(r: dict) -> html.Div:
-        ticker = r.get("ticker", "")
-        price = r.get("price", "—")
-        change = r.get("change", "")
-        try:
-            chg_val = float(str(change or "").replace("%", "").replace(",", "").strip()) if change else 0.0
-        except (ValueError, TypeError):
-            chg_val = 0.0
-        color = chg_color(chg_val)
-        o = (r.get("open") or "").strip()
-        p = (r.get("prev_close") or "").strip()
-        vol = (r.get("volume") or "").strip()
-        sub: list = []
-        if o or p:
-            sub.append(html.Div([
-                html.Span("O ", style=muted),
-                html.Span(o or "—", style={"fontSize": "8px", "color": COLORS["text"]}),
-                html.Span(" · P ", style=muted),
-                html.Span(p or "—", style={"fontSize": "8px", "color": COLORS["text"]}),
-            ], style={"lineHeight": 1.25}))
-        if vol:
-            sub.append(html.Div([
-                html.Span("Vol ", style=muted),
-                html.Span(vol, style={"fontSize": "8px", "color": COLORS["text"]}),
-            ], style={"lineHeight": 1.25}))
-        kids = [
-            html.Div(_clickable_ticker(ticker, {"fontSize": "9px", "fontWeight": 600}),
-                     style={"color": COLORS["text_muted"], "marginBottom": "2px"}),
-            html.Div(price, style={"fontSize": "14px", "fontWeight": 700, "color": COLORS["text"], "lineHeight": 1.15}),
-            html.Div(change or "—", style={"fontSize": "10px", "fontWeight": 600, "color": color, "marginTop": "1px"}),
-        ]
-        if sub:
-            kids.append(html.Div(sub, style={"marginTop": "auto", "paddingTop": "4px", "display": "flex", "flexDirection": "column", "gap": "3px"}))
-        return html.Div(kids, style={
-            "padding": "6px 6px",
-            "borderRadius": "4px",
-            "background": COLORS["surface2"],
-            "border": f"1px solid {COLORS['border']}",
-            "display": "flex",
-            "flexDirection": "column",
-            "justifyContent": "flex-start",
-            "flex": 1,
-            "minWidth": 0,
-            "minHeight": 0,
-            "height": "100%",
-        })
-
-    cards = [_card(r) for r in data if r.get("ticker")]
-    return html.Div(cards, style={
-        "display": "flex",
-        "flexDirection": "row",
-        "gap": "5px",
-        "alignItems": "stretch",
-        "flex": 1,
-        "minHeight": 0,
-        "height": "100%",
-        "width": "100%",
-    })
+    tape_items = [_tape_item(t) for t in ticker_tape]
+    tape_duplicated = tape_items + tape_items if tape_items else []
+    if tape_items:
+        return html.Div([
+            html.Div(tape_duplicated, className="sit-ticker-marquee-inner"),
+        ], className="sit-ticker-marquee")
+    return html.Div("Loading ticker data...", style={"color": COLORS["text_muted"], "fontSize": "10px"})
 
 
 # -----------------------------------------------------------------------
@@ -2119,19 +2109,7 @@ def build_should_i_trade_content(data: dict, scores: dict, summary: str | dict) 
         ], style={"paddingTop": "8px", "borderTop": f"1px solid {COLORS['border']}"}) if suggested_action else html.Span(),
     ], style={"padding": "12px", "background": COLORS["surface2"], "borderRadius": "6px", "border": f"1px solid {COLORS['border']}", "display": "flex", "flexDirection": "column", "height": "100%"})
 
-    ticker_tape = data.get("ticker_tape", [])
-    def _tape_item(t):
-        chg = t.get("change", "")
-        is_pos = "+" in str(chg)
-        return html.Span([
-            html.Span(t.get("ticker", ""), style={"fontWeight": 600, "marginRight": "4px"}),
-            html.Span(chg, className="sit-mono", style={"color": COLORS["green"] if is_pos else COLORS["red"], "fontSize": "10px"}),
-        ], style={"display": "inline-flex", "marginRight": "24px", "whiteSpace": "nowrap"})
-    tape_items = [_tape_item(t) for t in ticker_tape]
-    tape_duplicated = tape_items + tape_items if tape_items else []
-    ticker_marquee = html.Div([
-        html.Div(tape_duplicated, className="sit-ticker-marquee-inner"),
-    ], className="sit-ticker-marquee") if tape_items else html.Div("Loading ticker data...", style={"color": COLORS["text_muted"], "fontSize": "10px"})
+    ticker_marquee = build_ticker_marquee_from_tape(data.get("ticker_tape", []))
 
     return html.Div([
         html.Div([
@@ -3002,7 +2980,8 @@ def build_layout() -> html.Div:
                         primary=True,
                         initial_hidden=not DEFAULT_VISIBILITY.get("key-metrics", True),
                         body_style=KEY_METRICS_BODY_STYLE,
-                        card_style_override=WIDGET_KEY_METRICS_STYLE),
+                        card_style_override=WIDGET_KEY_METRICS_STYLE,
+                        watchlist_export=False),
                 _widget("chart2", "NQ100, SPY500 & DJIA Metrics",
                         _loading_wrap("chart2-content", [loading],
                                       style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
@@ -3196,7 +3175,7 @@ def build_layout() -> html.Div:
                                     [
                         html.Div([
                         html.Div([
-                            _widget("live_index", "Market Snapshot",
+                            _widget("live_index", "Ticker tape",
                                     _intraday_loading_wrap("live_index-content"),
                                     variant="teal",
                                     initial_hidden=not DEFAULT_VISIBILITY.get("live_index", True),
