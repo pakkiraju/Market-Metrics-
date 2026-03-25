@@ -255,9 +255,22 @@ Each table is a **FinViz Elite screener/export** (see `FINVIZ_SCREENER_URLS` / `
 
 ---
 
-## Ticker clicks
+## Ticker clicks (chart + fundamentals)
 
-Clicking a symbol opens a **TradingView** chart modal (client-side).
+Clicking any **`.tv-ticker`** symbol (tables, grids, watchlist, etc.) opens a modal with:
+
+1. **TradingView** embedded chart (same behavior as before; client-side iframe URL).
+2. **Fundamentals panel** to the right (desktop) or below (narrow widths): a dense, Finviz-style grid of **all columns** from the cached FinViz Elite **USA full export** (v=152) for that symbol when it appears in `usa_full_v152`. If the symbol is not in that export, the app falls back to **`quote.ashx`** (single-ticker snapshot) when Elite is configured.
+
+**Implementation notes:**
+
+| Piece | Role |
+|-------|------|
+| `GET /api/ticker-metrics/<symbol>` | Flask route on `app.server`; returns JSON `{ ok, symbol, source, pairs }`. `source` is `usa_v152`, `quote`, or unavailable. |
+| `src/ticker_metrics.py` | Looks up the raw CSV row, ordered field list, large-number formatting (commas + K/M/B for Market Cap, Enterprise Value, Volume, Avg Volume, Income, Sales, etc.), quote fallback. |
+| `app.py` (inline script + CSS) | Opens modal, fetches `/api/ticker-metrics/...`, renders six columns of label/value rows; **News URL** shows as **Article** (hyperlink); labels split sensibly (e.g. parentheses, `Perf …`, `Inst …`, `Insider …`). Metrics area scrolls **vertically** only; no horizontal scroll. |
+
+**Formatting:** Selected numeric fields (market cap, volume, enterprise value, average volume, and similar) are normalized for display with commas and **K / M / B** suffixes. **Duplicate CSV headers** (e.g. FinViz `Dividend` twice) may still collapse to one value in the parsed row—same limitation as the bulk CSV import.
 
 ---
 
@@ -271,7 +284,7 @@ JSON cache under `.cache/`; TTLs vary (e.g. fast for live snapshot, longer for s
 
 ```
 Market Metrics Dashboard/
-├── app.py
+├── app.py                  # Dash app + `/api/ticker-metrics/<symbol>` route
 ├── .env                    # FINVIZ_API_KEY, FRED_API_KEY, …
 ├── watchlist.csv
 ├── config/macro_cbo.yaml   # Optional Macro Monitor labels
@@ -279,6 +292,7 @@ Market Metrics Dashboard/
 │   ├── layout.py           # Tabs + widget registry
 │   ├── callbacks.py
 │   ├── data_fetcher.py     # FinViz + helpers
+│   ├── ticker_metrics.py   # USA v152 row lookup + modal metrics payload
 │   ├── finviz_elite.py
 │   ├── calculations.py     # Key metrics, RRG, stage, thematics
 │   ├── macro_fred_client.py

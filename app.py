@@ -172,6 +172,136 @@ app.index_string = f"""<!DOCTYPE html>
             background: rgba(6, 182, 212, 0.2) !important;
             color: {COLORS['text_muted']} !important;
         }}
+
+        /* TradingView modal — metrics panel (Finviz-style grid) */
+        .tv-modal-body {{
+            align-items: stretch;
+        }}
+        @media (max-width: 900px) {{
+            .tv-modal-body {{
+                flex-direction: column !important;
+            }}
+            .tv-metrics-panel {{
+                flex: 1 1 auto !important;
+                max-width: none !important;
+                min-width: 0 !important;
+                border-left: none !important;
+                border-top: 1px solid {COLORS['border']} !important;
+                max-height: 42vh;
+            }}
+            .tv-modal-chart-wrap {{
+                flex: 1 1 50% !important;
+                min-height: 200px;
+            }}
+        }}
+        .tv-metrics-body-inner {{
+            font-size: 11px;
+            line-height: 1.4;
+            padding: 8px 8px 6px;
+            color: {COLORS['text']};
+            box-sizing: border-box;
+        }}
+        .tv-metrics-loading, .tv-metrics-err, .tv-metrics-empty {{
+            padding: 12px;
+            font-size: 11px;
+            color: {COLORS['text_muted']};
+        }}
+        .tv-metrics-err {{ color: {COLORS['red_light']}; }}
+        .tv-metrics-source {{
+            flex-shrink: 0;
+            font-size: 9px;
+            color: {COLORS['accent']};
+            margin-bottom: 6px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid {COLORS['border']};
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }}
+        .tv-metrics-fit-wrap {{
+            flex: 1 1 0;
+            min-height: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding-right: 10px;
+            box-sizing: border-box;
+        }}
+        .tv-metrics-fit-wrap::-webkit-scrollbar {{ width: 10px; }}
+        .tv-metrics-fit-wrap::-webkit-scrollbar-track {{ background: {COLORS['surface']}; border-radius: 4px; }}
+        .tv-metrics-fit-wrap::-webkit-scrollbar-thumb {{ background: {COLORS['border_light']}; border-radius: 4px; }}
+        .tv-metrics-scale-inner {{
+            box-sizing: border-box;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: hidden;
+        }}
+        .tv-metrics-grid {{
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            align-items: flex-start;
+            gap: 0;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+        }}
+        .tv-metrics-col {{
+            flex: 1 1 0;
+            min-width: 0;
+            box-sizing: border-box;
+            border-right: 1px solid {COLORS['border']};
+            padding: 0 4px 0 0;
+        }}
+        .tv-metrics-col:last-child {{ border-right: none; padding-right: 0; }}
+        .tv-metrics-row {{
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            column-gap: 4px;
+            align-items: start;
+            padding: 2px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }}
+        .tv-metrics-lbl {{
+            color: {COLORS['text_muted']};
+            font-size: 10.5px;
+            line-height: 1.3;
+            min-width: 0;
+            word-break: normal;
+            overflow-wrap: break-word;
+            hyphens: none;
+        }}
+        .tv-metrics-lbl-line {{
+            display: inline;
+            white-space: normal;
+            word-break: normal;
+        }}
+        .tv-metrics-lbl-sub {{
+            color: {COLORS['text_faint']};
+            font-size: 9.5px;
+            font-weight: 500;
+        }}
+        .tv-metrics-val {{
+            color: {COLORS['text']};
+            font-size: 10.5px;
+            line-height: 1.3;
+            text-align: right;
+            font-variant-numeric: tabular-nums lining-nums;
+            min-width: 0;
+            overflow-wrap: break-word;
+            word-break: normal;
+            hyphens: none;
+        }}
+        .tv-metrics-val.tv-pos {{ color: {COLORS['green_light']}; }}
+        .tv-metrics-val.tv-neg {{ color: {COLORS['red_light']}; }}
+        a.tv-metrics-val.tv-metrics-link {{
+            color: {COLORS['accent']};
+            text-decoration: underline;
+            text-underline-offset: 2px;
+            white-space: nowrap;
+        }}
+        a.tv-metrics-val.tv-metrics-link:hover {{
+            color: {COLORS['text']};
+        }}
     </style>
 </head>
 <body>
@@ -182,6 +312,128 @@ app.index_string = f"""<!DOCTYPE html>
         {{%renderer%}}
     </footer>
     <script>
+        var tvMetricsAbort = null;
+
+        function tvMetricsEscapeHtml(s) {{
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }}
+
+        function tvMetricsEscapeAttr(s) {{
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }}
+
+        function tvMetricsToneValue(label, value) {{
+            if (!value || value === '\\u2014' || value === '-') return 'neu';
+            var m = String(value).replace(/,/g, '').trim().match(/^([+-]?\\d+\\.?\\d*)\\s*%?$/);
+            if (m) {{
+                var n = parseFloat(m[1]);
+                if (n > 0) return 'pos';
+                if (n < 0) return 'neg';
+            }}
+            return 'neu';
+        }}
+
+        function tvMetricsSafeHref(val) {{
+            var s = String(val).trim();
+            if (/^https?:\\/\\//i.test(s)) return s;
+            return null;
+        }}
+
+        function tvMetricsIsNewsUrlLabel(label) {{
+            return String(label).trim().toLowerCase() === 'news url';
+        }}
+
+        /** Split labels at parentheses or Perf … so words are not broken mid-word by CSS. */
+        function tvMetricsFormatLabelHtml(label) {{
+            var s = String(label).trim();
+            var mParen = s.match(/^(.+?)\\s*(\\([^)]+\\))\\s*$/);
+            if (mParen && mParen[1].length >= 1) {{
+                var head = mParen[1].trim();
+                var tail = mParen[2].trim();
+                return '<span class="tv-metrics-lbl-line">' + tvMetricsEscapeHtml(head) + '</span><br>'
+                    + '<span class="tv-metrics-lbl-line tv-metrics-lbl-sub">' + tvMetricsEscapeHtml(tail) + '</span>';
+            }}
+            var mPerf = s.match(/^Perf\\s+(.+)$/i);
+            if (mPerf) {{
+                var rest = mPerf[1].trim();
+                return '<span class="tv-metrics-lbl-line">Performance</span><br>'
+                    + '<span class="tv-metrics-lbl-line tv-metrics-lbl-sub">(' + tvMetricsEscapeHtml(rest) + ')</span>';
+            }}
+            var mInsider = s.match(/^Insider\\s+(.+)$/i);
+            if (mInsider) {{
+                var ir = mInsider[1].trim();
+                return '<span class="tv-metrics-lbl-line">Insider</span><br>'
+                    + '<span class="tv-metrics-lbl-line tv-metrics-lbl-sub">(' + tvMetricsEscapeHtml(ir) + ')</span>';
+            }}
+            var mInst = s.match(/^Inst\\s+(.+)$/i);
+            if (mInst) {{
+                var it = mInst[1].trim();
+                return '<span class="tv-metrics-lbl-line">Institutional</span><br>'
+                    + '<span class="tv-metrics-lbl-line tv-metrics-lbl-sub">(' + tvMetricsEscapeHtml(it) + ')</span>';
+            }}
+            return '<span class="tv-metrics-lbl-line">' + tvMetricsEscapeHtml(s) + '</span>';
+        }}
+
+        function tvMetricsRenderValueCell(label, value, tone) {{
+            var cls = 'tv-metrics-val';
+            if (tone === 'pos') cls += ' tv-pos';
+            else if (tone === 'neg') cls += ' tv-neg';
+            var href = tvMetricsIsNewsUrlLabel(label) ? tvMetricsSafeHref(value) : null;
+            if (href) {{
+                return '<a class="' + cls + ' tv-metrics-link" href="' + tvMetricsEscapeAttr(href)
+                    + '" target="_blank" rel="noopener noreferrer" title="' + tvMetricsEscapeAttr(value)
+                    + '" onclick="event.stopPropagation()">Article</a>';
+            }}
+            return '<span class="' + cls + '" title="' + tvMetricsEscapeAttr(value) + '">'
+                + tvMetricsEscapeHtml(value) + '</span>';
+        }}
+
+        function tvMetricsRenderPairs(pairs) {{
+            if (!pairs || !pairs.length)
+                return '<div class="tv-metrics-empty">No metrics.</div>';
+            var cols = 6;
+            var n = pairs.length;
+            var perCol = Math.ceil(n / cols);
+            var html = '<div class="tv-metrics-grid">';
+            for (var c = 0; c < cols; c++) {{
+                html += '<div class="tv-metrics-col">';
+                for (var i = c * perCol; i < Math.min((c + 1) * perCol, n); i++) {{
+                    var p = pairs[i];
+                    var tone = tvMetricsToneValue(p.label, p.value);
+                    html += '<div class="tv-metrics-row"><span class="tv-metrics-lbl" title="'
+                        + tvMetricsEscapeAttr(p.label)
+                        + '">'
+                        + tvMetricsFormatLabelHtml(p.label)
+                        + '</span>'
+                        + tvMetricsRenderValueCell(p.label, p.value, tone)
+                        + '</div>';
+                }}
+                html += '</div>';
+            }}
+            html += '</div>';
+            return html;
+        }}
+
+        function tvModalClose() {{
+            if (tvMetricsAbort) {{
+                try {{ tvMetricsAbort.abort(); }} catch (e) {{}}
+                tvMetricsAbort = null;
+            }}
+            var modal = document.getElementById('tv-modal');
+            var iframe = document.getElementById('tv-iframe');
+            var panel = document.getElementById('tv-metrics-body');
+            if (modal) modal.style.display = 'none';
+            if (iframe) iframe.src = '';
+            if (panel) panel.innerHTML = '';
+        }}
+
         document.addEventListener('click', function(e) {{
             var el = e.target.closest('.tv-ticker');
             if (!el) return;
@@ -192,18 +444,61 @@ app.index_string = f"""<!DOCTYPE html>
             var modal = document.getElementById('tv-modal');
             var iframe = document.getElementById('tv-iframe');
             var title = document.getElementById('tv-modal-title');
+            var panel = document.getElementById('tv-metrics-body');
             if (!modal || !iframe) return;
 
             e.preventDefault();
             e.stopPropagation();
 
-            title.textContent = symbol + ' \u2014 TradingView';
+            if (tvMetricsAbort) {{
+                try {{ tvMetricsAbort.abort(); }} catch (err) {{}}
+            }}
+            tvMetricsAbort = new AbortController();
+
+            title.textContent = symbol + ' \\u2014 TradingView';
             iframe.src = 'https://s.tradingview.com/widgetembed/?frameElementId=tv-widget'
                 + '&symbol=' + encodeURIComponent(symbol)
                 + '&interval=D&hidesidetoolbar=0&symboledit=1&saveimage=1'
                 + '&toolbarbg=f1f3f6&studies=MASimple%409%2CRSI%40RSI'
                 + '&theme=dark&style=1&timezone=America%2FNew_York'
                 + '&withdateranges=1&showpopupbutton=1&locale=en';
+
+            if (panel)
+                panel.innerHTML = '<div class="tv-metrics-loading">Loading\\u2026</div>';
+
+            fetch('/api/ticker-metrics/' + encodeURIComponent(symbol), {{
+                signal: tvMetricsAbort.signal,
+            }})
+                .then(function (resp) {{
+                    return resp.json().then(function (data) {{
+                        return {{ okHttp: resp.ok, status: resp.status, data: data }};
+                    }});
+                }})
+                .then(function (result) {{
+                    var p = document.getElementById('tv-metrics-body');
+                    if (!p) return;
+                    if (tvMetricsAbort && tvMetricsAbort.signal.aborted) return;
+                    var d = result.data;
+                    if (!d || !d.ok) {{
+                        var msg = (d && d.message) ? d.message : 'No data for this symbol.';
+                        p.innerHTML = '<div class="tv-metrics-err">' + tvMetricsEscapeHtml(msg) + '</div>';
+                        return;
+                    }}
+                    var src = d.source || '';
+                    var meta = src === 'quote'
+                        ? '<div class="tv-metrics-source">Quote snapshot (not in USA export)</div>'
+                        : '';
+                    p.innerHTML = meta
+                        + '<div class="tv-metrics-fit-wrap"><div class="tv-metrics-scale-inner">'
+                        + tvMetricsRenderPairs(d.pairs || [])
+                        + '</div></div>';
+                }})
+                .catch(function (err) {{
+                    if (err.name === 'AbortError') return;
+                    var p = document.getElementById('tv-metrics-body');
+                    if (p)
+                        p.innerHTML = '<div class="tv-metrics-err">Failed to load metrics.</div>';
+                }});
 
             modal.style.display = 'flex';
             modal.style.position = 'fixed';
@@ -219,21 +514,12 @@ app.index_string = f"""<!DOCTYPE html>
         document.addEventListener('click', function(e) {{
             var modal = document.getElementById('tv-modal');
             if (!modal) return;
-            if (e.target === modal) {{
-                modal.style.display = 'none';
-                var iframe = document.getElementById('tv-iframe');
-                if (iframe) iframe.src = '';
-            }}
+            if (e.target === modal) tvModalClose();
         }});
 
         document.addEventListener('click', function(e) {{
             var btn = e.target.closest('#btn-tv-close');
-            if (btn) {{
-                var modal = document.getElementById('tv-modal');
-                if (modal) modal.style.display = 'none';
-                var iframe = document.getElementById('tv-iframe');
-                if (iframe) iframe.src = '';
-            }}
+            if (btn) tvModalClose();
         }});
 
         /* Inject dropdown dark theme after Dash components load (overrides async-loaded CSS) */
@@ -282,6 +568,25 @@ app.index_string = f"""<!DOCTYPE html>
 
 app.layout = build_layout()
 register_callbacks(app)
+
+
+@app.server.route("/api/ticker-metrics/<symbol>")
+def _api_ticker_metrics(symbol: str):
+    from flask import jsonify
+
+    from src.ticker_metrics import get_ticker_metrics_payload, is_valid_symbol_param
+
+    if not is_valid_symbol_param(symbol):
+        return jsonify({"ok": False, "message": "Invalid symbol.", "pairs": []}), 400
+
+    payload = get_ticker_metrics_payload(symbol)
+    if payload.get("ok"):
+        return jsonify(payload)
+
+    msg = (payload.get("message") or "").lower()
+    if "not configured" in msg or "finviz elite" in msg:
+        return jsonify(payload), 503
+    return jsonify(payload), 404
 
 
 @app.server.after_request

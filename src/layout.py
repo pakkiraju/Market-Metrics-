@@ -2572,24 +2572,69 @@ def build_tv_modal() -> html.Div:
                 "display": "flex", "justifyContent": "space-between",
                 "alignItems": "center", "padding": "6px 10px",
                 "borderBottom": f"1px solid {COLORS['border']}",
+                "flexShrink": 0,
             }),
-            html.Iframe(
-                id="tv-iframe",
-                style={
-                    "width": "100%",
-                    "height": "calc(100% - 32px)",
-                    "border": "none",
-                },
-            ),
-        ], style={
-            "width": "80vw",
-            "height": "75vh",
-            "maxWidth": "1200px",
+            html.Div([
+                html.Div([
+                    html.Iframe(
+                        id="tv-iframe",
+                        className="tv-modal-iframe",
+                        style={
+                            "width": "100%",
+                            "flex": "1",
+                            "minHeight": "0",
+                            "border": "none",
+                        },
+                    ),
+                ], className="tv-modal-chart-wrap", style={
+                    "display": "flex",
+                    "flexDirection": "column",
+                    "flex": "1 1 55%",
+                    "minWidth": "0",
+                    "minHeight": "0",
+                }),
+                html.Div([
+                    html.Div(
+                        "Loading…",
+                        id="tv-metrics-body",
+                        className="tv-metrics-body-inner",
+                        style={
+                            "flex": "1",
+                            "minHeight": "0",
+                            "display": "flex",
+                            "flexDirection": "column",
+                            "overflow": "hidden",
+                        },
+                    ),
+                ], id="tv-metrics-panel", className="tv-metrics-panel", style={
+                    "flex": "1 1 44%",
+                    "maxWidth": "min(580px, 48vw)",
+                    "minWidth": "min(340px, 92vw)",
+                    "minHeight": "0",
+                    "overflow": "hidden",
+                    "display": "flex",
+                    "flexDirection": "column",
+                    "borderLeft": f"1px solid {COLORS['border']}",
+                    "backgroundColor": COLORS["surface2"],
+                }),
+            ], className="tv-modal-body", style={
+                "display": "flex",
+                "flexDirection": "row",
+                "flex": "1",
+                "minHeight": "0",
+                "overflow": "hidden",
+            }),
+        ], className="tv-modal-card", style={
+            "width": "min(95vw, 1400px)",
+            "height": "min(85vh, 900px)",
+            "maxWidth": "1400px",
             "backgroundColor": COLORS["surface"],
             "borderRadius": "6px",
             "border": f"1px solid {COLORS['border']}",
             "overflow": "hidden",
             "boxShadow": "0 8px 32px rgba(0,0,0,0.6)",
+            "display": "flex",
+            "flexDirection": "column",
         }),
     ], id="tv-modal", style={
         "display": "none",
