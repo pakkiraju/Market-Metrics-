@@ -108,26 +108,31 @@ app.index_string = f"""<!DOCTYPE html>
             font-family: 'JetBrains Mono', 'Consolas', monospace;
         }}
 
-        /* Ticker tape marquee — scroll right to left */
+        /* Ticker tape marquee — scroll right to left (duplicate content = seamless loop) */
+        #should-i-trade-content .sit-ticker-marquee,
         .sit-ticker-marquee {{
             overflow: hidden;
             white-space: nowrap;
             width: 100%;
+            min-width: 0;
         }}
+        #should-i-trade-content .sit-ticker-marquee-inner,
         .sit-ticker-marquee-inner {{
             display: inline-flex;
+            flex-shrink: 0;
+            width: max-content;
+            will-change: transform;
             animation: sit-marquee 40s linear infinite;
         }}
-        .sit-ticker-marquee:hover .sit-ticker-marquee-inner {{
-            animation-play-state: paused;
-        }}
         @keyframes sit-marquee {{
-            0% {{ transform: translateX(0); }}
-            100% {{ transform: translateX(-50%); }}
+            0% {{ transform: translate3d(0, 0, 0); }}
+            100% {{ transform: translate3d(-50%, 0, 0); }}
         }}
+        /* Slow the scroll instead of killing it — many OSes report "reduce motion" broadly */
         @media (prefers-reduced-motion: reduce) {{
+            #should-i-trade-content .sit-ticker-marquee-inner,
             .sit-ticker-marquee-inner {{
-                animation: none !important;
+                animation-duration: 90s !important;
             }}
         }}
 

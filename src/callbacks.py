@@ -49,10 +49,8 @@ from src.screeners import (
     julian_komar_strongest_screener,
 )
 from src.layout import (
-    build_cnbc_premarket_watchlist_table,
     build_should_i_trade_content,
     build_key_metrics_table,
-    build_live_index_snapshot,
     build_metrics_bar_chart,
     build_sector_table,
     build_rrg_chart,
@@ -113,24 +111,95 @@ ET = timezone(timedelta(hours=-5))
 # Per-widget refresh: cache keys to invalidate when btn-refresh-{widget_id} is clicked
 WIDGET_CACHE_KEYS = {
     "should-i-trade": ["should_i_trade_aggregate"],
-    "key-metrics": ["all_key_metrics"],
-    "chart2": ["all_key_metrics"],
-    "chart3": ["all_key_metrics"],
+    "key-metrics": [
+        "all_key_metrics",
+        "usa_full_v152",
+        "usa_v152_parsed_df_v2",
+        "sector_data",
+        "rrg_data",
+        "rrg_benchmark",
+        "sp500_landscape",
+        "ind_stage",
+        "stage_analysis",
+        "thematics_data",
+        "thematics",
+        "leading_industries",
+        "stocks_in_play_v2",
+        "earnings_yesterday_today",
+        "pre_market_scanner_v3",
+    ],
+    "chart2": [
+        "all_key_metrics",
+        "usa_full_v152",
+        "usa_v152_parsed_df_v2",
+        "sector_data",
+        "rrg_data",
+        "rrg_benchmark",
+        "sp500_landscape",
+        "ind_stage",
+        "stage_analysis",
+        "thematics_data",
+        "thematics",
+        "leading_industries",
+        "stocks_in_play_v2",
+        "earnings_yesterday_today",
+        "pre_market_scanner_v3",
+    ],
+    "chart3": [
+        "all_key_metrics",
+        "usa_full_v152",
+        "usa_v152_parsed_df_v2",
+        "sector_data",
+        "rrg_data",
+        "rrg_benchmark",
+        "sp500_landscape",
+        "ind_stage",
+        "stage_analysis",
+        "thematics_data",
+        "thematics",
+        "leading_industries",
+        "stocks_in_play_v2",
+        "earnings_yesterday_today",
+        "pre_market_scanner_v3",
+    ],
     "club97": ["97_club"],
     "movers": ["9m_movers"],
     "weekly": ["20pct_weekly"],
     "daily": ["4pct_daily"],
-    "in_play": ["stocks_in_play"],
-    "intraday-earnings": ["earnings_yesterday_today"],
-    "pre_market": ["pre_market_scanner"],
-    "cnbc_premarket": ["cnbc_premarket_watchlist"],
-    "live_index": ["live_index_quotes"],
-    "leading": ["leading_industries"],
-    "thematics": ["thematics", "thematics_data"],
-    "thematics-sector": ["thematics_sector_data"],
-    "top_gainers": ["thematics_data"],
-    "top_losers": ["thematics_data"],
-    "stage": ["stage_analysis"],
+    "in_play": ["stocks_in_play_v2", "usa_full_v152", "usa_v152_parsed_df_v2"],
+    "intraday-earnings": ["earnings_yesterday_today", "usa_full_v152", "usa_v152_parsed_df_v2"],
+    "pre_market": ["pre_market_scanner_v3", "usa_full_v152", "usa_v152_parsed_df_v2"],
+    # Same USA v152 blob as Key Metrics: invalidate bundle so manual refresh stays consistent across Leading / Thematics / Sector / RRG.
+    "leading": [
+        "usa_full_v152",
+        "usa_v152_parsed_df_v2",
+        "leading_industries",
+        "thematics",
+        "thematics_data",
+        "thematics_sector_data",
+        "thematics_rrg_data",
+    ],
+    "thematics": [
+        "usa_full_v152",
+        "usa_v152_parsed_df_v2",
+        "leading_industries",
+        "thematics",
+        "thematics_data",
+        "thematics_sector_data",
+        "thematics_rrg_data",
+    ],
+    "thematics-sector": [
+        "usa_full_v152",
+        "usa_v152_parsed_df_v2",
+        "leading_industries",
+        "thematics",
+        "thematics_data",
+        "thematics_sector_data",
+        "thematics_rrg_data",
+    ],
+    "top_gainers": ["thematics_data", "usa_full_v152", "usa_v152_parsed_df_v2", "leading_industries", "thematics"],
+    "top_losers": ["thematics_data", "usa_full_v152", "usa_v152_parsed_df_v2", "leading_industries", "thematics"],
+    "stage": ["stage_analysis", "ind_stage", "usa_v152_parsed_df_v2", "usa_full_v152"],
     "thematics-rrg": ["thematics_rrg_data"],
     "macro-monitor": ["macro_fred_bundle"],
     "qulla": ["qulla_episodic_v2", "qulla_parabolic_v2", "qulla_breakouts_v2"],
@@ -148,7 +217,7 @@ WIDGET_CACHE_KEYS = {
     "jeff_sun_high_short_float": ["jeff_sun_high_short_float"],
     "jeff_sun_liquid_etfs": ["jeff_sun_liquid_etfs"],
     "julian_komar_strongest": ["julian_komar_strongest"],
-    "sector": ["sector_data"],
+    "sector": ["sector_data", "usa_v152_parsed_df_v2", "rrg_data", "rrg_benchmark", "usa_full_v152"],
     "stockbee": ["stockbee_momentum50"],
     "breadth": ["stockbee_breadth"],
     "breadth-primary": ["stockbee_breadth_history"],
@@ -156,7 +225,7 @@ WIDGET_CACHE_KEYS = {
     "breadth-secondary": ["stockbee_breadth_history"],
     "breadth-sp500": ["stockbee_breadth_history"],
     "rrg": ["rrg_data"],
-    "sp500-landscape": ["sp500_landscape"],
+    "sp500-landscape": ["sp500_landscape", "usa_v152_parsed_df_v2", "usa_full_v152"],
     "earnings-calendar-week": ["earnings_this_week"],
 }
 
@@ -216,6 +285,52 @@ def _err_div(e):
     return html.Div(children, style={"color": COLORS["red"], "padding": "8px", "fontSize": "10px"})
 
 
+def _tab_change_only_trigger() -> bool:
+    """True when this callback run was caused only by main-tabs changing (tab switch or store hydrate).
+
+    Do not use ctx.triggered_id == \"main-tabs\" alone — for dcc.Store, Dash may report prop_id as
+    \"main-tabs.data\" or set triggered_id differently; then skips never ran and every tab switch refetched.
+    """
+    tr = ctx.triggered or []
+    if tr:
+        for t in tr:
+            if not t:
+                continue
+            comp_id = (t.get("prop_id") or "").split(".")[0]
+            if comp_id != "main-tabs":
+                return False
+        return True
+    # Some builds leave triggered empty but set triggered_id for the Store
+    tid = ctx.triggered_id
+    if tid == "main-tabs":
+        return True
+    if isinstance(tid, str) and tid.startswith("main-tabs"):
+        return True
+    return False
+
+
+def _skip_on_tab_switch_if_store_has_data(store_data) -> None:
+    """Skip redundant work when revisiting a tab; UI already has rendered children."""
+    if not _tab_change_only_trigger():
+        return
+    if store_data is None:
+        return
+    if isinstance(store_data, list) and len(store_data) == 0:
+        return
+    if isinstance(store_data, dict) and len(store_data) == 0:
+        return
+    raise PreventUpdate
+
+
+def _has_rendered(children) -> bool:
+    """Best-effort check: has this output rendered real content at least once?"""
+    if children is None:
+        return False
+    if isinstance(children, (list, tuple)) and len(children) == 0:
+        return False
+    return True
+
+
 def register_callbacks(app):
     """Register all Dash callbacks on the app."""
 
@@ -254,14 +369,12 @@ def register_callbacks(app):
             return [
                 t !== "should-i-trade",
                 t !== "macro-monitor",
-                t !== "intraday",
             ];
         }
         """,
         [
             Output("sit-interval", "disabled"),
             Output("interval-macro", "disabled"),
-            Output("interval-live-snapshot", "disabled"),
         ],
         Input("main-tabs", "data"),
         prevent_initial_call=False,
@@ -282,10 +395,13 @@ def register_callbacks(app):
             Input("sit-mode-toggle", "value"),
             Input("main-tabs", "data"),
         ],
+        [State("should-i-trade-content", "children")],
         prevent_initial_call=False,
     )
-    def refresh_should_i_trade(n_interval, n_refresh, mode, active_tab):
+    def refresh_should_i_trade(n_interval, n_refresh, mode, active_tab, existing_children):
         if active_tab != "should-i-trade":
+            raise PreventUpdate
+        if _tab_change_only_trigger() and _has_rendered(existing_children) and cache.get("should_i_trade_aggregate") is not None:
             raise PreventUpdate
         if ctx.triggered_id == "btn-refresh-should-i-trade":
             _invalidate_widget_cache("should-i-trade")
@@ -354,6 +470,11 @@ def register_callbacks(app):
 
     # ------------------------------------------------------------------
     # 0d. Tab switch — clientside (instant UX; no server round-trip per click)
+    # Do NOT put Input("main-tabs") and Output("main-tabs") in the same
+    # clientside callback: Dash's dispatcher throws (e.g. .apply on undefined).
+    # Nav clicks: one callback updates main-tabs + panes + nav.
+    # Hydration: second callback only reads main-tabs (localStorage) and syncs
+    # panes + nav — allow_duplicate on those outputs.
     # ------------------------------------------------------------------
     _TAB_BG = COLORS["bg"]
     app.clientside_callback(
@@ -414,6 +535,49 @@ def register_callbacks(app):
             Input("nav-tab-intraday", "n_clicks"),
         ],
         prevent_initial_call=True,
+    )
+    app.clientside_callback(
+        f"""
+        function(mainTab) {{
+            var tab = mainTab || "market-metrics";
+            var TAB_ORDER = ["should-i-trade", "macro-monitor", "market-metrics", "super-scanners", "intraday"];
+            if (TAB_ORDER.indexOf(tab) === -1) {{
+                tab = "market-metrics";
+            }}
+            var BG = "{_TAB_BG}";
+            var SHOW = {{
+                display: "flex",
+                flexDirection: "column",
+                flex: "1",
+                minHeight: "0",
+                minWidth: "0",
+                overflow: "auto",
+                backgroundColor: BG,
+            }};
+            var HIDE = {{ display: "none" }};
+            var paneStyles = TAB_ORDER.map(function(t) {{
+                return t === tab ? Object.assign({{}}, SHOW) : Object.assign({{}}, HIDE);
+            }});
+            var navClasses = TAB_ORDER.map(function(t) {{
+                return t === tab ? "nav-tab-btn nav-tab-active" : "nav-tab-btn";
+            }});
+            return paneStyles.concat(navClasses);
+        }}
+        """,
+        [
+            Output("tab-pane-should-i-trade", "style", allow_duplicate=True),
+            Output("tab-pane-macro-monitor", "style", allow_duplicate=True),
+            Output("tab-pane-market-metrics", "style", allow_duplicate=True),
+            Output("tab-pane-super-scanners", "style", allow_duplicate=True),
+            Output("tab-pane-intraday", "style", allow_duplicate=True),
+            Output("nav-tab-should-i-trade", "className", allow_duplicate=True),
+            Output("nav-tab-macro-monitor", "className", allow_duplicate=True),
+            Output("nav-tab-market-metrics", "className", allow_duplicate=True),
+            Output("nav-tab-super-scanners", "className", allow_duplicate=True),
+            Output("nav-tab-intraday", "className", allow_duplicate=True),
+        ],
+        Input("main-tabs", "data"),
+        prevent_initial_call="initial_duplicate",
     )
 
     @app.callback(
@@ -648,18 +812,15 @@ def register_callbacks(app):
             except Exception as e:
                 logger.exception("Watchlist sector fetch failed: %s", e)
                 return _err_div(e), [], view_store
-        # Custom watchlist view
-        if btn_w and wl_data:
-            cache.invalidate(f"watchlist_quotes_{','.join(sorted(wl_data))}")
+        # Custom watchlist view (quotes from USA v152 cache; no per-list export URL)
         if not wl_data:
             return html.Div("No tickers in watchlist. Add some above.", style={
                 "color": COLORS["text_muted"], "fontSize": "9px",
                 "padding": "8px",
             }), [], view_store
         try:
-            from src.data_fetcher import fetch_tickers_bulk_csv
-            cache_key = f"watchlist_quotes_{','.join(sorted(wl_data))}"
-            data = fetch_tickers_bulk_csv(wl_data, cache_key=cache_key)
+            from src.data_fetcher import fetch_watchlist_quotes_from_usa_v152
+            data = fetch_watchlist_quotes_from_usa_v152(wl_data)
             if not data:
                 # Fallback: show tickers with placeholder when Finviz returns no data
                 data = [{"ticker": t, "price": "-", "change": "-", "volume": "-", "avg_vol": "-", "rel_vol": "-"} for t in wl_data]
@@ -700,6 +861,9 @@ def register_callbacks(app):
     ):
         if main_tab != "market-metrics":
             raise PreventUpdate
+        # Do not skip on tab switch: Plotly charts in hidden panes can go blank while server
+        # State still looks "rendered"; PreventUpdate then leaves empty charts until manual refresh.
+        # compute_all_key_metrics() is cached — re-emitting figures on tab return is cheap.
         tid = ctx.triggered_id
         if tid == "btn-refresh-key-metrics" and btn_km:
             _invalidate_widget_cache("key-metrics")
@@ -774,11 +938,13 @@ def register_callbacks(app):
                 Input(f"btn-refresh-{_widget_id}", "n_clicks"),
                 Input("main-tabs", "data"),
             ],
+            [State(f"{_widget_id}-data-store", "data")],
             prevent_initial_call=False,
         )
-        def _refresh_super_scanner_widget(_n_intervals, _n_clicks, _btn_widget, main_tab, widget_id=_widget_id, fetch_fn=_fetch_fn, build_fn=_build_fn):
+        def _refresh_super_scanner_widget(_n_intervals, _n_clicks, _btn_widget, main_tab, prev_store, widget_id=_widget_id, fetch_fn=_fetch_fn, build_fn=_build_fn):
             if main_tab != "super-scanners":
                 raise PreventUpdate
+            _skip_on_tab_switch_if_store_has_data(prev_store)
             if ctx.triggered_id == f"btn-refresh-{widget_id}" and _btn_widget:
                 _invalidate_widget_cache(widget_id)
             try:
@@ -799,11 +965,13 @@ def register_callbacks(app):
             Input("btn-refresh-sector", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("sector-data-store", "data")],
         prevent_initial_call=False,
     )
-    def refresh_group_c(n_intervals, n_clicks, btn_w, main_tab):
+    def refresh_group_c(n_intervals, n_clicks, btn_w, main_tab, prev_store):
         if main_tab != "market-metrics":
             raise PreventUpdate
+        _skip_on_tab_switch_if_store_has_data(prev_store)
         if btn_w:
             _invalidate_widget_cache("sector")
         try:
@@ -824,11 +992,13 @@ def register_callbacks(app):
             Input("btn-refresh-earnings-calendar-week", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("earnings-calendar-week-data-store", "data")],
         prevent_initial_call=False,
     )
-    def refresh_earnings_calendar_week(n_intervals, n_clicks, btn_w, main_tab):
+    def refresh_earnings_calendar_week(n_intervals, n_clicks, btn_w, main_tab, prev_store):
         if main_tab != "super-scanners":
             raise PreventUpdate
+        _skip_on_tab_switch_if_store_has_data(prev_store)
         if btn_w:
             _invalidate_widget_cache("earnings-calendar-week")
         try:
@@ -851,11 +1021,13 @@ def register_callbacks(app):
             Input("btn-refresh-stockbee", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("stockbee-data-store", "data")],
         prevent_initial_call=False,
     )
-    def refresh_stockbee(n_intervals, n_clicks, btn_w, main_tab):
+    def refresh_stockbee(n_intervals, n_clicks, btn_w, main_tab, prev_store):
         if main_tab != "market-metrics":
             raise PreventUpdate
+        _skip_on_tab_switch_if_store_has_data(prev_store)
         if btn_w:
             _invalidate_widget_cache("stockbee")
         try:
@@ -895,10 +1067,13 @@ def register_callbacks(app):
             Input("btn-refresh-breadth", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("breadth-content", "children")],
         prevent_initial_call=False,
     )
-    def refresh_breadth(n_intervals, n_clicks, btn_w, main_tab):
+    def refresh_breadth(n_intervals, n_clicks, btn_w, main_tab, existing_children):
         if main_tab != "market-metrics":
+            raise PreventUpdate
+        if _tab_change_only_trigger() and _has_rendered(existing_children) and cache.get("stockbee_breadth") is not None:
             raise PreventUpdate
         if btn_w:
             _invalidate_widget_cache("breadth")
@@ -923,10 +1098,23 @@ def register_callbacks(app):
             Input("main-tabs", "data"),
         ]
         + [Input(f"btn-refresh-{w}", "n_clicks") for w in ["breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500"]],
+        [
+            State("breadth-primary-content", "children"),
+            State("breadth-ratios-content", "children"),
+            State("breadth-secondary-content", "children"),
+            State("breadth-sp500-content", "children"),
+        ],
         prevent_initial_call=False,
     )
-    def refresh_breadth_charts(n_intervals, n_clicks, main_tab, *btn_clicks):
+    def refresh_breadth_charts(n_intervals, n_clicks, main_tab, *rest):
+        if len(rest) < 8:
+            raise PreventUpdate
+        btn_clicks = rest[:4]
+        existing_children = rest[4:]
         if main_tab != "market-metrics":
+            raise PreventUpdate
+        rendered = all(_has_rendered(c) for c in existing_children)
+        if _tab_change_only_trigger() and rendered and cache.get("stockbee_breadth_history") is not None:
             raise PreventUpdate
         if any(btn_clicks):
             _invalidate_widget_cache("breadth-primary")
@@ -965,10 +1153,13 @@ def register_callbacks(app):
             Input("btn-refresh-rrg", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("rrg-content", "children")],
         prevent_initial_call=False,
     )
-    def refresh_rrg(n_intervals, n_clicks, btn_w, main_tab):
+    def refresh_rrg(n_intervals, n_clicks, btn_w, main_tab, existing_children):
         if main_tab != "market-metrics":
+            raise PreventUpdate
+        if _tab_change_only_trigger() and _has_rendered(existing_children) and cache.get("rrg_data") is not None:
             raise PreventUpdate
         if btn_w:
             _invalidate_widget_cache("rrg")
@@ -999,15 +1190,21 @@ def register_callbacks(app):
             Input("sp500-landscape-sector-filter", "value"),
             Input("main-tabs", "data"),
         ],
-        State("sp500-landscape-data-store", "data"),
+        [
+            State("sp500-landscape-data-store", "data"),
+            State("sp500-landscape-content", "children"),
+        ],
         prevent_initial_call=False,
     )
-    def refresh_sp500_landscape(n_intervals, n_clicks, btn_w, sector_filter, main_tab, stored_data):
+    def refresh_sp500_landscape(n_intervals, n_clicks, btn_w, sector_filter, main_tab, stored_data, existing_children):
         from src.data_fetcher import fetch_sp500_landscape_data
 
         triggered = ctx.triggered_id if ctx.triggered else None
         is_filter_change = triggered == "sp500-landscape-sector-filter"
         if main_tab != "market-metrics" and not is_filter_change:
+            raise PreventUpdate
+
+        if _tab_change_only_trigger() and _has_rendered(existing_children) and stored_data and len(stored_data) > 0:
             raise PreventUpdate
 
         if is_filter_change:
@@ -1057,11 +1254,13 @@ def register_callbacks(app):
             Input("btn-refresh-club97", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("club97-data-store", "data")],
         prevent_initial_call=False,
     )
-    def refresh_club97(_n_intervals, _n_clicks, btn_widget, main_tab):
+    def refresh_club97(_n_intervals, _n_clicks, btn_widget, main_tab, prev_store):
         if main_tab not in ("super-scanners", "intraday"):
             raise PreventUpdate
+        _skip_on_tab_switch_if_store_has_data(prev_store)
         if ctx.triggered_id == "btn-refresh-club97" and btn_widget:
             _invalidate_widget_cache("club97")
         try:
@@ -1083,11 +1282,13 @@ def register_callbacks(app):
                 Input(f"btn-refresh-{widget_id}", "n_clicks"),
                 Input("main-tabs", "data"),
             ],
+            [State(f"{widget_id}-data-store", "data")],
             prevent_initial_call=False,
         )
-        def _refresh_widget(_n_intervals, _n_clicks, btn_widget, main_tab, w=widget_id, fn=compute_fn, builder=build_fn, col=sort_col):
+        def _refresh_widget(_n_intervals, _n_clicks, btn_widget, main_tab, prev_store, w=widget_id, fn=compute_fn, builder=build_fn, col=sort_col):
             if main_tab not in ("super-scanners", "intraday"):
                 raise PreventUpdate
+            _skip_on_tab_switch_if_store_has_data(prev_store)
             if ctx.triggered_id == f"btn-refresh-{w}" and btn_widget:
                 _invalidate_widget_cache(w)
             try:
@@ -1114,11 +1315,13 @@ def register_callbacks(app):
             Input("btn-refresh-pre_market", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("pre_market-data-store", "data")],
         prevent_initial_call=False,
     )
-    def refresh_pre_market(_n_intervals, _n_clicks, btn_widget, main_tab):
+    def refresh_pre_market(_n_intervals, _n_clicks, btn_widget, main_tab, prev_store):
         if main_tab not in ("super-scanners", "intraday"):
             raise PreventUpdate
+        _skip_on_tab_switch_if_store_has_data(prev_store)
         if ctx.triggered_id == "btn-refresh-pre_market" and btn_widget:
             _invalidate_widget_cache("pre_market")
         try:
@@ -1139,12 +1342,15 @@ def register_callbacks(app):
             Input("main-tabs", "data"),
             Input("btn-refresh", "n_clicks"),
         ],
+        [State("macro-monitor-content", "children")],
         prevent_initial_call=False,
     )
-    def refresh_macro_monitor(n_interval, tab, n_refresh):
+    def refresh_macro_monitor(n_interval, tab, n_refresh, existing_children):
         if tab != "macro-monitor":
             return no_update
         force = ctx.triggered_id == "btn-refresh" and n_refresh
+        if _tab_change_only_trigger() and _has_rendered(existing_children) and cache.get("macro_fred_bundle") is not None and not force:
+            return no_update
         if force:
             from src.macro_data import invalidate_macro_cache
 
@@ -1159,53 +1365,6 @@ def register_callbacks(app):
             return html.Div(str(e), style={"color": COLORS["red"], "padding": "16px", "fontSize": "11px"})
 
     @app.callback(
-        Output("cnbc_premarket-content", "children"),
-        [
-            Input("interval-refresh", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
-            Input("btn-refresh-cnbc_premarket", "n_clicks"),
-            Input("main-tabs", "data"),
-        ],
-        prevent_initial_call=False,
-    )
-    def refresh_cnbc_premarket(n_intervals, n_clicks, btn_widget, main_tab):
-        if main_tab != "intraday":
-            raise PreventUpdate
-        if btn_widget:
-            _invalidate_widget_cache("cnbc_premarket")
-        try:
-            from src.cnbc_premarket import fetch_cnbc_premarket_watchlist
-            data = fetch_cnbc_premarket_watchlist()
-            article_url = data[0].get("url", "") if data else ""
-            return build_cnbc_premarket_watchlist_table(data, article_url)
-        except Exception as e:
-            logger.exception("CNBC Pre-Market Watchlist failed: %s", e)
-            return _err_div(e)
-
-    @app.callback(
-        Output("live_index-content", "children"),
-        [
-            Input("interval-live-snapshot", "n_intervals"),
-            Input("btn-refresh", "n_clicks"),
-            Input("btn-refresh-live_index", "n_clicks"),
-            Input("main-tabs", "data"),
-        ],
-        prevent_initial_call=False,
-    )
-    def refresh_live_index(n_intervals, n_clicks, btn_widget, main_tab):
-        if main_tab != "intraday":
-            raise PreventUpdate
-        if btn_widget:
-            _invalidate_widget_cache("live_index")
-        try:
-            from src.data_fetcher import fetch_live_index_quotes
-            data = fetch_live_index_quotes()
-            return build_live_index_snapshot(data)
-        except Exception as e:
-            logger.exception("Market Snapshot failed: %s", e)
-            return _err_div(e)
-
-    @app.callback(
         [
             Output("leading-content", "children"),
             Output("leading-data-store", "data"),
@@ -1216,11 +1375,13 @@ def register_callbacks(app):
             Input("btn-refresh-leading", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("leading-data-store", "data")],
         prevent_initial_call=False,
     )
-    def refresh_leading(_n_intervals, _n_clicks, btn_widget, main_tab):
+    def refresh_leading(_n_intervals, _n_clicks, btn_widget, main_tab, prev_store):
         if main_tab not in ("market-metrics", "intraday"):
             raise PreventUpdate
+        _skip_on_tab_switch_if_store_has_data(prev_store)
         if ctx.triggered_id == "btn-refresh-leading" and btn_widget:
             _invalidate_widget_cache("leading")
         try:
@@ -1241,11 +1402,13 @@ def register_callbacks(app):
             Input("btn-refresh-thematics", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("thematics-data-store", "data")],
         prevent_initial_call=False,
     )
-    def refresh_thematics_widget(_n_intervals, _n_clicks, btn_widget, main_tab):
+    def refresh_thematics_widget(_n_intervals, _n_clicks, btn_widget, main_tab, prev_store):
         if main_tab not in ("market-metrics", "intraday"):
             raise PreventUpdate
+        _skip_on_tab_switch_if_store_has_data(prev_store)
         if ctx.triggered_id == "btn-refresh-thematics" and btn_widget:
             _invalidate_widget_cache("thematics")
         try:
@@ -1266,11 +1429,13 @@ def register_callbacks(app):
             Input("btn-refresh-thematics-sector", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("thematics-sector-data-store", "data")],
         prevent_initial_call=False,
     )
-    def refresh_thematics_sector(_n_intervals, _n_clicks, btn_widget, main_tab):
+    def refresh_thematics_sector(_n_intervals, _n_clicks, btn_widget, main_tab, prev_store):
         if main_tab not in ("market-metrics", "intraday"):
             raise PreventUpdate
+        _skip_on_tab_switch_if_store_has_data(prev_store)
         if ctx.triggered_id == "btn-refresh-thematics-sector" and btn_widget:
             _invalidate_widget_cache("thematics-sector")
         try:
@@ -1288,10 +1453,15 @@ def register_callbacks(app):
             Input("btn-refresh-top_gainers", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("top_gainers-content", "children")],
         prevent_initial_call=False,
     )
-    def refresh_top_gainers(_n_intervals, _n_clicks, btn_widget, main_tab):
+    def refresh_top_gainers(_n_intervals, _n_clicks, btn_widget, main_tab, existing_children):
         if main_tab not in ("market-metrics", "intraday"):
+            raise PreventUpdate
+        # Skip only after this widget has rendered at least once; otherwise first visit
+        # to Intraday can stay stuck on the initial loading placeholder.
+        if _tab_change_only_trigger() and existing_children and cache.get("all_key_metrics") is not None:
             raise PreventUpdate
         if ctx.triggered_id == "btn-refresh-top_gainers" and btn_widget:
             _invalidate_widget_cache("top_gainers")
@@ -1311,10 +1481,13 @@ def register_callbacks(app):
             Input("btn-refresh-top_losers", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("top_losers-content", "children")],
         prevent_initial_call=False,
     )
-    def refresh_top_losers(_n_intervals, _n_clicks, btn_widget, main_tab):
+    def refresh_top_losers(_n_intervals, _n_clicks, btn_widget, main_tab, existing_children):
         if main_tab not in ("market-metrics", "intraday"):
+            raise PreventUpdate
+        if _tab_change_only_trigger() and existing_children and cache.get("all_key_metrics") is not None:
             raise PreventUpdate
         if ctx.triggered_id == "btn-refresh-top_losers" and btn_widget:
             _invalidate_widget_cache("top_losers")
@@ -1334,10 +1507,13 @@ def register_callbacks(app):
             Input("btn-refresh-stage", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("stage-content", "children")],
         prevent_initial_call=False,
     )
-    def refresh_stage_widget(_n_intervals, _n_clicks, btn_widget, main_tab):
+    def refresh_stage_widget(_n_intervals, _n_clicks, btn_widget, main_tab, existing_children):
         if main_tab not in ("market-metrics", "intraday"):
+            raise PreventUpdate
+        if _tab_change_only_trigger() and _has_rendered(existing_children) and cache.get("stage_analysis") is not None:
             raise PreventUpdate
         if ctx.triggered_id == "btn-refresh-stage" and btn_widget:
             _invalidate_widget_cache("stage")
@@ -1365,10 +1541,13 @@ def register_callbacks(app):
             Input("btn-refresh-thematics-rrg", "n_clicks"),
             Input("main-tabs", "data"),
         ],
+        [State("thematics-rrg-content", "children")],
         prevent_initial_call=False,
     )
-    def refresh_thematics_rrg(n_intervals, n_clicks, btn_widget, main_tab):
+    def refresh_thematics_rrg(n_intervals, n_clicks, btn_widget, main_tab, existing_children):
         if main_tab != "market-metrics":
+            raise PreventUpdate
+        if _tab_change_only_trigger() and _has_rendered(existing_children) and cache.get("thematics_rrg_data") is not None:
             raise PreventUpdate
         if btn_widget:
             _invalidate_widget_cache("thematics-rrg")

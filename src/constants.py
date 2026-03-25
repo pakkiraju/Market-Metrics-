@@ -252,6 +252,16 @@ STOCKBEE_LINKS = {
     "market_monitor": "https://docs.google.com/spreadsheets/d/1O6OhS7ciA8zwfycBfGPbP2fWJnR0pn2UUvFZVDP9jpE/",
 }
 
+# USA-wide Custom view (v=152): all columns FinViz exposes; filter in-app per index ($1B+, NDX, etc.).
+# Shared query string: only the host path differs between CSV export (app) and HTML screener (browser cross-check).
+_USA_FULL_V152_QUERY = (
+    "v=152&f=geo_usa&ft=3&o=-index&c="
+    "0,1,2,79,3,4,5,129,6,7,8,9,10,11,12,13,73,74,75,14,130,131,147,148,149,15,16,77,17,18,142,19,20,143,21,23,22,132,133,82,78,127,128,144,145,146,24,25,85,26,27,28,29,30,31,84,32,33,34,35,36,37,38,39,40,41,90,91,92,93,94,95,96,97,98,99,42,43,44,45,47,46,138,139,140,48,49,50,51,52,53,54,55,56,57,58,134,125,126,59,68,70,80,83,76,60,61,62,63,64,67,89,69,81,86,87,88,65,66,71,72,141,135,136,137,150,103,100,101,104,102,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,105"
+)
+# Open in a browser to verify columns/filters against the same universe the app downloads via export.ashx.
+FINVIZ_USA_FULL_V152_SCREENER = "https://elite.finviz.com/screener.ashx?" + _USA_FULL_V152_QUERY
+FINVIZ_USA_FULL_V152_EXPORT = "https://elite.finviz.com/export.ashx?" + _USA_FULL_V152_QUERY
+
 # Export URLs for data fetching (export.ashx returns CSV). v=111 Overview, v=141 Performance (Perf Week), v=171 Technical (ATR).
 # For screener widgets: use v=141 + &c=1,47,61,62,63,64,65 to get Ticker, ATR, AvgVol, RelVol, Price, Change, Volume.
 # Without c= or with v=111, Avg Vol and Rel Vol are often missing from the export.
@@ -306,8 +316,8 @@ FINVIZ_EXPORT_URLS = {
     "jeff_sun_26w100": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_26w100o,ta_volatility_mo5&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
     # Jeff Sun IPO: cap_midover, fa_epsyoy1_pos, geo_usa, ipodate_prevyear, sh_avgvol_o1000
     "jeff_sun_ipo_thisweek": "https://elite.finviz.com/export.ashx?v=141&f=cap_midover,fa_epsyoy1_pos,geo_usa,ipodate_prevyear,sh_avgvol_o1000&ft=4&o=industry&c=1,47,61,62,63,64,65",
-    # Jeff Sun High Short Float: Ownership view v=131 for Short Float column
-    "jeff_sun_high_short_float": "https://elite.finviz.com/export.ashx?v=131&f=cap_smallover,ind_stocksonly,sh_avgvol_o1000,sh_float_u100,sh_short_o30&ft=4&c=1,47,61,62,63,64,65",
+    # Jeff Sun High Short Float: v=131 + Short Float (32) with standard perf/vol columns
+    "jeff_sun_high_short_float": "https://elite.finviz.com/export.ashx?v=131&f=cap_smallover,ind_stocksonly,sh_avgvol_o1000,sh_float_u100,sh_short_o30&ft=4&c=1,32,47,61,62,63,64,65",
     # Jeff Sun Liquid ETFs: Overview v=111 + performance columns
     "jeff_sun_liquid_etfs": "https://elite.finviz.com/export.ashx?v=111&f=ind_exchangetradedfund,sh_avgvol_o1000,ta_volatility_wo3&ft=4&o=-volume&c=1,47,61,62,63,64,65",
     # Julian Komar: v=141 export (same filters as screener, no chart params)
@@ -322,8 +332,8 @@ FINVIZ_EXPORT_URLS = {
     "ind_usa": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_price_o1,sh_avgvol_o1000&o=-change&c=1,3,4,6,41,42,43,44,45,47,50,51,52,55,56,61,62,63,64,65",
     # Thematics RRG: v=141 for reliable Perf Year/Qtr columns (v=152 may have different layout)
     "ind_thematics_rrg": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_price_o1,sh_avgvol_o1000&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
+    # Key Metrics: use FINVIZ_USA_FULL_V152_EXPORT (single USA export) + in-app filter; these per-index URLs remain for other callers.
     # Key Metrics base data: v=152 single-URL per index. c=1,42,43,44,45,47,52,53,54,60,65,66 = Ticker,PerfWeek,PerfMonth,PerfQuart,PerfHalf,PerfYTD,SMA20,SMA50,SMA200,ChgFromOpen,Price,Change.
-    # Price to SMA10, EMA10>SMA20, SMA20<SMA50, SMA50<SMA200, SMA20<SMA50<SMA200, New 20-Day High/Low: keep URL fetch (unchanged).
     "ind_ndx": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_ndx&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
     "ind_sp500": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_sp500&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
     "ind_dji": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_dji&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",

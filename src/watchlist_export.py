@@ -88,14 +88,6 @@ def tickers_from_fallback(widget_id: str) -> list[str]:
             from src.calculations import compute_top_gainers_losers
             _, l = compute_top_gainers_losers(12)
             return extract_tickers_from_rows(l)
-        if widget_id == "live_index":
-            from src.data_fetcher import fetch_live_index_quotes
-            data = fetch_live_index_quotes()
-            return extract_tickers_from_rows(data if isinstance(data, list) else [])
-        if widget_id == "cnbc_premarket":
-            from src.cnbc_premarket import fetch_cnbc_premarket_watchlist
-            data = fetch_cnbc_premarket_watchlist()
-            return extract_tickers_from_rows(data if isinstance(data, list) else [])
         if widget_id == "stage":
             from src import cache
             data = cache.get("stage_analysis")

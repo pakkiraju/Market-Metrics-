@@ -52,6 +52,7 @@ SCREENER_SORT_KEYS = {
     "chg": lambda r: (
         float(str(r.get("chg") or r.get("change") or "0").replace("%", "").replace(",", "")) or 0,
     ),
+    "short_float_pct": lambda r: (_parse_sort_num(r.get("short_float_pct")),),
 }
 
 # Sector table sort keys

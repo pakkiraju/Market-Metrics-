@@ -16,11 +16,21 @@ from src.data_fetcher import (
     fetch_4pct_daily_from_url,
     fetch_earnings_yesterday_today,
     fetch_pre_market_scanner,
-    fetch_screener_from_url,
+    fetch_stocks_in_play_from_usa_v152,
     fetch_benchmark_performance,
     fetch_thematics_data,
+    fetch_usa_thematics_universe_indicators,
 )
-from src.constants import SECTOR_ETFS, SECTOR_SPDRS_RRG, RRG_BENCHMARK, SECTOR_NAMES, KEY_METRIC_ROWS
+from src.constants import (
+    SECTOR_ETFS,
+    SECTOR_SPDRS_RRG,
+    RRG_BENCHMARK,
+    SECTOR_NAMES,
+    KEY_METRIC_ROWS,
+    INDEX_GROUPS,
+    build_metric_screener_url,
+)
+from src.usa_v152_columns import V152_PARSED
 
 logger = logging.getLogger(__name__)
 
@@ -193,64 +203,65 @@ def compute_key_metrics_for_group(indicators: pd.DataFrame) -> list[dict]:
     if indicators.empty:
         return [{"above": 0, "below": 0, "pct": 0}] * len(KEY_METRIC_ROWS)
 
+    pv = V152_PARSED
     rows = []
     n = len(indicators)
 
     # Day Chg
-    rows.append(_above_below(indicators["day_chg"], n))
+    rows.append(_above_below(indicators[pv.DAY_CHG], n))
     # Open Chg (URL-fetched via ta_changeopen_u/d, placeholder here)
-    rows.append(_above_below(indicators["open_chg"], n))
+    rows.append(_above_below(indicators[pv.OPEN_CHG], n))
     # Week
-    rows.append(_above_below(indicators["week_chg"].dropna(), n))
+    rows.append(_above_below(indicators[pv.WEEK_CHG].dropna(), n))
     # Month
-    rows.append(_above_below(indicators["month_chg"].dropna(), n))
+    rows.append(_above_below(indicators[pv.MONTH_CHG].dropna(), n))
     # Qtr
-    rows.append(_above_below(indicators["qtr_chg"].dropna(), n))
+    rows.append(_above_below(indicators[pv.QTR_CHG].dropna(), n))
     # Half Year
-    rows.append(_above_below(indicators["half_chg"].dropna(), n))
+    rows.append(_above_below(indicators[pv.HALF_CHG].dropna(), n))
     # Year
-    rows.append(_above_below(indicators["year_chg"].dropna(), n))
+    rows.append(_above_below(indicators[pv.YEAR_CHG].dropna(), n))
 
     # Price to SMA10/20/50/200
-    for col in ["sma10", "sma20", "sma50", "sma200"]:
-        valid = indicators.dropna(subset=["close", col])
-        above = int((valid["close"] > valid[col]).sum())
+    for col in [pv.SMA10, pv.SMA20, pv.SMA50, pv.SMA200]:
+        valid = indicators.dropna(subset=[pv.CLOSE, col])
+        above = int((valid[pv.CLOSE] > valid[col]).sum())
         below = len(valid) - above
         pct = round(above / n * 100, 1) if n > 0 else 0
         rows.append((above, below, pct))
 
     # EMA10 > SMA20
-    valid = indicators.dropna(subset=["ema10", "sma20"])
-    a = int((valid["ema10"] > valid["sma20"]).sum())
+    valid = indicators.dropna(subset=[pv.EMA10, pv.SMA20])
+    a = int((valid[pv.EMA10] > valid[pv.SMA20]).sum())
     rows.append((a, len(valid) - a, round(a / n * 100, 1) if n > 0 else 0))
 
     # SMA20 > SMA50
-    valid = indicators.dropna(subset=["sma20", "sma50"])
-    a = int((valid["sma20"] > valid["sma50"]).sum())
+    valid = indicators.dropna(subset=[pv.SMA20, pv.SMA50])
+    a = int((valid[pv.SMA20] > valid[pv.SMA50]).sum())
     rows.append((a, len(valid) - a, round(a / n * 100, 1) if n > 0 else 0))
 
     # SMA50 > SMA200
-    valid = indicators.dropna(subset=["sma50", "sma200"])
-    a = int((valid["sma50"] > valid["sma200"]).sum())
+    valid = indicators.dropna(subset=[pv.SMA50, pv.SMA200])
+    a = int((valid[pv.SMA50] > valid[pv.SMA200]).sum())
     rows.append((a, len(valid) - a, round(a / n * 100, 1) if n > 0 else 0))
 
     # SMA20 > SMA50 > SMA200
-    valid = indicators.dropna(subset=["sma20", "sma50", "sma200"])
-    a = int(((valid["sma20"] > valid["sma50"]) &
-             (valid["sma50"] > valid["sma200"])).sum())
+    valid = indicators.dropna(subset=[pv.SMA20, pv.SMA50, pv.SMA200])
+    a = int(((valid[pv.SMA20] > valid[pv.SMA50]) &
+             (valid[pv.SMA50] > valid[pv.SMA200])).sum())
     rows.append((a, len(valid) - a, round(a / n * 100, 1) if n > 0 else 0))
 
     # 4% Up vs 4% Down
-    up4 = int((indicators["day_chg"] >= 4).sum())
-    dn4 = int((indicators["day_chg"] <= -4).sum())
+    up4 = int((indicators[pv.DAY_CHG] >= 4).sum())
+    dn4 = int((indicators[pv.DAY_CHG] <= -4).sum())
     rows.append((up4, dn4, round(up4 / n * 100, 1) if n > 0 else 50))
 
     # New 20-Day Highs
-    highs = int(indicators["new_20_high"].sum())
+    highs = int(indicators[pv.NEW_20_HIGH].sum())
     rows.append((highs, None, round(highs / n * 100, 1) if n > 0 else 0))
 
     # New 20-Day Lows
-    lows = int(indicators["new_20_low"].sum())
+    lows = int(indicators[pv.NEW_20_LOW].sum())
     rows.append((lows, None, round(lows / n * 100, 1) if n > 0 else 0))
 
     # Stocks count
@@ -260,69 +271,49 @@ def compute_key_metrics_for_group(indicators: pd.DataFrame) -> list[dict]:
 
 
 def compute_key_metrics_single_group(name: str) -> list[dict]:
-    """Compute key metrics for one index group. Data from FinViz screeners directly."""
+    """Compute key metrics for one index group. Data from one USA-wide v=152 export, filtered in-app."""
     import time
 
-    from src.constants import build_metric_screener_url
-    from src.data_fetcher import fetch_group_indicators, fetch_metric_count
+    from src.data_fetcher import fetch_key_metrics_indicators_for_group, fetch_metric_count
 
-    _KEY_METRICS_URL_DELAY = 2.0  # seconds between each URL to avoid FinViz rate limit
+    _KEY_METRICS_URL_DELAY = 2.0  # only if 20d NH/NL columns missing from bulk CSV (rare)
 
-    groups = {
-        "NQ100": ("ind_NQ100", []),
-        "SPY500": ("ind_RSP", []),
-        "DJIA": ("ind_DJIA", []),
-        "RUS2000": ("ind_RUS2000", []),
-        "$1B+": ("ind_$1B+", []),
-    }
-    ck, tickers = groups.get(name, (None, []))
-    if not ck:
+    if name not in INDEX_GROUPS:
         return []
 
-    time.sleep(_KEY_METRICS_URL_DELAY)
-    ind = fetch_group_indicators(tickers, cache_key=ck)
+    ind, meta = fetch_key_metrics_indicators_for_group(name)
     rows = compute_key_metrics_for_group(ind)
     n = len(ind) if not ind.empty else 0
 
-    # These metrics require URL fetch (not in v=152 export): Price to SMA10, EMA10>SMA20, SMA crossovers, New 20-Day High/Low.
-    URL_FETCH_METRICS = [
-        "Price to SMA10",
-        "EMA10>SMA20", "SMA20<SMA50", "SMA50<SMA200", "SMA20<SMA50<SMA200",
-        "New 20-Day Highs", "New 20-Day Lows",
-    ]
-    url_fetch_indices = {m: KEY_METRIC_ROWS.index(m) for m in URL_FETCH_METRICS if m in KEY_METRIC_ROWS}
-
-    for metric_label, row_idx in url_fetch_indices.items():
-        above_url = build_metric_screener_url(name, metric_label, "above", for_export=True)
-        below_url = build_metric_screener_url(name, metric_label, "below", for_export=True)
-        if not above_url:
-            continue
-        time.sleep(_KEY_METRICS_URL_DELAY)
-        above = fetch_metric_count(above_url, f"km_{name}_{metric_label}_above", skip_delay=True)
-        if below_url:
+    if meta.get("use_20d_url_fallback"):
+        for metric_label in ("New 20-Day Highs", "New 20-Day Lows"):
+            row_idx = KEY_METRIC_ROWS.index(metric_label)
+            above_url = build_metric_screener_url(name, metric_label, "above", for_export=True)
+            if not above_url:
+                continue
             time.sleep(_KEY_METRICS_URL_DELAY)
-            below = fetch_metric_count(below_url, f"km_{name}_{metric_label}_below", skip_delay=True)
-        else:
-            below = None
-        pct = round(above / n * 100, 1) if n > 0 else 0
-        rows[row_idx] = {"above": above, "below": below, "pct": pct}
+            above = fetch_metric_count(above_url, f"km_{name}_{metric_label}_above", skip_delay=True)
+            below_url = build_metric_screener_url(name, metric_label, "below", for_export=True)
+            if below_url:
+                time.sleep(_KEY_METRICS_URL_DELAY)
+                below = fetch_metric_count(below_url, f"km_{name}_{metric_label}_below", skip_delay=True)
+            else:
+                below = None
+            pct = round(above / n * 100, 1) if n > 0 else 0
+            rows[row_idx] = {"above": above, "below": below, "pct": pct}
 
     return rows
 
 
 def compute_all_key_metrics() -> dict:
-    """Compute key metrics for all index groups. Fetches all URLs, caches full result, returns when done."""
-    import time
-
+    """Compute key metrics for all index groups. One USA-wide export + in-app filters; cached result."""
     groups_order = ["NQ100", "SPY500", "DJIA", "RUS2000", "$1B+"]
     cached = cache.get("all_key_metrics")
     if cached is not None:
         return cached
 
     result = {}
-    for i, name in enumerate(groups_order):
-        if i > 0:
-            time.sleep(2)
+    for name in groups_order:
         result[name] = compute_key_metrics_single_group(name)
 
     cache.put("all_key_metrics", result, ttl=cache.KEY_METRICS_TTL)
@@ -484,7 +475,7 @@ def classify_stage(ind: dict) -> str:
 
 def compute_stage_analysis(tickers: list[str],
                            cache_key: str = "stage_analysis") -> dict:
-    """Return stage counts and per-ticker stages. Fetches from export.ashx (geo_usa, avgvol 1000+, price $1+), does stage math."""
+    """Return stage counts and per-ticker stages. USA v152 parsed cache (price > $1, avg vol >= 1000 sh), stage math in-app."""
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
@@ -526,44 +517,45 @@ def compute_97_club(tickers: list[str]) -> list[dict]:
     if indicators.empty:
         return []
 
+    pv = V152_PARSED
     # Work on copy to avoid mutating cached DataFrame
     indicators = indicators.copy()
 
     # Relative strength: top 3% = percentile rank >= 0.97 (same scale as leading industries/thematics)
-    for col in ["day_chg", "week_chg", "month_chg"]:
+    for col in [pv.DAY_CHG, pv.WEEK_CHG, pv.MONTH_CHG]:
         if col in indicators.columns:
             indicators[f"rs_rank_{col}"] = indicators[col].rank(pct=True, method="average")
 
     mask = True
-    for col in ["day_chg", "week_chg", "month_chg"]:
+    for col in [pv.DAY_CHG, pv.WEEK_CHG, pv.MONTH_CHG]:
         rcol = f"rs_rank_{col}"
         if rcol in indicators.columns:
             mask = mask & (indicators[rcol] >= 0.97)
 
     valid = indicators[mask].copy()
-    valid = valid.sort_values("day_chg", ascending=False).head(35)
+    valid = valid.sort_values(pv.DAY_CHG, ascending=False).head(35)
 
     # Enrich ATR% if missing (ind_1b v=141 may omit ATR with many columns)
-    if valid["atr_pct"].isna().all() and len(valid) > 0:
+    if valid[pv.ATR_PCT].isna().all() and len(valid) > 0:
         from src.data_fetcher import fetch_tickers_bulk_csv
-        tickers = valid["ticker"].tolist()
+        tickers = valid[pv.TICKER].tolist()
         bulk = fetch_tickers_bulk_csv(tickers, cache_key=f"97_club_atr_{','.join(sorted(tickers))}")
         atr_map = {r["ticker"]: r.get("atr_pct") for r in bulk if r.get("atr_pct") is not None}
         if atr_map:
-            valid["atr_pct"] = valid["ticker"].map(atr_map)
+            valid[pv.ATR_PCT] = valid[pv.TICKER].map(atr_map)
 
     rows = []
     for _, r in valid.iterrows():
-        avg_v = r.get("avg_volume")
-        rel_v = r.get("rel_volume")
-        vol = r.get("volume")
+        avg_v = r.get(pv.AVG_VOLUME)
+        rel_v = r.get(pv.REL_VOLUME)
+        vol = r.get(pv.VOLUME)
         if rel_v is None and vol and avg_v and avg_v != 0:
             rel_v = vol / avg_v
-        atr_pct = r.get("atr_pct")
+        atr_pct = r.get(pv.ATR_PCT)
         rows.append({
-            "ticker": r["ticker"],
-            "price": r.get("close") or "",
-            "change": r.get("day_chg") if r.get("day_chg") is not None else "",
+            "ticker": r[pv.TICKER],
+            "price": r.get(pv.CLOSE) or "",
+            "change": r.get(pv.DAY_CHG) if r.get(pv.DAY_CHG) is not None else "",
             "volume": vol or "",
             "avg_vol": avg_v if avg_v is not None else "",
             "rel_vol": round(rel_v, 2) if rel_v is not None else "",
@@ -598,29 +590,30 @@ def compute_9m_movers(tickers: list[str]) -> list[dict]:
     if indicators.empty:
         return []
 
-    valid = indicators.sort_values("day_chg", ascending=False).head(40)
+    pv = V152_PARSED
+    valid = indicators.sort_values(pv.DAY_CHG, ascending=False).head(40)
 
     # Enrich ATR% if missing (ind_9m v=141 may omit ATR with many columns)
-    if valid["atr_pct"].isna().all() and len(valid) > 0:
+    if valid[pv.ATR_PCT].isna().all() and len(valid) > 0:
         from src.data_fetcher import fetch_tickers_bulk_csv
-        tickers = valid["ticker"].tolist()
+        tickers = valid[pv.TICKER].tolist()
         bulk = fetch_tickers_bulk_csv(tickers, cache_key=f"9m_atr_{','.join(sorted(tickers))}")
         atr_map = {r["ticker"]: r.get("atr_pct") for r in bulk if r.get("atr_pct") is not None}
         if atr_map:
-            valid["atr_pct"] = valid["ticker"].map(atr_map)
+            valid[pv.ATR_PCT] = valid[pv.TICKER].map(atr_map)
 
     rows = []
     for _, r in valid.iterrows():
-        avg_v = r.get("avg_volume")
-        rel_v = r.get("rel_volume")
-        vol = r.get("volume")
+        avg_v = r.get(pv.AVG_VOLUME)
+        rel_v = r.get(pv.REL_VOLUME)
+        vol = r.get(pv.VOLUME)
         if rel_v is None and vol and avg_v and avg_v != 0:
             rel_v = vol / avg_v
-        atr_pct = r.get("atr_pct")
+        atr_pct = r.get(pv.ATR_PCT)
         rows.append({
-            "ticker": r["ticker"],
-            "price": r.get("close") or "",
-            "change": r.get("day_chg") if r.get("day_chg") is not None else "",
+            "ticker": r[pv.TICKER],
+            "price": r.get(pv.CLOSE) or "",
+            "change": r.get(pv.DAY_CHG) if r.get(pv.DAY_CHG) is not None else "",
             "volume": vol or "",
             "avg_vol": avg_v if avg_v is not None else "",
             "rel_vol": round(rel_v, 2) if rel_v is not None else "",
@@ -645,18 +638,17 @@ def compute_20pct_weekly(tickers: list[str]) -> list[dict]:
 # -----------------------------------------------------------------------
 
 def compute_earnings_yesterday_today(tickers: list[str]) -> list[dict]:
-    """Earnings yesterday or today from FinViz. USA, avg vol 1K+, price $1+. Merges Performance view for avg_vol/rel_vol."""
+    """Earnings yesterday or today (ET) from USA v152 (same cache as Key Metrics)."""
     return fetch_earnings_yesterday_today(ttl=MEDIUM)
 
 
 def compute_stocks_in_play(tickers: list[str]) -> list[dict]:
-    """Stocks In Play: news yesterday|today, avg vol 1K+, price $1+, rel vol 2+. Sorted by change desc.
-    Uses v=141 with c=1,137,47,61,62,63,64,65 for Ticker,News/Link,ATR,AvgVol,RelVol,Price,Change,Volume."""
-    return fetch_screener_from_url("stocks_in_play", "stocks_in_play", ttl=MEDIUM)
+    """Stocks In Play from USA v152: price > $1, liq ≥ 1K sh, rel vol ≥ 2; ranked by |day change|."""
+    return fetch_stocks_in_play_from_usa_v152(ttl=MEDIUM)
 
 
 def compute_pre_market_scanner(tickers: list[str]) -> list[dict]:
-    """Pre-market Scanner: USA, avg vol 1K+, price $1+, rel vol 1+, up 3%. Returns all columns from export."""
+    """Pre-market Scanner from USA v152: gap vs prior close ±3%, rel vol ≥ 1, same liquidity floor."""
     return fetch_pre_market_scanner(ttl=MEDIUM)
 
 
@@ -681,60 +673,60 @@ def compute_4pct_daily(tickers: list[str]) -> list[dict]:
 
 def compute_leading_industries(tickers: list[str],
                                industry_map: dict[str, str]) -> list[dict]:
-    """Top 20% industries by weekly+monthly relative strength. Data from FinViz: $1B+, USA, RSI>60.
+    """Top 20% industries by weekly+monthly relative strength. Same universe as Thematics (`fetch_usa_thematics_universe_indicators`).
     Green = top 20% on BOTH weekly and monthly RS. Shows 4 best-performing stocks for the day per industry."""
     cached = cache.get("leading_industries")
     if cached is not None:
         return cached
 
-    # Use ind_$1B+ (same universe as 97 Club). ind_1b export includes Industry/Sector, so no need for club97 URL.
-    indicators = compute_group_indicators([], cache_key="ind_$1B+")
+    indicators = fetch_usa_thematics_universe_indicators()
     if indicators.empty:
         cache.put("leading_industries", [], ttl=FAST)  # cache empty to avoid refetching every interval
         return []
 
-    # Industry from ind_1b (has Industry, Sector). Only fetch club97 if indicators lacks industry.
+    pv = V152_PARSED
+    # Industry from v152 export (Industry, Sector). Overview map only if export lacks names.
     if industry_map:
-        indicators["industry"] = indicators["ticker"].map(industry_map)
-    elif "industry" in indicators.columns and indicators["industry"].fillna("").astype(str).str.strip().str.len().gt(0).any():
-        pass  # Use industry from ind_1b — avoids redundant club97 URL (same filters as ind_1b)
+        indicators[pv.INDUSTRY] = indicators[pv.TICKER].map(industry_map)
+    elif pv.INDUSTRY in indicators.columns and indicators[pv.INDUSTRY].fillna("").astype(str).str.strip().str.len().gt(0).any():
+        pass
     else:
         overview_map = fetch_industry_map_from_overview()
         if overview_map:
-            indicators["industry"] = indicators["ticker"].map(overview_map)
+            indicators[pv.INDUSTRY] = indicators[pv.TICKER].map(overview_map)
         else:
-            indicators["industry"] = indicators.get("sector", pd.Series(dtype=str))
+            indicators[pv.INDUSTRY] = indicators.get(pv.SECTOR, pd.Series(dtype=str))
     # Fill empty with sector, then "Uncategorized"
-    indicators["industry"] = indicators["industry"].fillna("").astype(str).str.strip()
-    sector_fallback = indicators.get("sector", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
-    indicators["industry"] = indicators["industry"].where(indicators["industry"] != "", sector_fallback)
-    indicators["industry"] = indicators["industry"].where(indicators["industry"] != "", "Uncategorized")
-    indicators = indicators[indicators["industry"] != ""]
+    indicators[pv.INDUSTRY] = indicators[pv.INDUSTRY].fillna("").astype(str).str.strip()
+    sector_fallback = indicators.get(pv.SECTOR, pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+    indicators[pv.INDUSTRY] = indicators[pv.INDUSTRY].where(indicators[pv.INDUSTRY] != "", sector_fallback)
+    indicators[pv.INDUSTRY] = indicators[pv.INDUSTRY].where(indicators[pv.INDUSTRY] != "", "Uncategorized")
+    indicators = indicators[indicators[pv.INDUSTRY] != ""]
 
-    grouped = indicators.groupby("industry").agg(
-        week_avg=("week_chg", "mean"),
-        month_avg=("month_chg", "mean"),
+    grouped = indicators.groupby(pv.INDUSTRY).agg(
+        week_avg=(pv.WEEK_CHG, "mean"),
+        month_avg=(pv.MONTH_CHG, "mean"),
     ).reset_index()
 
     grouped["week_rank"] = grouped["week_avg"].rank(pct=True)
     grouped["month_rank"] = grouped["month_avg"].rank(pct=True)
 
-    top_20_week = set(grouped[grouped["week_rank"] >= 0.80]["industry"].dropna())
-    top_20_month = set(grouped[grouped["month_rank"] >= 0.80]["industry"].dropna())
+    top_20_week = set(grouped[grouped["week_rank"] >= 0.80][pv.INDUSTRY].dropna())
+    top_20_month = set(grouped[grouped["month_rank"] >= 0.80][pv.INDUSTRY].dropna())
     top_industries = top_20_week | top_20_month
     # If ranks are all NaN (e.g. missing Perf Week/Month), show all industries by week strength
     if not top_industries:
-        top_industries = set(grouped["industry"].dropna())
+        top_industries = set(grouped[pv.INDUSTRY].dropna())
 
-    grouped = grouped[grouped["industry"].isin(top_industries)]
+    grouped = grouped[grouped[pv.INDUSTRY].isin(top_industries)]
     grouped = grouped.sort_values("week_avg", ascending=False)
 
     rows = []
     for _, g in grouped.iterrows():
-        ind_name = g["industry"]
+        ind_name = g[pv.INDUSTRY]
         both = ind_name in top_20_week and ind_name in top_20_month
-        ind_tickers = indicators[indicators["industry"] == ind_name]
-        top4 = ind_tickers.nlargest(4, "day_chg")["ticker"].tolist()
+        ind_tickers = indicators[indicators[pv.INDUSTRY] == ind_name]
+        top4 = ind_tickers.nlargest(4, pv.DAY_CHG)[pv.TICKER].tolist()
         while len(top4) < 4:
             top4.append("—")
         rows.append({
@@ -760,27 +752,54 @@ def _is_stale_thematics_cache(cached: list) -> bool:
 
 
 def compute_top_gainers_losers(top_n: int = 12) -> tuple[list[dict], list[dict]]:
-    """Top gainers and top losers from thematics universe (same data as Thematics Tracker).
-    Uses fetch_thematics_data (ind_USA) — no extra API call when thematics is refreshed."""
-    df = fetch_thematics_data(cache_key="thematics_data", ttl=MEDIUM)
+    """Top gainers and top losers from the same liquid USA v152 universe as Thematics (see `fetch_usa_thematics_universe_indicators`).
+    Uses full parsed columns: price, avg vol, rel vol, change, vol, atr %."""
+    pv = V152_PARSED
+    df = fetch_usa_thematics_universe_indicators()
     if not isinstance(df, pd.DataFrame) or df.empty:
         return [], []
-    df = df.dropna(subset=["day_chg"])
-    gainers = (
-        df.nlargest(top_n, "day_chg")[["ticker", "day_chg"]]
-        .rename(columns={"day_chg": "change"})
-        .to_dict("records")
-    )
-    losers = (
-        df.nsmallest(top_n, "day_chg")[["ticker", "day_chg"]]
-        .rename(columns={"day_chg": "change"})
-        .to_dict("records")
-    )
+    if pv.TICKER not in df.columns or pv.DAY_CHG not in df.columns:
+        return [], []
+    df = df.dropna(subset=[pv.DAY_CHG])
+    if df.empty:
+        return [], []
+
+    def row_to_dict(row: pd.Series) -> dict:
+        t = str(row[pv.TICKER]).strip().upper()
+        dc = float(row[pv.DAY_CHG]) if pd.notna(row[pv.DAY_CHG]) else 0.0
+        out: dict = {"ticker": t, "change": dc}
+        if pv.CLOSE in row.index and pd.notna(row.get(pv.CLOSE)):
+            try:
+                out["price"] = f"{float(row[pv.CLOSE]):.2f}"
+            except (TypeError, ValueError):
+                out["price"] = ""
+        else:
+            out["price"] = ""
+        for src, dst in (
+            (pv.AVG_VOLUME, "avg_vol"),
+            (pv.REL_VOLUME, "rel_vol"),
+            (pv.VOLUME, "volume"),
+        ):
+            if src in row.index:
+                out[dst] = row[src]
+        if pv.ATR_PCT in row.index and pd.notna(row.get(pv.ATR_PCT)):
+            try:
+                out["atr_pct"] = float(row[pv.ATR_PCT])
+            except (TypeError, ValueError):
+                out["atr_pct"] = None
+        else:
+            out["atr_pct"] = None
+        return out
+
+    gainers_df = df.nlargest(top_n, pv.DAY_CHG)
+    losers_df = df.nsmallest(top_n, pv.DAY_CHG)
+    gainers = [row_to_dict(r) for _, r in gainers_df.iterrows()]
+    losers = [row_to_dict(r) for _, r in losers_df.iterrows()]
     return gainers, losers
 
 
 def compute_thematics(tickers: list[str]) -> list[dict]:
-    """Top 20% themes by weekly+monthly relative strength. USA, avg vol 1K+, price $1+.
+    """Top 20% themes by weekly+monthly relative strength. Same universe as Leading / Thematics by Sector (price > $1, avg vol >= 1M sh).
     Green = top 20% on BOTH weekly and monthly. Shows top 4 stocks per theme by day change."""
     cached = cache.get("thematics")
     if cached is not None and not _is_stale_thematics_cache(cached):
@@ -795,13 +814,14 @@ def compute_thematics(tickers: list[str]) -> list[dict]:
         cache.invalidate("thematics")  # Don't persist empty; retry on next refresh
         return []
 
+    pv = V152_PARSED
     indicators["theme"] = indicators["theme"].fillna("").astype(str).str.strip()
     indicators = indicators[indicators["theme"] != ""]
     indicators["theme"] = indicators["theme"].where(indicators["theme"] != "", "Uncategorized")
 
     grouped = indicators.groupby("theme").agg(
-        week_avg=("week_chg", "mean"),
-        month_avg=("month_chg", "mean"),
+        week_avg=(pv.WEEK_CHG, "mean"),
+        month_avg=(pv.MONTH_CHG, "mean"),
     ).reset_index()
 
     grouped["week_rank"] = grouped["week_avg"].rank(pct=True)
@@ -821,7 +841,7 @@ def compute_thematics(tickers: list[str]) -> list[dict]:
         theme_name = g["theme"]
         both = theme_name in top_20_week and theme_name in top_20_month
         theme_tickers = indicators[indicators["theme"] == theme_name]
-        top4 = theme_tickers.nlargest(4, "day_chg", keep="first")["ticker"].tolist()
+        top4 = theme_tickers.nlargest(4, pv.DAY_CHG, keep="first")[pv.TICKER].tolist()
         while len(top4) < 4:
             top4.append("—")
         rows.append({
@@ -839,12 +859,12 @@ def compute_thematics(tickers: list[str]) -> list[dict]:
 
 def compute_thematics_sector_data(cache_key: str = "thematics_sector_data") -> list[dict]:
     """Thematics aggregated by theme (industry), Sector SPDR-style: Chg, O Chg, Week, Month, Qtr, H.Year, Year.
-    Uses ind_USA (same as Thematics Tracker) for Industry/Sector. Filtered by top YTD (year) change. Feeds RRG."""
+    Same USA v152 + liquid filter as Thematics Tracker. Filtered by top YTD (year) change. Feeds RRG."""
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
-    indicators = fetch_group_indicators([], cache_key="ind_USA")
+    indicators = fetch_usa_thematics_universe_indicators()
     if indicators.empty:
         return []
 

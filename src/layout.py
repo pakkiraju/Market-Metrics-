@@ -27,7 +27,7 @@ from src.styles import (
     CONTENT_AREA_STYLE,
     PRIMARY_ROW_STYLE, QUARTER_ROW_STYLE, THIRD_ROW_STYLE, WIDE_ROW_STYLE, HALF_ROW_STYLE,
     SNAPSHOT_MOVERS_ROW_STYLE,
-    INTRADAY_TOP_MOVERS_BODY_STYLE, INTRADAY_SNAPSHOT_BODY_STYLE, INTRADAY_INDEX_ROW_CARD_STYLE,
+    INTRADAY_TOP_MOVERS_BODY_STYLE, INTRADAY_INDEX_ROW_CARD_STYLE,
     WIDGET_STYLE, WIDGET_PRIMARY_STYLE, WIDGET_SECONDARY_STYLE, WIDGET_KEY_METRICS_STYLE,
     section_header_style, SECTION_BODY_STYLE, KEY_METRICS_BODY_STYLE,
     TICKER_GRID_STYLE, ticker_pill_style,
@@ -103,20 +103,18 @@ SUPER_SCANNERS_WIDGETS = [
 ]
 # Intraday tab widgets (in_play and earnings here)
 INTRADAY_WIDGETS = [
-    ("live_index",     "Market Snapshot",             False),
     ("in_play",        "Stocks In Play",             False),
     ("intraday-earnings", "Earnings Yesterday + Today", False),
     ("top_gainers",    "Top Gainers",                False),
     ("top_losers",     "Top Losers",                 False),
     ("pre_market",     "Pre-market Scanner",         False),
-    ("cnbc_premarket", "CNBC Pre-Market Watchlist", False),
 ]
 # Combined for backward compatibility and visibility callback
 WIDGETS = MARKET_METRICS_WIDGETS + SUPER_SCANNERS_WIDGETS + INTRADAY_WIDGETS
 ALL_WIDGET_IDS = [w[0] for w in WIDGETS]
 # Default visibility: Market Metrics widgets + Intraday widgets
 DEFAULT_VISIBILITY = {
-    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "jeff_sun_canslim", "jeff_sun_high_adr", "jeff_sun_extended_bases", "jeff_sun_1w20", "jeff_sun_4w30", "jeff_sun_4w50", "jeff_sun_13w50", "jeff_sun_26w100", "jeff_sun_ipo_thisweek", "jeff_sun_high_short_float", "jeff_sun_liquid_etfs", "julian_komar_strongest", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "live_index", "in_play", "intraday-earnings", "top_gainers", "top_losers", "pre_market", "cnbc_premarket") for w in WIDGETS
+    w[0]: w[0] in ("key-metrics", "chart2", "chart3", "qulla", "minervini", "oneil", "jeff_sun_canslim", "jeff_sun_high_adr", "jeff_sun_extended_bases", "jeff_sun_1w20", "jeff_sun_4w30", "jeff_sun_4w50", "jeff_sun_13w50", "jeff_sun_26w100", "jeff_sun_ipo_thisweek", "jeff_sun_high_short_float", "jeff_sun_liquid_etfs", "julian_komar_strongest", "watchlist", "sector", "rrg", "sp500-landscape", "club97", "movers", "weekly", "daily", "leading", "thematics", "thematics-sector", "thematics-rrg", "stockbee", "breadth", "breadth-primary", "breadth-ratios", "breadth-secondary", "breadth-sp500", "stage", "earnings-calendar-week", "in_play", "intraday-earnings", "top_gainers", "top_losers", "pre_market") for w in WIDGETS
 }
 
 CLICKABLE_TICKER_STYLE = {
@@ -651,7 +649,7 @@ def build_earnings_calendar_table(data: list[dict], widget_id: str = None, sort_
 def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     """Pre-market Scanner: USA, avg vol 1K+, price $1+, rel vol 1+, up 3% and down 3%."""
     if not data:
-        return html.Div("No results. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
+        return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
     from src.sortable_table import sort_data_pre_market
@@ -676,6 +674,9 @@ def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort
     news_url_cols = [c for c in cols if "news" in c.lower() and "url" in c.lower()]
     other_cols = [c for c in cols if c not in news_url_cols]
     cols = other_cols + news_url_cols
+    title_cols = [c for c in cols if ("news" in c.lower() and "title" in c.lower()) or ("daily digest" in c.lower())]
+    if title_cols and news_url_cols:
+        cols = [c for c in cols if c not in news_url_cols]
     if not cols:
         return html.Div("No columns", style={"color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px"})
 
@@ -725,6 +726,15 @@ def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort
             elif col and (("average" in col.lower() and "volume" in col.lower()) or ("avg" in col.lower() and "vol" in col.lower())):
                 _, avg_str = _format_screener_vol(None, val)
                 cell = (avg_str or str(val)) if val not in (None, "") else ""
+            elif col and "rel" in col.lower() and "vol" in col.lower():
+                try:
+                    rv = float(str(val).replace(",", "")) if val not in (None, "") else float("nan")
+                    cell = "" if math.isnan(rv) else f"{rv:.2f}"
+                except (ValueError, TypeError):
+                    cell = str(val) if val not in (None, "") else ""
+            elif col and "volume" in col.lower() and "avg" not in col.lower() and "rel" not in col.lower():
+                vol_str, _ = _format_screener_vol(val, None)
+                cell = vol_str if vol_str else (str(val) if val not in (None, "") else "")
             elif col and "news" in col.lower() and "url" in col.lower() and val:
                 url = str(val).strip()
                 if url.startswith("/"):
@@ -737,11 +747,48 @@ def build_pre_market_scanner_table(data: list[dict], widget_id: str = None, sort
                     cell = str(val)
             elif col and (("news" in col.lower() and "title" in col.lower()) or "daily digest" in col.lower()):
                 text = str(val) if val not in (None, "") else ""
-                cell = {"text": text,
-                        "style": {**TABLE_CELL_STYLE, "fontSize": "12px", "lineHeight": "1.45",
-                                  "whiteSpace": "normal", "overflow": "visible",
-                                  "textOverflow": "unset", "wordWrap": "break-word", "textAlign": "left",
-                                  "minWidth": "360px", "maxWidth": "none"}}
+                url_key = next((k for k in r.keys() if "news" in k.lower() and "url" in k.lower()), None)
+                url_val = str(r.get(url_key)).strip() if url_key else ""
+                if url_val.startswith("/"):
+                    url_val = "https://finviz.com" + url_val
+                if text and url_val.startswith(("http://", "https://")):
+                    display = text if len(text) <= 220 else (text[:217] + "...")
+                    cell = {
+                        "text": html.A(
+                            display,
+                            href=url_val,
+                            target="_blank",
+                            rel="noopener noreferrer",
+                            style={
+                                "color": COLORS["accent"],
+                                "textDecoration": "underline",
+                                "fontSize": "11px",
+                                "lineHeight": "1.45",
+                                "whiteSpace": "normal",
+                                "wordWrap": "break-word",
+                            },
+                        ),
+                        "style": {
+                            **TABLE_CELL_STYLE,
+                            "fontSize": "12px",
+                            "lineHeight": "1.45",
+                            "whiteSpace": "normal",
+                            "overflow": "visible",
+                            "textOverflow": "unset",
+                            "wordWrap": "break-word",
+                            "textAlign": "left",
+                            "minWidth": "360px",
+                            "maxWidth": "none",
+                        },
+                    }
+                elif text:
+                    cell = {"text": text,
+                            "style": {**TABLE_CELL_STYLE, "fontSize": "12px", "lineHeight": "1.45",
+                                      "whiteSpace": "normal", "overflow": "visible",
+                                      "textOverflow": "unset", "wordWrap": "break-word", "textAlign": "left",
+                                      "minWidth": "360px", "maxWidth": "none"}}
+                else:
+                    cell = ""
             else:
                 cell = str(val) if val not in (None, "") else ""
             row_cells.append(cell)
@@ -808,106 +855,61 @@ def build_stocks_in_play_table(data: list[dict], widget_id: str = None, sort_col
                   widget_id=widget_id, sort_col=sort_col, sort_asc=sort_asc)
 
 
-def build_cnbc_premarket_watchlist_table(data: list[dict], article_url: str = "") -> html.Div:
-    """CNBC Pre-Market Watchlist: Ticker, News from latest CNBC Market Insider premarket report."""
-    if not data:
-        return html.Div("No premarket data. Check CNBC Market Insider.", style={
-            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
-        })
-    headers = [("Ticker", None), ("News", None), ("", None)]
+def _build_intraday_top_movers_table(data: list[dict]) -> html.Table:
+    """Ticker, Price, Avg Vol, Rel Vol, Change, Vol, ATR % — same formatting as Stocks in Play."""
+    cell = {**TABLE_CELL_STYLE, "padding": "0px 3px 1px 3px", "lineHeight": 1.25}
+    headers = [
+        ("Ticker", None), ("Price", None), ("Avg Vol", None), ("Rel Vol", None),
+        ("Change", None), ("Vol", None), ("ATR %", None),
+    ]
     rows = []
     for r in data:
-        url = r.get("url", article_url)
-        link_cell = ""
-        if url:
-            link_cell = {"text": html.A("Article", href=url, target="_blank", rel="noopener noreferrer",
-                                       style={"color": COLORS["accent"], "textDecoration": "underline", "fontSize": "9px"}),
-                        "style": TABLE_CELL_STYLE}
+        chg_val = r.get("change")
+        try:
+            chg_num = float(chg_val) if chg_val is not None else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        rel_v = r.get("rel_vol")
+        try:
+            if rel_v is None or rel_v == "":
+                rel_str = ""
+            else:
+                rv = float(rel_v)
+                rel_str = "" if math.isnan(rv) else f"{rv:.2f}"
+        except (TypeError, ValueError):
+            rel_str = str(rel_v).strip() if rel_v is not None else ""
+        atr_pct = r.get("atr_pct")
+        atr_str = f"{atr_pct:.2f}%" if atr_pct is not None else ""
         rows.append([
-            {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}),
-             "style": TABLE_CELL_STYLE},
-            {"text": r.get("news", ""),
-             "style": {**TABLE_CELL_STYLE, "fontSize": "12px", "lineHeight": "1.45",
-                       "whiteSpace": "normal", "wordWrap": "break-word", "textAlign": "left",
-                       "minWidth": "320px", "maxWidth": "none"}},
-            link_cell or "",
+            {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}), "style": cell},
+            str(r.get("price", "")),
+            avg_str,
+            rel_str,
+            {"text": f"{chg_num:+.2f}%",
+             "style": {**cell, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
+            atr_str,
         ])
-    col_widths = ["70px", "1fr", "50px"]
-    def _cell(content):
-        if isinstance(content, dict):
-            return html.Td(content.get("text", ""), style=content.get("style", TABLE_CELL_STYLE))
-        return html.Td(content, style=TABLE_CELL_STYLE)
-
-    table = html.Table(
-        [html.Thead(html.Tr([html.Th(h[0], style=TABLE_HEADER_STYLE) for h in headers])),
-         html.Tbody([html.Tr([_cell(c) for c in row]) for row in rows])],
-        style={**TABLE_STYLE, "tableLayout": "fixed"},
-    )
-    article_date = data[0].get("article_date", "") if data else ""
-    if not article_date and data:
-        import re
-        url = data[0].get("url", "")
-        m = re.search(r"/(\d{4})/(\d{2})/(\d{2})/", url)
-        if m:
-            from datetime import datetime
-            try:
-                dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-                article_date = dt.strftime("%b %d, %Y")
-            except (ValueError, TypeError):
-                article_date = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
-    date_label = html.Span(article_date, style={"fontSize": "10px", "color": COLORS["text_muted"], "marginBottom": "4px"}) if article_date else html.Div()
-    return html.Div([
-        html.Div([date_label], style={"marginBottom": "4px"}) if article_date else html.Div(),
-        table,
-    ], style={"display": "flex", "flexDirection": "column"})
+    return _table(headers, rows, col_widths=["70px", "55px", "65px", "55px", "55px", "65px", "55px"])
 
 
 def build_top_gainers_table(data: list[dict]) -> html.Div:
     """Top gainers on the day — from thematics universe (same data as Thematics Tracker)."""
     if not data:
-        return html.Div("No data. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
+        return html.Div("No data (same universe as Thematics). Try Refresh.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    cell = {**TABLE_CELL_STYLE, "padding": "0px 3px 1px 3px", "lineHeight": 1.25}
-    headers = [("Ticker", None), ("Chg", None)]
-    rows = []
-    for r in data:
-        chg = r.get("change", 0)
-        try:
-            chg_num = float(chg) if chg is not None else 0
-        except (ValueError, TypeError):
-            chg_num = 0
-        rows.append([
-            {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}),
-             "style": cell},
-            {"text": f"{chg_num:+.2f}%",
-             "style": {**cell, "color": chg_color(chg_num), "fontWeight": 600}},
-        ])
-    return _table(headers, rows, col_widths=["70px", "55px"])
+    return _build_intraday_top_movers_table(data)
 
 
 def build_top_losers_table(data: list[dict]) -> html.Div:
     """Top losers on the day — from thematics universe (same data as Thematics Tracker)."""
     if not data:
-        return html.Div("No data. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
+        return html.Div("No data (same universe as Thematics). Try Refresh.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    cell = {**TABLE_CELL_STYLE, "padding": "0px 3px 1px 3px", "lineHeight": 1.25}
-    headers = [("Ticker", None), ("Chg", None)]
-    rows = []
-    for r in data:
-        chg = r.get("change", 0)
-        try:
-            chg_num = float(chg) if chg is not None else 0
-        except (ValueError, TypeError):
-            chg_num = 0
-        rows.append([
-            {"text": _clickable_ticker(r.get("ticker", ""), {"fontWeight": 700}),
-             "style": cell},
-            {"text": f"{chg_num:+.2f}%",
-             "style": {**cell, "color": chg_color(chg_num), "fontWeight": 600}},
-        ])
-    return _table(headers, rows, col_widths=["70px", "55px"])
+    return _build_intraday_top_movers_table(data)
 
 
 def _parse_vol(val):
@@ -1186,7 +1188,7 @@ def build_thematics_sector_table(data: list[dict], widget_id: str = None, sort_c
     from src.sortable_table import sort_data, THEMATICS_SECTOR_SORT_KEYS
 
     if not data:
-        return html.Div("No thematics data. Set FINVIZ_API_KEY in .env for FinViz Elite.", style={
+        return html.Div("No thematics-by-sector rows. Try Refresh if Key Metrics has data; otherwise check FINVIZ_API_KEY.", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
 
@@ -1313,12 +1315,56 @@ def build_jeff_sun_ipo_thisweek_table(data: list[dict], widget_id: str = None, s
 
 
 def build_jeff_sun_high_short_float_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
-    """Jeff Sun High Short Float: small+ cap, float <100M, short >30%. Cached weekly."""
+    """Jeff Sun High Short Float: Ticker, Short float %, then standard screener columns."""
     if not data:
         return html.Div("No results", style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
-    return _build_screener_table(data, widget_id or "jeff_sun_high_short_float", sort_col, sort_asc)
+    from src.sortable_table import sort_data, SCREENER_SORT_KEYS
+
+    wid = widget_id or "jeff_sun_high_short_float"
+    if wid and sort_col and sort_col in SCREENER_SORT_KEYS:
+        data = sort_data(data, sort_col, sort_asc, SCREENER_SORT_KEYS)
+    headers = [
+        ("Ticker", "ticker"),
+        ("Sh float %", "short_float_pct"),
+        ("Price", "price"),
+        ("Avg Vol", "avg_vol"),
+        ("Rel Vol", "rel_vol"),
+        ("Change", "change"),
+        ("Vol", "volume"),
+        ("ATR %", "atr_pct"),
+    ]
+    rows = []
+    for r in data:
+        chg_val = r.get("change")
+        try:
+            chg_num = float(str(chg_val).replace("%", "")) if chg_val not in (None, "") else 0
+        except (ValueError, TypeError):
+            chg_num = 0
+        vol_str, avg_str = _format_screener_vol(r.get("volume"), r.get("avg_vol"))
+        atr_pct = r.get("atr_pct")
+        atr_str = f"{atr_pct:.2f}%" if atr_pct is not None else ""
+        rows.append([
+            {"text": _clickable_ticker(r["ticker"], {"fontWeight": 700}),
+             "style": TABLE_CELL_STYLE},
+            str(r.get("short_float_pct", "") or "—"),
+            str(r.get("price", "")),
+            avg_str,
+            str(r.get("rel_vol", "")),
+            {"text": f"{chg_num}%" if chg_val not in (None, "") else "",
+             "style": {**TABLE_CELL_STYLE, "color": chg_color(chg_num), "fontWeight": 600}},
+            vol_str,
+            atr_str,
+        ])
+    return _table(
+        headers,
+        rows,
+        col_widths=["62px", "52px", "50px", "60px", "48px", "48px", "58px", "48px"],
+        widget_id=wid,
+        sort_col=sort_col,
+        sort_asc=sort_asc,
+    )
 
 
 def build_jeff_sun_liquid_etfs_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
@@ -1438,6 +1484,13 @@ def build_4pct_daily_table(data: list[dict], widget_id: str = None, sort_col: st
 def build_leading_industries_table(data: list[dict], widget_id: str = None, sort_col: str = None, sort_asc: bool = True) -> html.Table:
     from src.sortable_table import sort_data, LEADING_SORT_KEYS
 
+    if not data:
+        return html.Div([
+            "No leading-industry rows (same USA v152 universe as Thematics — liquidity filter). ",
+            html.Span("If Key Metrics loads, try Refresh; otherwise check FINVIZ_API_KEY.", style={"color": COLORS["text_muted"]}),
+        ], style={
+            "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
+        })
     if widget_id and sort_col:
         data = sort_data(data, sort_col, sort_asc, LEADING_SORT_KEYS)
     headers = [("Industry", None), ("1st", None), ("2nd", None), ("3rd", None), ("4th", None)]
@@ -1448,9 +1501,8 @@ def build_thematics_table(data: list[dict], widget_id: str = None, sort_col: str
     """Thematics Tracker: Theme, top 4 stocks. Same layout as leading industries."""
     if not data:
         return html.Div([
-            "No thematics data. ",
-            html.Span("Set FINVIZ_API_KEY in .env for FinViz Elite.", style={"color": COLORS["text_muted"]}),
-            " Other FinViz widgets working? Try Refresh.",
+            "No thematics rows to show (liquidity filter or parsing). ",
+            html.Span("If Key Metrics loads, try Refresh; otherwise set FINVIZ_API_KEY in .env.", style={"color": COLORS["text_muted"]}),
         ], style={
             "color": COLORS["text_muted"], "fontSize": "9px", "padding": "8px",
         })
@@ -1616,73 +1668,23 @@ def build_sp500_chart(history: list[dict]) -> go.Figure:
     return fig
 
 
-def build_live_index_snapshot(data: list[dict]) -> html.Div:
-    """Live QQQ, SPY, DIA, IWM, VIX snapshot for intraday traders."""
-    if not data:
-        return html.Div("Live data unavailable. Set FINVIZ_API_KEY in .env.", style={
-            "color": COLORS["text_muted"], "fontSize": "10px", "padding": "8px",
-        })
+def build_ticker_marquee_from_tape(ticker_tape: list[dict]) -> html.Div:
+    """Horizontal ticker tape (same CSS as Should I Trade?). `ticker_tape`: {ticker, change}."""
+    def _tape_item(t):
+        chg = t.get("change", "")
+        is_pos = "+" in str(chg)
+        return html.Span([
+            html.Span(t.get("ticker", ""), style={"fontWeight": 600, "marginRight": "4px"}),
+            html.Span(chg, className="sit-mono", style={"color": COLORS["green"] if is_pos else COLORS["red"], "fontSize": "10px"}),
+        ], style={"display": "inline-flex", "marginRight": "24px", "whiteSpace": "nowrap"})
 
-    muted = {"color": COLORS["text_muted"], "fontSize": "8px", "fontWeight": 500}
-
-    def _card(r: dict) -> html.Div:
-        ticker = r.get("ticker", "")
-        price = r.get("price", "—")
-        change = r.get("change", "")
-        try:
-            chg_val = float(str(change or "").replace("%", "").replace(",", "").strip()) if change else 0.0
-        except (ValueError, TypeError):
-            chg_val = 0.0
-        color = chg_color(chg_val)
-        o = (r.get("open") or "").strip()
-        p = (r.get("prev_close") or "").strip()
-        vol = (r.get("volume") or "").strip()
-        sub: list = []
-        if o or p:
-            sub.append(html.Div([
-                html.Span("O ", style=muted),
-                html.Span(o or "—", style={"fontSize": "8px", "color": COLORS["text"]}),
-                html.Span(" · P ", style=muted),
-                html.Span(p or "—", style={"fontSize": "8px", "color": COLORS["text"]}),
-            ], style={"lineHeight": 1.25}))
-        if vol:
-            sub.append(html.Div([
-                html.Span("Vol ", style=muted),
-                html.Span(vol, style={"fontSize": "8px", "color": COLORS["text"]}),
-            ], style={"lineHeight": 1.25}))
-        kids = [
-            html.Div(_clickable_ticker(ticker, {"fontSize": "9px", "fontWeight": 600}),
-                     style={"color": COLORS["text_muted"], "marginBottom": "2px"}),
-            html.Div(price, style={"fontSize": "14px", "fontWeight": 700, "color": COLORS["text"], "lineHeight": 1.15}),
-            html.Div(change or "—", style={"fontSize": "10px", "fontWeight": 600, "color": color, "marginTop": "1px"}),
-        ]
-        if sub:
-            kids.append(html.Div(sub, style={"marginTop": "auto", "paddingTop": "4px", "display": "flex", "flexDirection": "column", "gap": "3px"}))
-        return html.Div(kids, style={
-            "padding": "6px 6px",
-            "borderRadius": "4px",
-            "background": COLORS["surface2"],
-            "border": f"1px solid {COLORS['border']}",
-            "display": "flex",
-            "flexDirection": "column",
-            "justifyContent": "flex-start",
-            "flex": 1,
-            "minWidth": 0,
-            "minHeight": 0,
-            "height": "100%",
-        })
-
-    cards = [_card(r) for r in data if r.get("ticker")]
-    return html.Div(cards, style={
-        "display": "flex",
-        "flexDirection": "row",
-        "gap": "5px",
-        "alignItems": "stretch",
-        "flex": 1,
-        "minHeight": 0,
-        "height": "100%",
-        "width": "100%",
-    })
+    tape_items = [_tape_item(t) for t in ticker_tape]
+    tape_duplicated = tape_items + tape_items if tape_items else []
+    if tape_items:
+        return html.Div([
+            html.Div(tape_duplicated, className="sit-ticker-marquee-inner"),
+        ], className="sit-ticker-marquee")
+    return html.Div("Loading ticker data...", style={"color": COLORS["text_muted"], "fontSize": "10px"})
 
 
 # -----------------------------------------------------------------------
@@ -2037,8 +2039,10 @@ def build_should_i_trade_content(data: dict, scores: dict, summary: str | dict) 
         v = ew_factors.get(key, ("—", "—"))
         yes_no = v[0] if len(v) > 0 else "—"
         detail = v[1] if len(v) > 1 else "—"
-        dot = COLORS["green"] if yes_no == "Yes" else (COLORS["red"] if yes_no == "No" else COLORS["yellow"])
-        badge_c = COLORS["green"] if yes_no == "Yes" else (COLORS["red"] if yes_no == "No" else COLORS["yellow"])
+        positive = {"Yes", "Working", "Strong"}
+        negative = {"No", "Failing", "Weak"}
+        dot = COLORS["green"] if yes_no in positive else (COLORS["red"] if yes_no in negative else COLORS["yellow"])
+        badge_c = COLORS["green"] if yes_no in positive else (COLORS["red"] if yes_no in negative else COLORS["yellow"])
         return (dot, label, yes_no, detail, badge_c)
     ew_rows = [
         _ew_row("breakouts_working", "Breakouts working?"),
@@ -2124,19 +2128,7 @@ def build_should_i_trade_content(data: dict, scores: dict, summary: str | dict) 
         ], style={"paddingTop": "8px", "borderTop": f"1px solid {COLORS['border']}"}) if suggested_action else html.Span(),
     ], style={"padding": "12px", "background": COLORS["surface2"], "borderRadius": "6px", "border": f"1px solid {COLORS['border']}", "display": "flex", "flexDirection": "column", "height": "100%"})
 
-    ticker_tape = data.get("ticker_tape", [])
-    def _tape_item(t):
-        chg = t.get("change", "")
-        is_pos = "+" in str(chg)
-        return html.Span([
-            html.Span(t.get("ticker", ""), style={"fontWeight": 600, "marginRight": "4px"}),
-            html.Span(chg, className="sit-mono", style={"color": COLORS["green"] if is_pos else COLORS["red"], "fontSize": "10px"}),
-        ], style={"display": "inline-flex", "marginRight": "24px", "whiteSpace": "nowrap"})
-    tape_items = [_tape_item(t) for t in ticker_tape]
-    tape_duplicated = tape_items + tape_items if tape_items else []
-    ticker_marquee = html.Div([
-        html.Div(tape_duplicated, className="sit-ticker-marquee-inner"),
-    ], className="sit-ticker-marquee") if tape_items else html.Div("Loading ticker data...", style={"color": COLORS["text_muted"], "fontSize": "10px"})
+    ticker_marquee = build_ticker_marquee_from_tape(data.get("ticker_tape", []))
 
     return html.Div([
         html.Div([
@@ -2965,13 +2957,12 @@ def build_layout() -> html.Div:
 
     return html.Div([
         dcc.Interval(id="interval-refresh", interval=3600_000, n_intervals=0),
-        dcc.Interval(id="interval-live-snapshot", interval=300_000, n_intervals=0),
         dcc.Interval(id="market-hours-check", interval=60_000, n_intervals=0),
         dcc.Interval(id="interval-header-clock", interval=60_000, n_intervals=0),
         dcc.Interval(id="interval-chart-resize", interval=500, n_intervals=0, max_intervals=1),
         dcc.Store(id="watchlist-store", data=_initial_watchlist()),
         dcc.Store(id="chart-resize-trigger"),
-        dcc.Store(id="main-tabs", data="market-metrics"),
+        dcc.Store(id="main-tabs", data="market-metrics", storage_type="local"),
         dcc.Download(id="download-watchlist-tv"),
 
         build_header(),
@@ -3007,7 +2998,8 @@ def build_layout() -> html.Div:
                         primary=True,
                         initial_hidden=not DEFAULT_VISIBILITY.get("key-metrics", True),
                         body_style=KEY_METRICS_BODY_STYLE,
-                        card_style_override=WIDGET_KEY_METRICS_STYLE),
+                        card_style_override=WIDGET_KEY_METRICS_STYLE,
+                        watchlist_export=False),
                 _widget("chart2", "NQ100, SPY500 & DJIA Metrics",
                         _loading_wrap("chart2-content", [loading],
                                       style={**CHART_WRAP_STYLE, "height": f"{SCROLLABLE_BODY_HEIGHT}px", "overflow": "hidden"}),
@@ -3201,12 +3193,6 @@ def build_layout() -> html.Div:
                                     [
                         html.Div([
                         html.Div([
-                            _widget("live_index", "Market Snapshot",
-                                    _intraday_loading_wrap("live_index-content"),
-                                    variant="teal",
-                                    initial_hidden=not DEFAULT_VISIBILITY.get("live_index", True),
-                                    body_style=INTRADAY_SNAPSHOT_BODY_STYLE,
-                                    card_style_override=INTRADAY_INDEX_ROW_CARD_STYLE),
                             _widget("top_gainers", "Top Gainers",
                                     _intraday_loading_wrap("top_gainers-content"),
                                     variant="teal",
@@ -3251,18 +3237,6 @@ def build_layout() -> html.Div:
                                         _finviz_link("+3%", "pre_market_scanner", {"marginRight": "6px"}),
                                         html.Span(" | ", style={"color": COLORS["text_faint"], "fontSize": "8px", "margin": "0 2px"}),
                                         _finviz_link("-3%", "pre_market_scanner_down"),
-                                    ])),
-                        ], style=WIDE_ROW_STYLE),
-                        html.Div([
-                            _widget("cnbc_premarket", "CNBC Pre-Market Watchlist",
-                                    _loading_wrap("cnbc_premarket-content"),
-                                    variant="teal",
-                                    initial_hidden=not DEFAULT_VISIBILITY.get("cnbc_premarket", True),
-                                    extra_header=html.Span([
-                                        html.A("Market Insider", href="https://www.cnbc.com/market-insider/",
-                                               target="_blank", rel="noopener noreferrer",
-                                               style={"fontSize": "8px", "fontWeight": 500, "color": COLORS["accent"],
-                                                      "textDecoration": "none", "marginLeft": "8px"}),
                                     ])),
                         ], style=WIDE_ROW_STYLE),
                         ], style=CONTENT_AREA_STYLE),
