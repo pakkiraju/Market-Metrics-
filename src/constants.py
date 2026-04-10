@@ -130,11 +130,11 @@ INDEX_GROUPS = ["NQ100", "SPY500", "DJIA", "RUS2000", "$1B+"]
 
 # Base filter for each index (for building metric-specific screener URLs)
 INDEX_BASE_FILTERS = {
-    "NQ100": "geo_usa,idx_ndx",
-    "SPY500": "geo_usa,idx_sp500",
-    "DJIA": "geo_usa,idx_dji",
-    "RUS2000": "geo_usa,idx_rut",
-    "$1B+": "cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1",
+    "NQ100": "idx_ndx",
+    "SPY500": "idx_sp500",
+    "DJIA": "idx_dji",
+    "RUS2000": "idx_rut",
+    "$1B+": "cap_1to,sh_avgvol_o1000,sh_price_o1",
 }
 
 # Metric filters for Key Metrics table row links: (above_filter, below_filter)
@@ -186,24 +186,24 @@ def build_metric_screener_url(index_key: str, metric_label: str, direction: str,
 
 # ---------- FinViz Elite screener links (open in browser, not CSV download) ----------
 FINVIZ_SCREENER_URLS = {
-    "NQ100": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa%2Cidx_ndx",
-    "SPY500": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa%2Cidx_sp500",
-    "DJIA": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa%2Cidx_dji",
-    "RUS2000": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa%2Cidx_rut",
-    "$1B+": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to%2Cgeo_usa%2Csh_avgvol_o1000%2Csh_price_o1",
-    "4pct_daily": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change",
-    "20pct_weekly_up": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1w20o&o=-change",
-    "20pct_weekly_down": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1w20u&o=-change",
+    "NQ100": "https://elite.finviz.com/screener.ashx?v=111&f=idx_ndx",
+    "SPY500": "https://elite.finviz.com/screener.ashx?v=111&f=idx_sp500",
+    "DJIA": "https://elite.finviz.com/screener.ashx?v=111&f=idx_dji",
+    "RUS2000": "https://elite.finviz.com/screener.ashx?v=111&f=idx_rut",
+    "$1B+": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to%2Csh_avgvol_o1000%2Csh_price_o1",
+    "4pct_daily": "https://elite.finviz.com/screener.ashx?v=141&f=sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change",
+    "20pct_weekly_up": "https://elite.finviz.com/screener.ashx?v=111&f=sh_avgvol_o1000,sh_price_o1,ta_perf_1w20o&o=-change",
+    "20pct_weekly_down": "https://elite.finviz.com/screener.ashx?v=111&f=sh_avgvol_o1000,sh_price_o1,ta_perf_1w20u&o=-change",
     # 9M Movers: $1B+ cap, 9M+ volume, 1.25+ rel vol (screener for link)
-    "9m_movers": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,geo_usa,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to",
+    "9m_movers": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to",
     # 97 Club: $1B+ universe (screener for link)
-    "club97": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1",
+    "club97": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,sh_avgvol_o1000,sh_price_o1",
     # O'Neil / CANSLIM: EPS growth, ROE, net margin
-    "oneil": "https://elite.finviz.com/screener.ashx?v=161&f=fa_epsyoy_o25%2Cfa_epsyoy1_o25%2Cfa_epsyoyttm_pos%2Cfa_netmargin_pos%2Cfa_roe_pos%2Cgeo_usa",
+    "oneil": "https://elite.finviz.com/screener.ashx?v=161&f=fa_epsyoy_o25%2Cfa_epsyoy1_o25%2Cfa_epsyoyttm_pos%2Cfa_netmargin_pos%2Cfa_roe_pos",
     # Jeff Sun CANSLIM: Mid+ cap, high sales growth, volume, institutional buying, near highs, volatility
     "jeff_sun_canslim": "https://elite.finviz.com/screener.ashx?v=111&f=cap_midover,fa_salesqoq_high,fa_salesyoyttm_high,sh_avgvol_500to,sh_curvol_o2000,sh_insttrans_pos,ta_highlow20d_a5h,ta_highlow50d_a5h,ta_volatility_wo4&ft=4",
     # Jeff Sun High ADR% Hottest Stock: High volatility (ADR%), strong relative volume, mid+ cap
-    "jeff_sun_high_adr": "https://elite.finviz.com/screener.ashx?v=111&f=cap_midover,geo_usa,sh_avgvol_500to,sh_curvol_o2000,sh_relvol_o2,ta_volatility_wo10&ft=4",
+    "jeff_sun_high_adr": "https://elite.finviz.com/screener.ashx?v=111&f=cap_midover,sh_avgvol_500to,sh_curvol_o2000,sh_relvol_o2,ta_volatility_wo10&ft=4",
     # Jeff Sun Extended Bases/Prolonged Consolidations: small+ cap, near highs, YTD down, SMA200 -20 to +20
     "jeff_sun_extended_bases": "https://elite.finviz.com/screener.ashx?v=111&f=cap_smallover,sh_avgvol_o1000,sh_curvol_o1000,sh_insttrans_pos,sh_price_o1,ta_alltime_b70h,ta_highlow50d_a15h,ta_highlow52w_b30h,ta_perf_ytddown,ta_sma200_-20to20-a,ta_volatility_wo4&ft=4",
     # Jeff Sun Strongest Movers: cap_smallover, avg vol 300K+, cur vol 100+, various perf thresholds
@@ -212,8 +212,8 @@ FINVIZ_SCREENER_URLS = {
     "jeff_sun_4w50": "https://elite.finviz.com/screener.ashx?v=111&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_4w50o,ta_volatility_mo5&ft=4&o=-marketcap",
     "jeff_sun_13w50": "https://elite.finviz.com/screener.ashx?v=111&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_13w50o,ta_volatility_mo5&ft=4&o=-marketcap",
     "jeff_sun_26w100": "https://elite.finviz.com/screener.ashx?v=111&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_26w100o,ta_volatility_mo5&ft=4&o=-marketcap",
-    # Jeff Sun IPO: mid+ cap, EPS growth, USA, IPO previous year, avg vol 1000+
-    "jeff_sun_ipo_thisweek": "https://elite.finviz.com/screener.ashx?v=111&f=cap_midover,fa_epsyoy1_pos,geo_usa,ipodate_prevyear,sh_avgvol_o1000&ft=4&o=industry",
+    # Jeff Sun IPO: mid+ cap, EPS growth, IPO previous year, avg vol 1000+
+    "jeff_sun_ipo_thisweek": "https://elite.finviz.com/screener.ashx?v=111&f=cap_midover,fa_epsyoy1_pos,ipodate_prevyear,sh_avgvol_o1000&ft=4&o=industry",
     # Jeff Sun High Short Float: small+ cap, stocks only, avg vol 1000+, float under 100M, short over 30%
     "jeff_sun_high_short_float": "https://elite.finviz.com/screener.ashx?v=131&f=cap_smallover,ind_stocksonly,sh_avgvol_o1000,sh_float_u100,sh_short_o30&ft=4",
     # Jeff Sun Liquid ETFs: ETFs, avg vol 1000+, week volatility over 3%, sorted by volume
@@ -221,29 +221,29 @@ FINVIZ_SCREENER_URLS = {
     # Julian Komar Strongest Stocks: Charts view v=211 on FinViz; small+ stocks, 52w high proximity, SMA50
     "julian_komar_strongest": "https://elite.finviz.com/screener.ashx?v=211&f=cap_smallover,ind_stocksonly,sh_avgvol_o100,sh_price_o7,ta_highlow52w_a70h,ta_sma50_pa&ft=4&ta=0&p=w&o=-low52w",
     # Minervini Trend Template (base filters; full template uses tad_*)
-    "minervini": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa%2Csh_avgvol_o1000%2Csh_price_o1%2Cta_sma200_pa",
+    "minervini": "https://elite.finviz.com/screener.ashx?v=141&f=sh_avgvol_o1000%2Csh_price_o1%2Cta_sma200_pa",
     # Qullamaggie Episodic Pivot (gap up 10%+, rel vol 2+)
-    "qullamaggie": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa%2Cta_gap_u10%2Csh_relvol_o2%2Csh_price_o1%2Csh_avgvol_o1000",
+    "qullamaggie": "https://elite.finviz.com/screener.ashx?v=141&f=ta_gap_u10%2Csh_relvol_o2%2Csh_price_o1%2Csh_avgvol_o1000",
     # Breakouts: 52w high 0-25%, perf 30d to -4w, price above SMA20
-    "qulla_breakouts": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_highlow52w_0to25-bhx,ta_perf_30to-4w,tad_0_close::close:d|abvpct::10:|sma:20:sma:d&ft=3&o=-change",
+    "qulla_breakouts": "https://elite.finviz.com/screener.ashx?v=141&f=sh_avgvol_o1000,sh_price_o1,ta_highlow52w_0to25-bhx,ta_perf_30to-4w,tad_0_close::close:d|abvpct::10:|sma:20:sma:d&ft=3&o=-change",
     # Parabolic Short: small cap (300–1000% YTD, 100%+ week), large cap (50%+ month)
-    "qulla_ps_small": "https://elite.finviz.com/screener.ashx?v=141&f=cap_to9,geo_usa,ta_perf_300to-4w,ta_perf2_100to-1w&ft=4&o=-change",
-    "qulla_ps_large": "https://elite.finviz.com/screener.ashx?v=141&f=cap_largeover,geo_usa,ta_perf_50to-4w&o=-change",
-    # Leading Industries: $1B+, USA, RSI>60 (top 20% by weekly+monthly RS computed in-app)
-    "leading": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1,tad_0_rsi:14:rsi:d|abveq:::|value:::60&o=-change",
+    "qulla_ps_small": "https://elite.finviz.com/screener.ashx?v=141&f=cap_to9,ta_perf_300to-4w,ta_perf2_100to-1w&ft=4&o=-change",
+    "qulla_ps_large": "https://elite.finviz.com/screener.ashx?v=141&f=cap_largeover,ta_perf_50to-4w&o=-change",
+    # Leading Industries: $1B+, RSI>60 (top 20% by weekly+monthly RS computed in-app)
+    "leading": "https://elite.finviz.com/screener.ashx?v=111&f=cap_1to,sh_avgvol_o1000,sh_price_o1,tad_0_rsi:14:rsi:d|abveq:::|value:::60&o=-change",
     # Earnings Yesterday + Today
-    "earnings_yesterday_today": "https://elite.finviz.com/screener.ashx?v=111&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=change",
+    "earnings_yesterday_today": "https://elite.finviz.com/screener.ashx?v=111&f=earningsdate_today|yesterday,sh_avgvol_o1000,sh_price_o1&o=change",
     # Earnings This Week (Market Metrics). Overview (v=111) for mcap; Performance (v=141) for avg vol, rel vol.
-    "earnings_this_week": "https://elite.finviz.com/screener.ashx?v=111&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
-    "earnings_this_week_perf": "https://elite.finviz.com/screener.ashx?v=141&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
+    "earnings_this_week": "https://elite.finviz.com/screener.ashx?v=111&f=earningsdate_thisweek,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
+    "earnings_this_week_perf": "https://elite.finviz.com/screener.ashx?v=141&f=earningsdate_thisweek,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
     # Stocks In Play: news yesterday|today, avg vol 1000+, price $1+, rel vol 2+
-    "stocks_in_play": "https://elite.finviz.com/screener.ashx?v=141&f=geo_usa,news_date_yesterday|today,sh_avgvol_o1000,sh_price_o1,sh_relvol_o2&o=-change",
-    # Pre-market Scanner: USA, avg vol 1000+, price $1+, rel vol 1+, up 3%
-    "pre_market_scanner": "https://elite.finviz.com/screener.ashx?v=151&f=geo_usa,sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_u3&o=-change",
+    "stocks_in_play": "https://elite.finviz.com/screener.ashx?v=141&f=news_date_yesterday|today,sh_avgvol_o1000,sh_price_o1,sh_relvol_o2&o=-change",
+    # Pre-market Scanner: avg vol 1000+, price $1+, rel vol 1+, up 3%
+    "pre_market_scanner": "https://elite.finviz.com/screener.ashx?v=151&f=sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_u3&o=-change",
     # Pre-market Scanner (down 3%)
-    "pre_market_scanner_down": "https://elite.finviz.com/screener.ashx?v=151&f=geo_usa,sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_d3&o=change",
+    "pre_market_scanner_down": "https://elite.finviz.com/screener.ashx?v=151&f=sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_d3&o=change",
     # Thematics Tracker
-    "thematics": "https://elite.finviz.com/screener.ashx?v=111&f=geo_usa,sh_avgvol_o1000,sh_price_o1",
+    "thematics": "https://elite.finviz.com/screener.ashx?v=111&f=sh_avgvol_o1000,sh_price_o1",
 }
 
 # Stockbee (Pradeep Bonde) — external links
@@ -252,10 +252,10 @@ STOCKBEE_LINKS = {
     "market_monitor": "https://docs.google.com/spreadsheets/d/1O6OhS7ciA8zwfycBfGPbP2fWJnR0pn2UUvFZVDP9jpE/",
 }
 
-# USA-wide Custom view (v=152): all columns FinViz exposes; filter in-app per index ($1B+, NDX, etc.).
+# Full-universe custom view (v=152): all columns FinViz exposes; filter in-app per index ($1B+, NDX, etc.).
 # Shared query string: only the host path differs between CSV export (app) and HTML screener (browser cross-check).
 _USA_FULL_V152_QUERY = (
-    "v=152&f=geo_usa&ft=3&o=-index&c="
+    "v=152&ft=3&o=-index&c="
     "0,1,2,79,3,4,5,129,6,7,8,9,10,11,12,13,73,74,75,14,130,131,147,148,149,15,16,77,17,18,142,19,20,143,21,23,22,132,133,82,78,127,128,144,145,146,24,25,85,26,27,28,29,30,31,84,32,33,34,35,36,37,38,39,40,41,90,91,92,93,94,95,96,97,98,99,42,43,44,45,47,46,138,139,140,48,49,50,51,52,53,54,55,56,57,58,134,125,126,59,68,70,80,83,76,60,61,62,63,64,67,89,69,81,86,87,88,65,66,71,72,141,135,136,137,150,103,100,101,104,102,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,105"
 )
 # Open in a browser to verify columns/filters against the same universe the app downloads via export.ashx.
@@ -266,46 +266,46 @@ FINVIZ_USA_FULL_V152_EXPORT = "https://elite.finviz.com/export.ashx?" + _USA_FUL
 # For screener widgets: use v=141 + &c=1,47,61,62,63,64,65 to get Ticker, ATR, AvgVol, RelVol, Price, Change, Volume.
 # Without c= or with v=111, Avg Vol and Rel Vol are often missing from the export.
 FINVIZ_EXPORT_URLS = {
-    "9m_movers": "https://elite.finviz.com/export.ashx?v=111&f=cap_1to,geo_usa,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to",
-    "club97": "https://elite.finviz.com/export.ashx?v=111&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1",
+    "9m_movers": "https://elite.finviz.com/export.ashx?v=111&f=cap_1to,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to",
+    "club97": "https://elite.finviz.com/export.ashx?v=111&f=cap_1to,sh_avgvol_o1000,sh_price_o1",
     # 20% weekly: c=1,41,47,61,62,63,64,65 = Ticker,PerfWeek,ATR,AvgVol,RelVol,Price,Change,Volume (single request each)
-    "20pct_weekly_up": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1w20o&o=-change&c=1,41,47,61,62,63,64,65",
-    "20pct_weekly_down": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_1w20u&o=-change&c=1,41,47,61,62,63,64,65",
+    "20pct_weekly_up": "https://elite.finviz.com/export.ashx?v=141&f=sh_avgvol_o1000,sh_price_o1,ta_perf_1w20o&o=-change&c=1,41,47,61,62,63,64,65",
+    "20pct_weekly_down": "https://elite.finviz.com/export.ashx?v=141&f=sh_avgvol_o1000,sh_price_o1,ta_perf_1w20u&o=-change&c=1,41,47,61,62,63,64,65",
     # 4% daily: c=1,47,61,62,63,64,65 = Ticker,ATR,AvgVol,RelVol,Price,Change,Volume (single request)
-    "4pct_daily": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change&c=1,47,61,62,63,64,65",
-    "earnings_yesterday_today": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=change",
+    "4pct_daily": "https://elite.finviz.com/export.ashx?v=141&f=sh_avgvol_o1000,sh_price_o1,ta_perf_4to-d&o=-change&c=1,47,61,62,63,64,65",
+    "earnings_yesterday_today": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_today|yesterday,sh_avgvol_o1000,sh_price_o1&o=change",
     # No &c=: perf columns for ATR/vol. Earnings Date merged from earnings_yesterday_today_financial (v=161).
-    "earnings_yesterday_today_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change",
-    "earnings_yesterday_today_financial": "https://elite.finviz.com/export.ashx?v=161&f=earningsdate_today|yesterday,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change",
+    "earnings_yesterday_today_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_today|yesterday,sh_avgvol_o1000,sh_price_o1&o=-change",
+    "earnings_yesterday_today_financial": "https://elite.finviz.com/export.ashx?v=161&f=earningsdate_today|yesterday,sh_avgvol_o1000,sh_price_o1&o=-change",
     # Earnings This Week: Overview for Market Cap; Performance for Avg Vol, Rel Vol. ft=4 for earnings date filter.
-    "earnings_this_week_overview": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
+    "earnings_this_week_overview": "https://elite.finviz.com/export.ashx?v=111&f=earningsdate_thisweek,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
     # v=161 Financial: includes Earnings Date column; v=111 overview often does not. Same filters as overview.
-    "earnings_this_week_financial": "https://elite.finviz.com/export.ashx?v=161&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
-    "earnings_this_week_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_thisweek,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
+    "earnings_this_week_financial": "https://elite.finviz.com/export.ashx?v=161&f=earningsdate_thisweek,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap",
+    "earnings_this_week_perf": "https://elite.finviz.com/export.ashx?v=141&f=earningsdate_thisweek,sh_avgvol_o1000,sh_price_o1&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
     # Stocks in Play: c=1,137,47,61,62,63,64,65 = Ticker,News/Link,ATR,AvgVol,RelVol,Price,Change,Volume
-    "stocks_in_play": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,news_date_yesterday|today,sh_avgvol_o1000,sh_price_o1,sh_relvol_o2&o=-change&c=1,137,47,61,62,63,64,65",
-    # Pre-market Scanner: USA, avg vol 1000+, price $1+, rel vol 1+, up 3%. Columns: Ticker, Gap, Avg Volume, Rel Volume, Volume, Price, Change, News Time, News Title, Daily Digest, News URL
-    "pre_market_scanner": "https://elite.finviz.com/export.ashx?v=151&f=geo_usa,sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_u3&o=-change&c=1,61,62,65,63,64,136,137,138",
+    "stocks_in_play": "https://elite.finviz.com/export.ashx?v=141&f=news_date_yesterday|today,sh_avgvol_o1000,sh_price_o1,sh_relvol_o2&o=-change&c=1,137,47,61,62,63,64,65",
+    # Pre-market Scanner: avg vol 1000+, price $1+, rel vol 1+, up 3%. Columns: Ticker, Gap, Avg Volume, Rel Volume, Volume, Price, Change, News Time, News Title, Daily Digest, News URL
+    "pre_market_scanner": "https://elite.finviz.com/export.ashx?v=151&f=sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_u3&o=-change&c=1,61,62,65,63,64,136,137,138",
     # Pre-market Scanner (down 3%): same columns
-    "pre_market_scanner_down": "https://elite.finviz.com/export.ashx?v=151&f=geo_usa,sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_d3&o=change&c=1,61,62,65,63,64,136,137,138",
-    # Thematics Tracker: USA, avg vol 1K+, price $1+. v=141 + c= for Sector,Industry,PerfWeek,PerfMonth,PerfQtr,PerfYear,Change. Theme = Industry (many themes).
-    "thematics": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,3,4,41,42,43,45,64",
+    "pre_market_scanner_down": "https://elite.finviz.com/export.ashx?v=151&f=sh_avgvol_o1000,sh_price_o1,sh_relvol_o1,ta_change_d3&o=change&c=1,61,62,65,63,64,136,137,138",
+    # Thematics Tracker: avg vol 1K+, price $1+. v=141 + c= for Sector,Industry,PerfWeek,PerfMonth,PerfQtr,PerfYear,Change. Theme = Industry (many themes).
+    "thematics": "https://elite.finviz.com/export.ashx?v=141&f=sh_avgvol_o1000,sh_price_o1&o=-change&c=1,3,4,41,42,43,45,64",
     # Qullamaggie: c=1,47,61,62,63,64,65 = Ticker,ATR,AvgVol,RelVol,Price,Change,Volume (single request per screener)
-    "qulla_episodic": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,ta_gap_u10,sh_relvol_o2,sh_price_o1,sh_avgvol_o1000&o=-change&c=1,47,61,62,63,64,65",
+    "qulla_episodic": "https://elite.finviz.com/export.ashx?v=141&f=ta_gap_u10,sh_relvol_o2,sh_price_o1,sh_avgvol_o1000&o=-change&c=1,47,61,62,63,64,65",
     # Parabolic Short: user-configured filters. c=1,47,61,62,63,64,65 = Ticker,ATR,AvgVol,RelVol,Price,Change,Volume
-    "qulla_ps_large": "https://elite.finviz.com/export.ashx?v=141&f=cap_largeover,geo_usa,ta_perf_50to-4w&o=-change&c=1,47,61,62,63,64,65",
-    "qulla_ps_small": "https://elite.finviz.com/export.ashx?v=141&f=cap_to9,geo_usa,ta_perf_300to-4w,ta_perf2_100to-1w&ft=4&o=-change&c=1,47,61,62,63,64,65",
-    "qulla_breakouts": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_highlow52w_0to25-bhx,ta_perf_30to-4w,tad_0_close::close:d|abvpct::10:|sma:20:sma:d&o=-change&c=1,47,61,62,63,64,65",
+    "qulla_ps_large": "https://elite.finviz.com/export.ashx?v=141&f=cap_largeover,ta_perf_50to-4w&o=-change&c=1,47,61,62,63,64,65",
+    "qulla_ps_small": "https://elite.finviz.com/export.ashx?v=141&f=cap_to9,ta_perf_300to-4w,ta_perf2_100to-1w&ft=4&o=-change&c=1,47,61,62,63,64,65",
+    "qulla_breakouts": "https://elite.finviz.com/export.ashx?v=141&f=sh_avgvol_o1000,sh_price_o1,ta_highlow52w_0to25-bhx,ta_perf_30to-4w,tad_0_close::close:d|abvpct::10:|sma:20:sma:d&o=-change&c=1,47,61,62,63,64,65",
     # Minervini Trend Template: c=1,47,61,62,63,64,65 = Ticker,ATR,AvgVol,RelVol,Price,Change,Volume (single request)
     # tad_6: close above 30% of 52w low (30% or above), not within 30% of low. abvpct:30 = above by 30% min.
-    "minervini": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_avgvol_o1000,sh_price_o1,ta_sma200_pa,tad_0_sma:150:sma:d|abv:::1|close::close:d,tad_1_sma:200:sma:d|abv:::1|close::close:d,tad_2_sma:200:sma:d|abv:::1|sma:150:sma:d,tad_3_sma:50:sma:d|abv:::|sma:150:sma:d,tad_4_sma:50:sma:d|abv:::|sma:200:sma:d,tad_5_sma:50:sma:d|abv:::1|close::close:d,tad_6_close::close:d|abvpct:30::|hilo:52:low:d,tad_7_close::close:d|blwpct::25:|hilo:52:high:d,tad_8_rsi:14:rsi:d|abveq:::|value:::70&o=-change&c=1,47,61,62,63,64,65",
+    "minervini": "https://elite.finviz.com/export.ashx?v=141&f=sh_avgvol_o1000,sh_price_o1,ta_sma200_pa,tad_0_sma:150:sma:d|abv:::1|close::close:d,tad_1_sma:200:sma:d|abv:::1|close::close:d,tad_2_sma:200:sma:d|abv:::1|sma:150:sma:d,tad_3_sma:50:sma:d|abv:::|sma:150:sma:d,tad_4_sma:50:sma:d|abv:::|sma:200:sma:d,tad_5_sma:50:sma:d|abv:::1|close::close:d,tad_6_close::close:d|abvpct:30::|hilo:52:low:d,tad_7_close::close:d|blwpct::25:|hilo:52:high:d,tad_8_rsi:14:rsi:d|abveq:::|value:::70&o=-change&c=1,47,61,62,63,64,65",
     # O'Neil/CANSLIM: c=1,32,40,47,61,62,63,64,65 = Ticker,ROE,ProfitMargin,ATR,AvgVol,RelVol,Price,Change,Volume. ft=2 for fundamental filters.
-    "oneil": "https://elite.finviz.com/export.ashx?v=161&f=fa_epsyoy_o25,fa_epsyoy1_o25,fa_epsyoyttm_pos,fa_netmargin_pos,fa_roe_pos,geo_usa&o=-change&ft=2&c=1,32,40,47,61,62,63,64,65",
+    "oneil": "https://elite.finviz.com/export.ashx?v=161&f=fa_epsyoy_o25,fa_epsyoy1_o25,fa_epsyoyttm_pos,fa_netmargin_pos,fa_roe_pos&o=-change&ft=2&c=1,32,40,47,61,62,63,64,65",
     # Jeff Sun CANSLIM: Mid+ cap, high sales growth, volume, institutional buying, near highs, volatility
     # v=141 + c= for AvgVol, RelVol, ATR (required for screener table columns)
     "jeff_sun_canslim": "https://elite.finviz.com/export.ashx?v=141&f=cap_midover,fa_salesqoq_high,fa_salesyoyttm_high,sh_avgvol_500to,sh_curvol_o2000,sh_insttrans_pos,ta_highlow20d_a5h,ta_highlow50d_a5h,ta_volatility_wo4&ft=4&o=-change&c=1,47,61,62,63,64,65",
     # Jeff Sun High ADR% Hottest Stock: ta_volatility_wo10 = week over 10%, sh_relvol_o2 = rel vol 2+
-    "jeff_sun_high_adr": "https://elite.finviz.com/export.ashx?v=141&f=cap_midover,geo_usa,sh_avgvol_500to,sh_curvol_o2000,sh_relvol_o2,ta_volatility_wo10&ft=4&o=-change&c=1,47,61,62,63,64,65",
+    "jeff_sun_high_adr": "https://elite.finviz.com/export.ashx?v=141&f=cap_midover,sh_avgvol_500to,sh_curvol_o2000,sh_relvol_o2,ta_volatility_wo10&ft=4&o=-change&c=1,47,61,62,63,64,65",
     # Jeff Sun Extended Bases: v=141 + c= for AvgVol, RelVol, ATR
     "jeff_sun_extended_bases": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,sh_avgvol_o1000,sh_curvol_o1000,sh_insttrans_pos,sh_price_o1,ta_alltime_b70h,ta_highlow50d_a15h,ta_highlow52w_b30h,ta_perf_ytddown,ta_sma200_-20to20-a,ta_volatility_wo4&ft=4&o=-change&c=1,47,61,62,63,64,65",
     # Jeff Sun Strongest Movers: v=141 + c= for AvgVol, RelVol, ATR
@@ -314,8 +314,8 @@ FINVIZ_EXPORT_URLS = {
     "jeff_sun_4w50": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_4w50o,ta_volatility_mo5&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
     "jeff_sun_13w50": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_13w50o,ta_volatility_mo5&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
     "jeff_sun_26w100": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,sh_avgvol_o300,sh_curvol_o100,ta_perf_26w100o,ta_volatility_mo5&ft=4&o=-marketcap&c=1,47,61,62,63,64,65",
-    # Jeff Sun IPO: cap_midover, fa_epsyoy1_pos, geo_usa, ipodate_prevyear, sh_avgvol_o1000
-    "jeff_sun_ipo_thisweek": "https://elite.finviz.com/export.ashx?v=141&f=cap_midover,fa_epsyoy1_pos,geo_usa,ipodate_prevyear,sh_avgvol_o1000&ft=4&o=industry&c=1,47,61,62,63,64,65",
+    # Jeff Sun IPO: cap_midover, fa_epsyoy1_pos, ipodate_prevyear, sh_avgvol_o1000
+    "jeff_sun_ipo_thisweek": "https://elite.finviz.com/export.ashx?v=141&f=cap_midover,fa_epsyoy1_pos,ipodate_prevyear,sh_avgvol_o1000&ft=4&o=industry&c=1,47,61,62,63,64,65",
     # Jeff Sun High Short Float: v=131 + Short Float (32) with standard perf/vol columns
     "jeff_sun_high_short_float": "https://elite.finviz.com/export.ashx?v=131&f=cap_smallover,ind_stocksonly,sh_avgvol_o1000,sh_float_u100,sh_short_o30&ft=4&c=1,32,47,61,62,63,64,65",
     # Jeff Sun Liquid ETFs: Overview v=111 + performance columns
@@ -324,25 +324,25 @@ FINVIZ_EXPORT_URLS = {
     "julian_komar_strongest": "https://elite.finviz.com/export.ashx?v=141&f=cap_smallover,ind_stocksonly,sh_avgvol_o100,sh_price_o7,ta_highlow52w_a70h,ta_sma50_pa&ft=4&o=-low52w&c=1,47,61,62,63,64,65",
     # Group indicators: v=141 Performance view has Perf Week/Month (v=111 Overview ignores c=). c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65
     # ind_1b: $1B+ universe for Leading Industries (needs Industry/Sector, Perf Week/Month).
-    "ind_1b": "https://elite.finviz.com/export.ashx?v=141&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
+    "ind_1b": "https://elite.finviz.com/export.ashx?v=141&f=cap_1to,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
     # ind_1b_km: $1B+ for Key Metrics only (v=152 single-URL, no Industry/Sector).
-    "ind_1b_km": "https://elite.finviz.com/export.ashx?v=152&f=cap_1to,geo_usa,sh_avgvol_o1000,sh_price_o1&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
-    "ind_9m": "https://elite.finviz.com/export.ashx?v=141&f=cap_1to,geo_usa,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
+    "ind_1b_km": "https://elite.finviz.com/export.ashx?v=152&f=cap_1to,sh_avgvol_o1000,sh_price_o1&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
+    "ind_9m": "https://elite.finviz.com/export.ashx?v=141&f=cap_1to,sh_curvol_9000tox,sh_price_o1,sh_relvol_1.25to&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
     # ind_usa: v=141 Performance has Perf Week/Month/Qtr/YTD (Industry/Sector for themes)
-    "ind_usa": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_price_o1,sh_avgvol_o1000&o=-change&c=1,3,4,6,41,42,43,44,45,47,50,51,52,55,56,61,62,63,64,65",
+    "ind_usa": "https://elite.finviz.com/export.ashx?v=141&f=sh_price_o1,sh_avgvol_o1000&o=-change&c=1,3,4,6,41,42,43,44,45,47,50,51,52,55,56,61,62,63,64,65",
     # Thematics RRG: v=141 for reliable Perf Year/Qtr columns (v=152 may have different layout)
-    "ind_thematics_rrg": "https://elite.finviz.com/export.ashx?v=141&f=geo_usa,sh_price_o1,sh_avgvol_o1000&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
-    # Key Metrics: use FINVIZ_USA_FULL_V152_EXPORT (single USA export) + in-app filter; these per-index URLs remain for other callers.
+    "ind_thematics_rrg": "https://elite.finviz.com/export.ashx?v=141&f=sh_price_o1,sh_avgvol_o1000&o=-change&c=1,3,4,6,41,42,43,45,47,50,51,52,55,56,61,62,63,64,65",
+    # Key Metrics: use FINVIZ_USA_FULL_V152_EXPORT (single full v=152 export) + in-app filter; these per-index URLs remain for other callers.
     # Key Metrics base data: v=152 single-URL per index. c=1,42,43,44,45,47,52,53,54,60,65,66 = Ticker,PerfWeek,PerfMonth,PerfQuart,PerfHalf,PerfYTD,SMA20,SMA50,SMA200,ChgFromOpen,Price,Change.
-    "ind_ndx": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_ndx&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
-    "ind_sp500": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_sp500&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
-    "ind_dji": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_dji&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
-    "ind_rut": "https://elite.finviz.com/export.ashx?v=152&f=geo_usa,idx_rut&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
-    # Stage analysis: export.ashx, USA universe. v=171 Technical has 20/50/200-Day SMA (Relative), EMA10.
-    "ind_stage": "https://elite.finviz.com/export.ashx?v=171&f=geo_usa,sh_avgvol_o1000,sh_price_o1&o=-change&c=1,41,42,47,50,51,52,55,56,61,62,63,64,65",
+    "ind_ndx": "https://elite.finviz.com/export.ashx?v=152&f=idx_ndx&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
+    "ind_sp500": "https://elite.finviz.com/export.ashx?v=152&f=idx_sp500&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
+    "ind_dji": "https://elite.finviz.com/export.ashx?v=152&f=idx_dji&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
+    "ind_rut": "https://elite.finviz.com/export.ashx?v=152&f=idx_rut&ft=4&o=-change&c=1,42,43,44,45,47,52,53,54,60,65,66",
+    # Stage analysis: export.ashx. v=171 Technical has 20/50/200-Day SMA (Relative), EMA10.
+    "ind_stage": "https://elite.finviz.com/export.ashx?v=171&f=sh_avgvol_o1000,sh_price_o1&o=-change&c=1,41,42,47,50,51,52,55,56,61,62,63,64,65",
     # S&P 500 Landscape: Overview (Market Cap, P/E) + Valuation (P/S) for Revenue/Net Income derivation
-    "sp500_landscape_overview": "https://elite.finviz.com/export.ashx?v=111&f=geo_usa,idx_sp500&o=-marketcap",
-    "sp500_landscape_valuation": "https://elite.finviz.com/export.ashx?v=121&f=geo_usa,idx_sp500&o=-marketcap",
+    "sp500_landscape_overview": "https://elite.finviz.com/export.ashx?v=111&f=idx_sp500&o=-marketcap",
+    "sp500_landscape_valuation": "https://elite.finviz.com/export.ashx?v=121&f=idx_sp500&o=-marketcap",
 }
 
 # ---------- Sector SPDR tickers ----------

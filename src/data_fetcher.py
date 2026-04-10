@@ -35,7 +35,7 @@ WATCHLIST_FILE = ROOT / "watchlist.csv"
 USA_FULL_V152_CACHE_KEY = "usa_full_v152"
 USA_V152_PARSED_DF_CACHE_KEY = "usa_v152_parsed_df_v2"
 
-# Leading Industries + Thematics bundle: same cached USA v=152 as Key Metrics (FINVIZ_USA_FULL_V152_EXPORT), then in-app filter.
+# Leading Industries + Thematics bundle: same cached full v=152 as Key Metrics (FINVIZ_USA_FULL_V152_EXPORT), then in-app filter.
 _THEMATICS_LIQUID_MIN_PRICE = 1.0
 _THEMATICS_LIQUID_MIN_AVG_VOL = 1_000_000  # shares (not dollar volume)
 
@@ -1769,11 +1769,11 @@ def fetch_group_indicators(tickers: list[str], cache_key: str | None = None) -> 
         "ind_DJIA": [["idx_dji"]],
         "ind_RUS2000": [["idx_rut"]],
         "ind_Composite": [["idx_sp500"], ["idx_ndx"], ["idx_dji"]],
-        "ind_leading": [["cap_1to", "geo_usa", "sh_avgvol_o1000", "sh_price_o1"]],
-        "ind_$1B+": [["cap_1to", "geo_usa", "sh_avgvol_o1000", "sh_price_o1"]],
-        "ind_97_club": [["cap_1to", "geo_usa", "sh_avgvol_o1000", "sh_price_o1"]],
-        "ind_9m_movers": [["cap_1to", "geo_usa", "sh_curvol_9000tox", "sh_price_o1", "sh_relvol_1.25to"]],
-        "ind_USA": [["geo_usa", "sh_price_o1", "sh_avgvol_o1000"]],
+        "ind_leading": [["cap_1to", "sh_avgvol_o1000", "sh_price_o1"]],
+        "ind_$1B+": [["cap_1to", "sh_avgvol_o1000", "sh_price_o1"]],
+        "ind_97_club": [["cap_1to", "sh_avgvol_o1000", "sh_price_o1"]],
+        "ind_9m_movers": [["cap_1to", "sh_curvol_9000tox", "sh_price_o1", "sh_relvol_1.25to"]],
+        "ind_USA": [["sh_price_o1", "sh_avgvol_o1000"]],
     }
     filter_sets = filter_sets_by_group.get(cache_key, [["idx_sp500"], ["idx_ndx"]])
 
@@ -2139,7 +2139,7 @@ def fetch_watchlist_quotes_from_usa_v152(tickers: list[str]) -> list[dict]:
 
 def fetch_tickers_bulk_csv(tickers: list[str], cache_key: str | None = None, ttl: int = MEDIUM) -> list[dict]:
     """Fetch multiple tickers in one request via FinViz export.ashx.
-    Uses v=141 (Performance) for Avg Vol, Rel Vol. URL format: v=141&f=geo_usa&t=AMD,NVDA,GOOGL
+    Uses v=141 (Performance) for Avg Vol, Rel Vol. URL format: v=141&t=AMD,NVDA,GOOGL
     Returns list of dicts with ticker, price, change, volume, avg_vol, rel_vol, atr_pct."""
     if not tickers:
         return []
@@ -2162,7 +2162,7 @@ def fetch_tickers_bulk_csv(tickers: list[str], cache_key: str | None = None, ttl
             return []
         ticker_str = ",".join(tickers)
         # c=1,47,61,62,63,64,65 = Ticker,ATR,AvgVol,RelVol,Price,Change,Volume
-        url = f"https://elite.finviz.com/export.ashx?v=141&f=geo_usa&t={ticker_str}&c=1,47,61,62,63,64,65"
+        url = f"https://elite.finviz.com/export.ashx?v=141&t={ticker_str}&c=1,47,61,62,63,64,65"
         data = fetch_export_from_url(url, caller=cache_key or "watchlist")
         if not data:
             return []

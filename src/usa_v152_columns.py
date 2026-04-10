@@ -1,4 +1,4 @@
-"""Canonical column names for the FinViz Elite USA full export (v=152).
+"""Canonical column names for the FinViz Elite full v=152 export (no country filter).
 
 Every fetch of ``FINVIZ_USA_FULL_V152_EXPORT`` returns one row per symbol with these
 headers (exact strings). Import ``USA_V152`` and use ``USA_V152.TICKER``,

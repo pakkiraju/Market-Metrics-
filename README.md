@@ -121,7 +121,7 @@ Widgets are toggled in Settings. Below: **widget → data source → math / beha
 
 ### Key Metrics
 
-- **Source:** One FinViz Elite **export.ashx** call for the full USA **v=152** column set (`FINVIZ_USA_FULL_V152_EXPORT`), then in-app filtering per index (NQ100, SPY500, DJIA, RUS2000, **$1B+**). Optional extra **export.ashx** counts only for **New 20-Day Highs/Lows** if the bulk CSV lacks usable 20-day high/low columns. **`FINVIZ_USA_FULL_V152_SCREENER`** is the same query on **screener.ashx** for browser cross-checks.
+- **Source:** One FinViz Elite **export.ashx** call for the full **v=152** column set (`FINVIZ_USA_FULL_V152_EXPORT`, no country filter), then in-app filtering per index (NQ100, SPY500, DJIA, RUS2000, **$1B+**). Optional extra **export.ashx** counts only for **New 20-Day Highs/Lows** if the bulk CSV lacks usable 20-day high/low columns. **`FINVIZ_USA_FULL_V152_SCREENER`** is the same query on **screener.ashx** for browser cross-checks.
 - **Universe:** NQ100, SPY500, DJIA, RUS2000, **$1B+** (USA, cap ≥ $1B, avg vol ≥ 1K, price ≥ $1).
 - **Math:** For each row, **above** = count meeting “bullish” condition, **below** = opposite where applicable, **%** = above / group size × 100 (except **4% row** uses up-count / N for the % column display; new highs/lows use count / N).
 - **Returns** in `calculations.compute_indicators`: day % from last vs prior close; **week/month/qtr/half/year** = \((C_t - C_{t-k}) / C_{t-k} \times 100\) with **k = 5, 21, 63, 126, 252** trading days.

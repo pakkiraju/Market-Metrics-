@@ -6,7 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
-- **Key Metrics (FinViz):** Uses a single Elite **export.ashx** request for the full USA **v=152** custom column set (`FINVIZ_USA_FULL_V152_EXPORT`), cached as `usa_full_v152`. NQ100, SPY500, DJIA, RUS2000, and **$1B+** are derived in-app by filtering that dataset (Index / cap / volume / price rules), replacing many per-group and per-metric export calls.
+- **Key Metrics (FinViz):** Uses a single Elite **export.ashx** request for the full **v=152** custom column set (`FINVIZ_USA_FULL_V152_EXPORT`, no `geo_usa` filter), cached as `usa_full_v152`. NQ100, SPY500, DJIA, RUS2000, and **$1B+** are derived in-app by filtering that dataset (Index / cap / volume / price rules), replacing many per-group and per-metric export calls.
 - **Key Metrics refresh:** Invalidating Key Metrics also clears the `usa_full_v152` cache so the next run fetches fresh bulk data.
 - **`fetch_export_from_url`:** Accepts an optional `timeout` (seconds); the USA-wide export uses a longer timeout for large CSV responses.
 
